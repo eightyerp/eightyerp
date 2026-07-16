@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a1628;
+  --foreground: #f5f0e6;
+  --navy-900: #0a1628;
+  --navy-800: #0f1f3d;
+  --navy-700: #1a2d52;
+  --navy-600: #243b6b;
+  --gold-400: #e8c547;
+  --gold-500: #d4af37;
+  --gold-600: #b8942e;
+  --gold-glow: rgba(212, 175, 55, 0.25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-navy-900: var(--navy-900);
+  --color-navy-800: var(--navy-800);
+  --color-navy-700: var(--navy-700);
+  --color-navy-600: var(--navy-600);
+  --color-gold-400: var(--gold-400);
+  --color-gold-500: var(--gold-500);
+  --color-gold-600: var(--gold-600);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.login-gradient {
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(212, 175, 55, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(36, 59, 107, 0.6) 0%, transparent 70%),
+    linear-gradient(160deg, var(--navy-900) 0%, var(--navy-800) 45%, var(--navy-700) 100%);
+}
+
+.brand-number {
+  background: linear-gradient(135deg, var(--gold-400) 0%, var(--gold-500) 50%, var(--gold-600) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-line {
+  background: linear-gradient(90deg, transparent, var(--gold-500), transparent);
+}
+
+.login-shell {
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+}
+
+.login-card {
+  background: rgba(15, 31, 61, 0.75);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(212, 175, 55, 0.15);
+  box-shadow: inset 0 1px 0 rgba(212, 175, 55, 0.05);
+}
+
+@media (min-width: 1024px) {
+  .login-card {
+    border-top: none;
+    border-left: 1px solid rgba(212, 175, 55, 0.15);
+  }
+}
+
+.input-field {
+  background: rgba(10, 22, 40, 0.6);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--gold-500);
+  box-shadow: 0 0 0 3px var(--gold-glow);
+}
+
+.btn-login {
+  background: linear-gradient(135deg, var(--gold-500) 0%, var(--gold-600) 100%);
+  transition: transform 0.15s, box-shadow 0.2s, filter 0.2s;
+}
+
+.btn-login:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 20px rgba(212, 175, 55, 0.35);
+}
+
+.btn-login:active {
+  transform: scale(0.98);
+}
+
+.checkbox-gold {
+  accent-color: var(--gold-500);
+}
