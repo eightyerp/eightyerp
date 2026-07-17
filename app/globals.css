@@ -99,3 +99,19 @@ body {
 .checkbox-gold {
   accent-color: var(--gold-500);
 }
+
+.dashboard-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.dashboard-section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--gold-500);
+  display: inline-block;
+}
