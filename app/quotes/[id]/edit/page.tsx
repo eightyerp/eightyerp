@@ -6,7 +6,13 @@ import { getCustomerById, getCustomers, getEmployees } from "@/lib/crm/customers
 import { getQuoteById } from "@/lib/crm/quote-mgmt";
 import type { Employee, ErpQuote } from "@/types/database";
 
-type WizardCustomer = { id: string; name: string; phone: string; address: string | null };
+type WizardCustomer = {
+  id: string;
+  name: string;
+  phone: string;
+  address: string | null;
+  assigned_employee_id: string | null;
+};
 
 type EditQuotePageProps = {
   params: Promise<{ id: string }>;
@@ -32,6 +38,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
         name: c.name,
         phone: c.phone,
         address: c.address,
+        assigned_employee_id: c.assigned_employee_id ?? null,
       }));
       employees = employeeList;
 
@@ -39,7 +46,13 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
         const found = await getCustomerById(quote.customer_id);
         if (found) {
           customers = [
-            { id: found.id, name: found.name, phone: found.phone, address: found.address },
+            {
+              id: found.id,
+              name: found.name,
+              phone: found.phone,
+              address: found.address,
+              assigned_employee_id: found.assigned_employee_id ?? null,
+            },
             ...customers,
           ];
         }

@@ -21,6 +21,7 @@ type WizardCustomer = {
   name: string;
   phone: string;
   address: string | null;
+  assigned_employee_id: string | null;
 };
 
 type QuoteWizardFormProps = {
@@ -113,9 +114,16 @@ export default function QuoteWizardForm({
   const [issuedAt, setIssuedAt] = useState(
     initialQuote?.issued_at ?? new Date().toISOString().slice(0, 10),
   );
-  const [assignedEmployeeId, setAssignedEmployeeId] = useState(
-    initialQuote?.assigned_employee_id ?? "",
-  );
+  const [assignedEmployeeId, setAssignedEmployeeId] = useState(() => {
+    if (mode === "edit" || initialQuote) {
+      return initialQuote?.assigned_employee_id ?? "";
+    }
+    const cid = initialCustomerId ?? "";
+    if (!cid) return "";
+    return (
+      customers.find((c) => c.id === cid)?.assigned_employee_id ?? ""
+    );
+  });
   const [memo, setMemo] = useState(initialQuote?.memo ?? "");
   const [customerMessage, setCustomerMessage] = useState(
     initialQuote?.customer_message ?? "",
@@ -168,6 +176,18 @@ export default function QuoteWizardForm({
       router.push(`/quotes/${state.quoteId}`);
     }
   }, [state, mode, router]);
+
+  // 신규 등록: 선택한 고객의 담당자를 견적 담당자로 자동 반영 (수정 화면은 기존값 유지)
+  useEffect(() => {
+    if (mode !== "create") return;
+    if (!customerId) {
+      setAssignedEmployeeId("");
+      return;
+    }
+    const next =
+      customers.find((c) => c.id === customerId)?.assigned_employee_id ?? "";
+    setAssignedEmployeeId(next);
+  }, [mode, customerId, customers]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -459,6 +479,11 @@ export default function QuoteWizardForm({
                     </option>
                   ))}
                 </select>
+                {mode === "create" && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    고객 담당자가 자동 선택됩니다. 필요한 경우 변경할 수 있습니다.
+                  </p>
+                )}
               </Field>
               <Field label="발행일">
                 <input

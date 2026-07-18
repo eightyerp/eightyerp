@@ -13,7 +13,13 @@ import type { Employee } from "@/types/database";
 const MIGRATION_PATH =
   "supabase/migrations/20260724000001_quotes_and_simple_materials.sql";
 
-type WizardCustomer = { id: string; name: string; phone: string; address: string | null };
+type WizardCustomer = {
+  id: string;
+  name: string;
+  phone: string;
+  address: string | null;
+  assigned_employee_id: string | null;
+};
 
 async function isQuotesSchemaMissing(): Promise<boolean> {
   try {
@@ -53,6 +59,7 @@ export default async function NewQuotePage({
       name: c.name,
       phone: c.phone,
       address: c.address,
+      assigned_employee_id: c.assigned_employee_id ?? null,
     }));
     employees = employeeList;
 
@@ -60,7 +67,13 @@ export default async function NewQuotePage({
       const found = await getCustomerById(customerId);
       if (found && !found.deleted_at) {
         customers = [
-          { id: found.id, name: found.name, phone: found.phone, address: found.address },
+          {
+            id: found.id,
+            name: found.name,
+            phone: found.phone,
+            address: found.address,
+            assigned_employee_id: found.assigned_employee_id ?? null,
+          },
           ...customers,
         ];
       }
