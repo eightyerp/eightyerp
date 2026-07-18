@@ -1,11 +1,16 @@
 import Link from "next/link";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerForm from "@/components/customers/CustomerForm";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getEmployees, getLeadSources } from "@/lib/crm/customers";
+import { canShowDevDiagnostics } from "@/lib/crm/dev-diagnostics";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
 import type { Employee, LeadSource } from "@/types/database";
 
 export default async function NewCustomerPage() {
+  const access = await getCurrentUserAccess();
+  const showDiagnostics = canShowDevDiagnostics(access.isAdmin);
+
   let employees: Employee[] = [];
   let leadSources: LeadSource[] = [];
   let loadError: string | null = null;
@@ -35,13 +40,13 @@ export default async function NewCustomerPage() {
           </div>
           <Link
             href="/customers"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="hidden min-h-11 items-center justify-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 sm:inline-flex"
           >
             목록으로
           </Link>
         </div>
 
-        {tablesMissing && (
+        {tablesMissing && showDiagnostics && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
             <p className="font-semibold">CRM 테이블이 아직 생성되지 않았습니다.</p>
             <p className="mt-2">
@@ -54,29 +59,34 @@ export default async function NewCustomerPage() {
           </div>
         )}
 
-        {loadError && !tablesMissing && (
+        {tablesMissing && !showDiagnostics && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            지금은 고객을 등록할 수 없습니다. 관리자에게 문의해 주세요.
+          </div>
+        )}
+
+        {loadError && !tablesMissing && showDiagnostics && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {loadError}
           </div>
         )}
 
-        {!loadError && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            상담유형(종합인테리어·주방 등) 등록 오류가 나면 Supabase SQL Editor에서
-            <code className="mx-1 rounded bg-white/80 px-1.5 py-0.5 text-xs">
-              supabase/migrations/20260730000001_consultation_type_enum_extend.sql
-            </code>
-            를 실행해 주세요. (기본값「기타」는 migration 없이도 등록 가능합니다.)
+        {loadError && !tablesMissing && !showDiagnostics && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            고객 등록 화면을 불러오지 못했습니다. 잠시 후 다시 시도하거나
+            관리자에게 문의해 주세요.
           </div>
         )}
 
-        {!loadError && leadSources.length === 0 && (
+        {/* 상담유형 migration 안내: 페이지 로드 시 사전 노출하지 않음.
+            실제 등록 오류 시에만 CustomerForm이 개발+admin에게 diagnosticHint 표시 */}
+
+        {!loadError && leadSources.length === 0 && showDiagnostics && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            유입경로 데이터가 없습니다. Supabase SQL Editor에서
+            [개발] 유입경로 데이터가 없습니다.
             <code className="mx-1 rounded bg-white/80 px-1.5 py-0.5 text-xs">
               supabase/migrations/20260716000006_customer_registration_options.sql
             </code>
-            를 실행해 주세요. (상담유형 확장 · 유입경로 seed)
           </div>
         )}
 

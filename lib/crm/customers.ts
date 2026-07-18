@@ -68,30 +68,46 @@ function toCustomerWritePayload(input: CustomerInsert, phone: string) {
   };
 }
 
+/** 일반 직원에게 노출되는 상담유형 오류 문구 (SQL 경로 없음) */
+export const CONSULTATION_TYPE_WRITE_ERROR =
+  "선택한 상담유형을 등록할 수 없습니다. 다른 유형을 선택하거나 관리자에게 문의해 주세요.";
+
+/** 상담유형 enum 오류 여부 (원문 또는 staff-safe 메시지) */
+export function isConsultationTypeEnumError(message: string): boolean {
+  return (
+    /invalid input value for enum consultation_type/i.test(message) ||
+    message === CONSULTATION_TYPE_WRITE_ERROR
+  );
+}
+
+/** 일반 직원용 — SQL/migration 경로 미포함 */
 function toCustomerWriteError(error: {
   message?: string;
   code?: string;
 }): string {
   const message = error.message ?? "";
-  if (/invalid input value for enum consultation_type/i.test(message)) {
-    return (
-      "선택한 상담유형이 DB에 없습니다. Supabase에서 " +
-      "supabase/migrations/20260730000001_consultation_type_enum_extend.sql " +
-      "을 실행한 뒤 다시 등록해 주세요."
-    );
+  if (isConsultationTypeEnumError(message)) {
+    return CONSULTATION_TYPE_WRITE_ERROR;
   }
   if (/invalid input value for enum customer_status/i.test(message)) {
-    return (
-      "선택한 상담상태가 DB에 없습니다. customer_status enum migration을 확인해 주세요."
-    );
+    return "선택한 상담상태를 등록할 수 없습니다. 다른 상태를 선택하거나 관리자에게 문의해 주세요.";
   }
   if (error.code === "42501" || /row-level security/i.test(message)) {
-    return "고객 등록 권한이 없습니다. 로그인 세션과 RLS 정책을 확인해 주세요.";
+    return "고객 등록 권한이 없습니다. 잠시 후 다시 로그인하거나 관리자에게 문의해 주세요.";
   }
   if (/Could not find the|schema cache|PGRST/i.test(message)) {
-    return "고객 테이블 스키마를 확인하지 못했습니다. CRM migration 적용 여부를 확인해 주세요.";
+    return "고객 정보를 저장하지 못했습니다. 관리자에게 문의해 주세요.";
   }
   return message || "고객 저장에 실패했습니다.";
+}
+
+/** 개발환경 admin 전용 진단 문구 (실제 상담유형 enum 오류일 때만 사용) */
+export function consultationTypeEnumDiagnosticHint(): string {
+  return (
+    "[개발] 상담유형 enum 오류입니다. Supabase SQL Editor에서 " +
+    "supabase/migrations/20260730000001_consultation_type_enum_extend.sql " +
+    "적용 여부를 확인해 주세요."
+  );
 }
 
 function enrichCustomer(customer: CustomerWithRelations): CustomerWithRelations {

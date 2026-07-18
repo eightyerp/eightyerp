@@ -3,10 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import {
+  consultationTypeEnumDiagnosticHint,
   createCustomer,
   createCustomerConsultLog,
   getLeadSources,
+  isConsultationTypeEnumError,
   logPlaceholderAction,
   logQuickChannelActivity,
   permanentlyDeleteCustomer,
@@ -19,6 +22,7 @@ import {
   updateCustomer,
   updateCustomerQuickFields,
 } from "@/lib/crm/customers";
+import { canShowDevDiagnostics } from "@/lib/crm/dev-diagnostics";
 import {
   parseInquiryText,
   parseInterestItemsInput,
@@ -36,6 +40,8 @@ import type {
 export type ActionResult = {
   success: boolean;
   error?: string;
+  /** 개발환경 admin 전용 — SQL/경로 안내. production에서는 절대 설정하지 않음 */
+  diagnosticHint?: string;
   message?: string;
   customerId?: string;
   parsed?: ParsedInquiryData;
@@ -74,6 +80,25 @@ function formDataToCustomerInsert(formData: FormData): CustomerInsert {
   };
 }
 
+async function customerWriteFailureResult(
+  error: unknown,
+  fallback: string,
+): Promise<ActionResult> {
+  const message =
+    error instanceof Error ? error.message : fallback;
+  const access = await getCurrentUserAccess();
+  const showDiag = canShowDevDiagnostics(access.isAdmin);
+
+  return {
+    success: false,
+    error: message || fallback,
+    diagnosticHint:
+      showDiag && isConsultationTypeEnumError(message)
+        ? consultationTypeEnumDiagnosticHint()
+        : undefined,
+  };
+}
+
 export async function createCustomerAction(
   _prev: ActionResult,
   formData: FormData,
@@ -90,10 +115,7 @@ export async function createCustomerAction(
     redirect("/customers?created=1");
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "고객 등록에 실패했습니다.",
-    };
+    return customerWriteFailureResult(error, "고객 등록에 실패했습니다.");
   }
 }
 
@@ -118,10 +140,7 @@ export async function updateCustomerAction(
     redirect("/customers?updated=1");
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "고객 수정에 실패했습니다.",
-    };
+    return customerWriteFailureResult(error, "고객 수정에 실패했습니다.");
   }
 }
 

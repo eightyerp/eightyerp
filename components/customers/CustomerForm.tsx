@@ -44,8 +44,19 @@ export default function CustomerForm({
     );
   }
 
+  const submitLabel = pending
+    ? isEdit
+      ? "저장 중..."
+      : "등록 중..."
+    : isEdit
+      ? "변경 저장"
+      : "고객 등록";
+
   return (
-    <form action={formAction} className="dashboard-card space-y-5 p-5 lg:p-6">
+    <form
+      action={formAction}
+      className="dashboard-card space-y-5 p-4 pb-28 sm:p-5 md:pb-6 lg:p-6"
+    >
       {customer && <input type="hidden" name="id" value={customer.id} />}
 
       {interestItems.map((item) => (
@@ -55,6 +66,12 @@ export default function CustomerForm({
       {state.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {state.error}
+        </div>
+      )}
+
+      {state.diagnosticHint && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {state.diagnosticHint}
         </div>
       )}
 
@@ -141,7 +158,7 @@ export default function CustomerForm({
                   key={item}
                   type="button"
                   onClick={() => toggleInterest(item)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium transition md:min-h-0 md:py-1.5 ${
                     selected
                       ? "bg-navy-800 text-gold-400 ring-1 ring-navy-900"
                       : "bg-gray-50 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100"
@@ -241,34 +258,48 @@ export default function CustomerForm({
         </Field>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-4">
+      {/* Desktop / tablet actions */}
+      <div className="hidden flex-wrap gap-2 border-t border-gray-100 pt-4 md:flex">
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-navy-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-navy-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
         >
-          {pending
-            ? isEdit
-              ? "저장 중..."
-              : "등록 중..."
-            : isEdit
-              ? "변경 저장"
-              : "고객 등록"}
+          {submitLabel}
         </button>
         <Link
           href="/customers"
-          className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
         >
           목록으로
         </Link>
+      </div>
+
+      {/* Mobile sticky actions — 저장 + 목록 분리, 겹침 없음 */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-3 py-3 backdrop-blur md:hidden">
+        <div className="mx-auto flex max-w-4xl gap-2 pb-[env(safe-area-inset-bottom)]">
+          <Link
+            href="/customers"
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700"
+          >
+            목록
+          </Link>
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex min-h-11 flex-[1.6] items-center justify-center rounded-lg bg-navy-800 px-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {submitLabel}
+          </button>
+        </div>
       </div>
     </form>
   );
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
-const textareaClass = `${inputClass} resize-y`;
+  "min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500 md:min-h-10 md:py-2 md:text-sm";
+const textareaClass = `${inputClass} resize-y min-h-[6.5rem]`;
 
 function Field({
   label,
