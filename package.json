@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs"
+    "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
+    "test:parse-inquiry": "npx --yes tsx scripts/test-parse-inquiry-run.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

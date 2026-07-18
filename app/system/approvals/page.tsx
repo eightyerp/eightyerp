@@ -3,6 +3,10 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import StaffApprovalsWorkspace from "@/components/system/StaffApprovalsWorkspace";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
+import {
   listEmployeesForApproval,
   listManagedProfiles,
   listPendingSignups,
@@ -20,7 +24,11 @@ export default async function StaffApprovalsPage() {
   let employees: Awaited<ReturnType<typeof listEmployeesForApproval>> = [];
   let teams: Awaited<ReturnType<typeof listTeamsForApproval>> = [];
   let loadError: string | null = null;
-  let migrationHint: string | null = null;
+  let schemaMissing = false;
+  const migrationDevHint = schemaMissingDevHint(
+    "supabase/migrations/20260801000001_employee_signup_approval.sql",
+    access.isAdmin,
+  );
 
   try {
     [pending, allProfiles, employees, teams] = await Promise.all([
@@ -31,10 +39,15 @@ export default async function StaffApprovalsPage() {
     ]);
   } catch (error) {
     const message = toCrmErrorMessage(error);
-    loadError = message;
-    if (/is_approved|approval_status|approve_staff_signup|schema cache|Could not find/i.test(message)) {
-      migrationHint =
-        "supabase/migrations/20260801000001_employee_signup_approval.sql 을 Supabase SQL Editor에서 실행해 주세요.";
+    if (
+      /is_approved|approval_status|approve_staff_signup|schema cache|Could not find/i.test(
+        message,
+      )
+    ) {
+      schemaMissing = true;
+      loadError = schemaMissingStaffMessage("가입 승인");
+    } else {
+      loadError = "가입 승인 목록을 불러오지 못했습니다.";
     }
   }
 
@@ -51,13 +64,16 @@ export default async function StaffApprovalsPage() {
           </p>
         </div>
 
-        {migrationHint && (
+        {schemaMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {migrationHint}
+            <p>{loadError}</p>
+            {migrationDevHint && (
+              <p className="mt-2 text-xs">{migrationDevHint}</p>
+            )}
           </div>
         )}
 
-        {loadError && !migrationHint && (
+        {loadError && !schemaMissing && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {loadError}
           </div>

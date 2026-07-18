@@ -149,6 +149,9 @@ export type Customer = {
   special_notes: string | null;
   event_memo: string | null;
   inquiry_raw_text: string | null;
+  source_order_no?: string | null;
+  source_channel?: string | null;
+  source_round?: string | null;
   happy_call_required: boolean;
   happy_call_result: string | null;
   deleted_at: string | null;
@@ -225,6 +228,12 @@ export type ParsedInquiryData = {
   special_notes?: string;
   event_memo?: string;
   consultation_notes?: string;
+  source_order_no?: string;
+  source_channel?: string;
+  source_round?: string;
+  received_at_text?: string | null;
+  consult_room_phone?: string;
+  reception_place?: string;
   assigned_employee_id?: string | null;
   status?: CustomerStatus;
   next_contact_at?: string | null;
@@ -247,6 +256,9 @@ export type CustomerInsert = {
   special_notes?: string | null;
   event_memo?: string | null;
   inquiry_raw_text?: string | null;
+  source_order_no?: string | null;
+  source_channel?: string | null;
+  source_round?: string | null;
   happy_call_required?: boolean;
   happy_call_result?: string | null;
 };

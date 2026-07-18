@@ -1,7 +1,12 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerSchedulesWorkspace from "@/components/schedules/CustomerSchedulesWorkspace";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import { getCustomers } from "@/lib/crm/customers";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
 import {
   getScheduleAccess,
@@ -11,8 +16,8 @@ import {
 import { createClient } from "@/lib/supabase-server";
 import type { CustomerSchedule, Employee, Team } from "@/types/database";
 
-const MIGRATION_HINT =
-  "supabase/migrations/20260725000001_customer_and_process_schedules.sql 과 20260728000001_customer_schedules_v2.sql 을 Supabase SQL Editor에서 순서대로 실행해 주세요.";
+const MIGRATION_PATH =
+  "supabase/migrations/20260725000001_customer_and_process_schedules.sql (+ 20260728000001_customer_schedules_v2.sql)";
 
 async function isScheduleSchemaMissing(): Promise<boolean> {
   try {
@@ -27,6 +32,7 @@ async function isScheduleSchemaMissing(): Promise<boolean> {
 
 export default async function CustomerSchedulesPage() {
   const access = await getScheduleAccess();
+  const userAccess = await getCurrentUserAccess();
 
   let schedules: CustomerSchedule[] = [];
   let employees: Employee[] = [];
@@ -42,6 +48,7 @@ export default async function CustomerSchedulesPage() {
   }[] = [];
   let loadError: string | null = null;
   let tablesMissing = false;
+  const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
 
   try {
     employees = await listEmployeesInScope(access);
@@ -102,9 +109,11 @@ export default async function CustomerSchedulesPage() {
 
   try {
     schedules = await listCustomerSchedules({}, access);
-  } catch (error) {
+  } catch {
     tablesMissing = await isScheduleSchemaMissing();
-    loadError = error instanceof Error ? error.message : "일정을 불러오지 못했습니다.";
+    loadError = tablesMissing
+      ? null
+      : "상담 일정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
 
   return (
@@ -112,8 +121,10 @@ export default async function CustomerSchedulesPage() {
       <div className="space-y-6">
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">상담 일정 테이블을 찾을 수 없습니다.</p>
-            <p className="mt-2">{MIGRATION_HINT}</p>
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("상담 일정")}
+            </p>
+            {devHint && <p className="mt-2 text-xs">{devHint}</p>}
           </div>
         )}
 

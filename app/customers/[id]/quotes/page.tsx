@@ -2,14 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import QuotesList from "@/components/quotes/QuotesList";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getCustomerById, getEmployees } from "@/lib/crm/customers";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
 import { listQuotes } from "@/lib/crm/quote-mgmt";
 import { createClient } from "@/lib/supabase-server";
 import type { CustomerWithRelations, Employee, ErpQuote } from "@/types/database";
 
-const MIGRATION_HINT =
-  "supabase/migrations/20260724000001_quotes_and_simple_materials.sql 을 Supabase SQL Editor에서 실행해 주세요.";
+const MIGRATION_PATH =
+  "supabase/migrations/20260724000001_quotes_and_simple_materials.sql";
 
 async function isQuotesSchemaMissing(): Promise<boolean> {
   try {
@@ -30,6 +35,8 @@ export default async function CustomerQuotesPage({
   params,
 }: CustomerQuotesPageProps) {
   const { id: customerId } = await params;
+  const userAccess = await getCurrentUserAccess();
+  const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
 
   const customer = await getCustomerById(customerId).catch(
     () => null as CustomerWithRelations | null,
@@ -48,9 +55,11 @@ export default async function CustomerQuotesPage({
     ]);
     quotes = quoteList;
     employees = employeeList;
-  } catch (error) {
+  } catch {
     tablesMissing = await isQuotesSchemaMissing();
-    loadError = error instanceof Error ? error.message : "견적 목록을 불러오지 못했습니다.";
+    loadError = tablesMissing
+      ? null
+      : "견적 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
 
   return (
@@ -75,8 +84,10 @@ export default async function CustomerQuotesPage({
 
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">견적관리 테이블을 찾을 수 없습니다.</p>
-            <p className="mt-2">{MIGRATION_HINT}</p>
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("견적관리")}
+            </p>
+            {devHint && <p className="mt-2 text-xs">{devHint}</p>}
           </div>
         )}
 

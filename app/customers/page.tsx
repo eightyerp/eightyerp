@@ -4,6 +4,7 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerFilters from "@/components/customers/CustomerFilters";
 import CustomerPagination from "@/components/customers/CustomerPagination";
 import CustomerTable from "@/components/customers/CustomerTable";
+import ExternalInquiryPasteModal from "@/components/customers/ExternalInquiryPasteModal";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { CUSTOMER_PAGE_SIZE } from "@/lib/crm/constants";
 import {
@@ -11,6 +12,10 @@ import {
   getEmployees,
   getLeadSources,
 } from "@/lib/crm/customers";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
 import type {
   CustomerStatus,
@@ -84,6 +89,10 @@ export default async function CustomersPage({
 
   const tablesMissing = loadError === "CRM_TABLES_MISSING";
   const attentionCount = customers.filter((c) => c.needs_attention).length;
+  const crmDevHint = schemaMissingDevHint(
+    "supabase/migrations/20260716000000_crm_customers.sql",
+    access.isAdmin,
+  );
 
   return (
     <DashboardLayout>
@@ -106,11 +115,15 @@ export default async function CustomersPage({
                 삭제 고객함
               </Link>
             )}
+            <ExternalInquiryPasteModal
+              employees={employees}
+              leadSources={leadSources}
+            />
             <Link
               href="/customers/import"
-              className="rounded-lg border border-gold-500/40 bg-gold-500/10 px-4 py-2.5 text-sm font-medium text-navy-800 hover:bg-gold-500/20"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              문의 자동등록
+              문의 자동등록(전체화면)
             </Link>
             <Link
               href="/customers/new"
@@ -141,16 +154,16 @@ export default async function CustomersPage({
 
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">CRM 테이블을 API에서 찾을 수 없습니다.</p>
-            <p className="mt-2">
-              Supabase SQL Editor에서 최신 migration을 실행해 주세요.
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("고객관리")}
             </p>
+            {crmDevHint && <p className="mt-2 text-xs">{crmDevHint}</p>}
           </div>
         )}
 
         {loadError && !tablesMissing && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {loadError}
+            고객 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
           </div>
         )}
 

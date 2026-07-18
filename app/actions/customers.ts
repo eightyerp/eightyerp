@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import {
+  appendInquiryToExistingCustomer,
   consultationTypeEnumDiagnosticHint,
   createCustomer,
   createCustomerConsultLog,
@@ -23,6 +24,9 @@ import {
   updateCustomerQuickFields,
 } from "@/lib/crm/customers";
 import { canShowDevDiagnostics } from "@/lib/crm/dev-diagnostics";
+import { findInquiryDuplicates } from "@/lib/crm/inquiry-duplicates";
+import type { DuplicateCandidate } from "@/lib/crm/inquiry-duplicates";
+import type { InquiryMissingField } from "@/lib/crm/parse-inquiry";
 import {
   parseInquiryText,
   parseInterestItemsInput,
@@ -46,6 +50,8 @@ export type ActionResult = {
   customerId?: string;
   parsed?: ParsedInquiryData;
   sourceType?: InquirySourceType;
+  missingFields?: InquiryMissingField[];
+  duplicates?: DuplicateCandidate[];
 };
 
 function emptyToNull(value: FormDataEntryValue | null): string | null {
@@ -366,19 +372,67 @@ export async function analyzeInquiryAction(
       return { success: false, error: "문의 내용을 입력해 주세요." };
     }
 
-    const { sourceType, parsed } = parseInquiryText(rawText);
+    const { sourceType, parsed, missingFields } = parseInquiryText(rawText);
+    const duplicates = await findInquiryDuplicates({
+      source_order_no: parsed.source_order_no,
+      phone: parsed.phone,
+      name: parsed.name,
+      address: parsed.address,
+    });
+
     return {
       success: true,
-      message: "내용 분석이 완료되었습니다.",
+      message: "내용 분석이 완료되었습니다. 미리보기를 확인한 뒤 등록해 주세요.",
       parsed,
       sourceType,
+      missingFields,
+      duplicates,
     };
-  } catch (error) {
+  } catch {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "분석에 실패했습니다.",
+      error: "내용 분석에 실패했습니다. 형식을 확인한 뒤 다시 시도해 주세요.",
     };
   }
+}
+
+function buildParsedFromInquiryForm(formData: FormData): ParsedInquiryData {
+  const interestFromChecks = formData
+    .getAll("interest_item")
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  const interestText = String(
+    formData.get("interest_items_text") ?? formData.get("interest_items") ?? "",
+  );
+  const interestItems =
+    interestFromChecks.length > 0
+      ? interestFromChecks
+      : parseInterestItemsInput(interestText);
+
+  return {
+    name: String(formData.get("name") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim(),
+    address: emptyToNull(formData.get("address")) ?? undefined,
+    lead_source_name:
+      String(formData.get("lead_source_name") ?? "").trim() || undefined,
+    consultation_type: (formData.get("consultation_type") ||
+      "기타") as ConsultationType,
+    interest_items: interestItems,
+    desired_timing: emptyToNull(formData.get("desired_timing")) ?? undefined,
+    special_notes: emptyToNull(formData.get("special_notes")) ?? undefined,
+    event_memo: emptyToNull(formData.get("event_memo")) ?? undefined,
+    consultation_notes:
+      emptyToNull(formData.get("consultation_notes")) ?? undefined,
+    source_order_no:
+      emptyToNull(formData.get("source_order_no")) ?? undefined,
+    source_channel:
+      emptyToNull(formData.get("source_channel")) ?? undefined,
+    source_round: emptyToNull(formData.get("source_round")) ?? undefined,
+    assigned_employee_id: emptyToNull(formData.get("assigned_employee_id")),
+    status: (formData.get("status") || "신규") as CustomerStatus,
+    next_contact_at: emptyToNull(formData.get("next_contact_at")),
+    happy_call_required: formData.get("happy_call_required") === "true",
+  };
 }
 
 export async function registerInquiryCustomerAction(
@@ -387,45 +441,72 @@ export async function registerInquiryCustomerAction(
 ): Promise<ActionResult> {
   try {
     const rawText = String(formData.get("raw_text") ?? "").trim();
-    const name = String(formData.get("name") ?? "").trim();
-    const phone = String(formData.get("phone") ?? "").trim();
+    const mode = String(formData.get("duplicate_mode") ?? "create").trim() as
+      | "create"
+      | "append"
+      | "view";
+    const existingId = String(formData.get("existing_customer_id") ?? "").trim();
 
     if (!rawText) {
       return { success: false, error: "원본 문의 내용이 필요합니다." };
     }
-    if (!name || !phone) {
+
+    const parsed = buildParsedFromInquiryForm(formData);
+    if (!parsed.name || !parsed.phone) {
       return { success: false, error: "고객명과 연락처는 필수입니다." };
     }
-
-    const sources = await getLeadSources();
-    const leadSourceName = String(formData.get("lead_source_name") ?? "");
-    const lead_source_id =
-      emptyToNull(formData.get("lead_source_id")) ??
-      (await resolveLeadSourceIdByName(leadSourceName, sources));
 
     const sourceType = (formData.get("source_type") ||
       "other") as InquirySourceType;
 
-    const parsed: ParsedInquiryData = {
-      name,
-      phone,
-      address: emptyToNull(formData.get("address")) ?? undefined,
-      lead_source_name: leadSourceName || undefined,
-      consultation_type: (formData.get("consultation_type") ||
-        "기타") as ConsultationType,
-      interest_items: parseInterestItemsInput(
-        String(formData.get("interest_items") ?? ""),
-      ),
-      desired_timing: emptyToNull(formData.get("desired_timing")) ?? undefined,
-      special_notes: emptyToNull(formData.get("special_notes")) ?? undefined,
-      event_memo: emptyToNull(formData.get("event_memo")) ?? undefined,
-      consultation_notes:
-        emptyToNull(formData.get("consultation_notes")) ?? undefined,
-      assigned_employee_id: emptyToNull(formData.get("assigned_employee_id")),
-      status: (formData.get("status") || "신규") as CustomerStatus,
-      next_contact_at: emptyToNull(formData.get("next_contact_at")),
-      happy_call_required: formData.get("happy_call_required") === "true",
-    };
+    if (mode === "view" && existingId) {
+      redirect(`/customers/${existingId}`);
+    }
+
+    if (mode === "append") {
+      if (!existingId) {
+        return { success: false, error: "기존 고객을 선택해 주세요." };
+      }
+      await appendInquiryToExistingCustomer({
+        customer_id: existingId,
+        raw_text: rawText,
+        source_type: sourceType,
+        parsed,
+      });
+      revalidatePath("/customers");
+      revalidatePath(`/customers/${existingId}`);
+      redirect(`/customers/${existingId}`);
+    }
+
+    // create — 강제 신규 또는 중복 없음
+    const forceCreate = String(formData.get("force_create") ?? "") === "1";
+    if (!forceCreate) {
+      const duplicates = await findInquiryDuplicates({
+        source_order_no: parsed.source_order_no,
+        phone: parsed.phone,
+        name: parsed.name,
+        address: parsed.address,
+      });
+      if (duplicates.length > 0) {
+        return {
+          success: false,
+          error: "중복 가능성이 있는 고객이 있습니다. 처리 방법을 선택해 주세요.",
+          duplicates,
+          parsed,
+          sourceType,
+        };
+      }
+    }
+
+    if (!parsed.assigned_employee_id) {
+      return { success: false, error: "담당자를 선택해 주세요." };
+    }
+
+    const sources = await getLeadSources();
+    const leadSourceName = parsed.lead_source_name ?? "";
+    const lead_source_id =
+      emptyToNull(formData.get("lead_source_id")) ??
+      (await resolveLeadSourceIdByName(leadSourceName, sources));
 
     const customer = await registerCustomerFromInquiry({
       raw_text: rawText,
@@ -439,10 +520,18 @@ export async function registerInquiryCustomerAction(
     redirect(`/customers/${customer.id}`);
   } catch (error) {
     if (isRedirectError(error)) throw error;
+    const message =
+      error instanceof Error ? error.message : "고객 등록에 실패했습니다.";
+    // 개인정보 노출 방지
+    if (/already|duplicate|23505|이미 등록된 연락처/i.test(message)) {
+      return {
+        success: false,
+        error: "이미 등록된 고객일 수 있습니다. 중복 처리 방법을 선택해 주세요.",
+      };
+    }
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "고객 등록에 실패했습니다.",
+      error: "고객 등록에 실패했습니다. 입력값을 확인한 뒤 다시 시도해 주세요.",
     };
   }
 }

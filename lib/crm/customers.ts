@@ -63,6 +63,9 @@ function toCustomerWritePayload(input: CustomerInsert, phone: string) {
     special_notes: input.special_notes ?? null,
     event_memo: input.event_memo ?? null,
     inquiry_raw_text: input.inquiry_raw_text ?? null,
+    source_order_no: input.source_order_no ?? null,
+    source_channel: input.source_channel ?? null,
+    source_round: input.source_round ?? null,
     happy_call_required: Boolean(input.happy_call_required),
     happy_call_result: input.happy_call_result ?? null,
   };
@@ -1064,6 +1067,9 @@ export async function registerCustomerFromInquiry(input: {
     special_notes: input.parsed.special_notes || null,
     event_memo: input.parsed.event_memo || null,
     inquiry_raw_text: input.raw_text,
+    source_order_no: input.parsed.source_order_no || null,
+    source_channel: input.parsed.source_channel || null,
+    source_round: input.parsed.source_round || null,
     happy_call_required: Boolean(input.parsed.happy_call_required),
   });
 
@@ -1075,7 +1081,89 @@ export async function registerCustomerFromInquiry(input: {
     status: "registered",
   });
 
+  try {
+    await createCustomerActivity({
+      customer_id: customer.id,
+      activity_type: "LX 본사문의",
+      content: "외부문의 자동등록",
+    });
+  } catch {
+    // 활동 로그 실패해도 등록은 유지
+  }
+
+  if (customer.assigned_employee_id) {
+    try {
+      const { enqueueNotificationEvent } = await import(
+        "@/lib/crm/notifications"
+      );
+      await enqueueNotificationEvent({
+        event_type: "external_inquiry_registered",
+        customer_id: customer.id,
+        payload: {
+          assigned_employee_id: customer.assigned_employee_id,
+          customer_name: customer.name,
+          channel: "in_app",
+          ready_for_kakao: true,
+        },
+        body: "신규 고객이 배정되었습니다. (외부문의 자동등록)",
+      });
+    } catch {
+      // 알림 테이블/체크 미적용 환경에서도 등록 성공 유지
+    }
+  }
+
   return customer;
+}
+
+/** 기존 고객에 외부문의 상담내용만 추가 */
+export async function appendInquiryToExistingCustomer(input: {
+  customer_id: string;
+  raw_text: string;
+  source_type: InquirySourceType;
+  parsed: ParsedInquiryData;
+}) {
+  const supabase = await createClient();
+  const existing = await getCustomerById(input.customer_id);
+  if (!existing || existing.deleted_at) {
+    throw new Error("기존 고객을 찾을 수 없습니다.");
+  }
+
+  const stamp = new Date().toLocaleString("ko-KR");
+  const addition = [
+    `\n\n--- 외부문의 추가 (${stamp}) ---`,
+    input.parsed.consultation_notes || input.raw_text,
+  ].join("\n");
+
+  const { error } = await supabase
+    .from("customers")
+    .update({
+      consultation_notes: `${existing.consultation_notes ?? ""}${addition}`,
+      inquiry_raw_text: input.raw_text,
+    })
+    .eq("id", input.customer_id)
+    .is("deleted_at", null);
+
+  if (error) throw new Error("상담내용 추가에 실패했습니다.");
+
+  await createInquiryMessage({
+    source_type: input.source_type,
+    raw_text: input.raw_text,
+    parsed_data: input.parsed,
+    customer_id: input.customer_id,
+    status: "registered",
+  });
+
+  try {
+    await createCustomerActivity({
+      customer_id: input.customer_id,
+      activity_type: "LX 본사문의",
+      content: "외부문의 자동등록 — 기존 고객에 상담내용 추가",
+    });
+  } catch {
+    // ignore
+  }
+
+  return existing;
 }
 
 export async function resolveLeadSourceIdByName(
@@ -1083,6 +1171,14 @@ export async function resolveLeadSourceIdByName(
   sources: LeadSource[],
 ): Promise<string | null> {
   if (!name) return null;
-  const found = sources.find((source) => source.name === name);
-  return found?.id ?? sources.find((s) => s.name === "기타")?.id ?? null;
+  const aliases: Record<string, string[]> = {
+    "LX하우시스 고객상담실": ["LX하우시스 고객상담실", "LX하우시스 본사"],
+    "LX하우시스 본사": ["LX하우시스 본사", "LX하우시스 고객상담실"],
+  };
+  const candidates = aliases[name] ?? [name];
+  for (const candidate of candidates) {
+    const found = sources.find((source) => source.name === candidate);
+    if (found) return found.id;
+  }
+  return sources.find((s) => s.name === "기타")?.id ?? null;
 }

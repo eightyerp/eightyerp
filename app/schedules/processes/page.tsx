@@ -1,5 +1,10 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import ProcessSchedulesWorkspace from "@/components/schedules/ProcessSchedulesWorkspace";
+import { getCurrentUserAccess } from "@/lib/crm/access";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
 import { listProcessSchedules } from "@/lib/crm/process-schedules";
 import { listAllProjects } from "@/lib/crm/projects";
@@ -11,11 +16,10 @@ import {
 import { createClient } from "@/lib/supabase-server";
 import type { Employee, ProjectProcessSchedule, Team } from "@/types/database";
 
-const PROCESS_MIGRATION_HINT =
-  "supabase/migrations/20260725000001_customer_and_process_schedules.sql 을 Supabase SQL Editor에서 실행해 주세요.";
-
-const PROJECTS_MIGRATION_HINT =
-  "supabase/migrations/20260722000001_customer_projects.sql 을 Supabase SQL Editor에서 실행해 주세요.";
+const PROCESS_MIGRATION_PATH =
+  "supabase/migrations/20260725000001_customer_and_process_schedules.sql";
+const PROJECTS_MIGRATION_PATH =
+  "supabase/migrations/20260722000001_customer_projects.sql";
 
 async function isProcessScheduleTableMissing(): Promise<boolean> {
   try {
@@ -44,6 +48,15 @@ async function isProjectsTableMissing(): Promise<boolean> {
 
 export default async function ProcessSchedulesPage() {
   const access = await getScheduleAccess();
+  const userAccess = await getCurrentUserAccess();
+  const processDevHint = schemaMissingDevHint(
+    PROCESS_MIGRATION_PATH,
+    userAccess.isAdmin,
+  );
+  const projectsDevHint = schemaMissingDevHint(
+    PROJECTS_MIGRATION_PATH,
+    userAccess.isAdmin,
+  );
 
   let schedules: ProjectProcessSchedule[] = [];
   let employees: Employee[] = [];
@@ -95,11 +108,10 @@ export default async function ProcessSchedulesPage() {
     if (processTableMissing) {
       loadError = null;
     } else {
-      loadError =
-        error instanceof Error
-          ? error.message
-          : "공사 일정을 불러오지 못했습니다.";
-      console.error("[listProcessSchedules page]", loadError);
+      loadError = "공사 일정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      if (error instanceof Error) {
+        console.error("[listProcessSchedules page]", error.message);
+      }
     }
   }
 
@@ -110,17 +122,21 @@ export default async function ProcessSchedulesPage() {
       <div className="space-y-6">
         {processTableMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">공사 스케줄 테이블을 찾을 수 없습니다.</p>
-            <p className="mt-2">{PROCESS_MIGRATION_HINT}</p>
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("공사 스케줄")}
+            </p>
+            {processDevHint && <p className="mt-2 text-xs">{processDevHint}</p>}
           </div>
         )}
 
         {projectsTableMissing && !processTableMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">현장(projects) 테이블을 찾을 수 없습니다.</p>
-            <p className="mt-2">
-              공사 일정 등록을 위해 현장 테이블이 필요합니다. {PROJECTS_MIGRATION_HINT}
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("현장 정보")}
             </p>
+            {projectsDevHint && (
+              <p className="mt-2 text-xs">{projectsDevHint}</p>
+            )}
           </div>
         )}
 

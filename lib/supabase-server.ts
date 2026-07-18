@@ -129,33 +129,36 @@ export async function updateSession(request: NextRequest) {
       .eq("id", user.id)
       .maybeSingle();
 
-    // 마이그레이션 전(컬럼 없음)이면 기존처럼 활성 여부만 보고, 없으면 통과
-    if (profileError) {
-      if (pathname === "/login" || pathname === "/signup") {
-        const redirectUrl = request.nextUrl.clone();
-        redirectUrl.pathname = "/dashboard";
-        redirectUrl.search = "";
-        return copyAllCookies(
-          supabaseResponse,
-          NextResponse.redirect(redirectUrl),
-        );
-      }
-      return supabaseResponse;
-    }
+    let canAccessErp = false;
 
-    const hasApprovalColumn =
-      profile != null && typeof profile.is_approved === "boolean";
-    const isApproved = hasApprovalColumn
-      ? profile.is_approved === true
-      : true;
-    const status =
-      (profile?.approval_status as string | undefined) ??
-      (isApproved ? "approved" : "pending");
-    const canAccessErp =
-      profile != null &&
-      profile.is_active === true &&
-      isApproved &&
-      status === "approved";
+    if (profileError) {
+      // is_approved 컬럼 미적용 등: is_active만으로 판정. 그조차 실패하면 차단(fail-closed)
+      const { data: fallback, error: fallbackError } = await supabase
+        .from("profiles")
+        .select("is_active")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (fallbackError || !fallback) {
+        canAccessErp = false;
+      } else {
+        canAccessErp = fallback.is_active === true;
+      }
+    } else {
+      const hasApprovalColumn =
+        profile != null && typeof profile.is_approved === "boolean";
+      const isApproved = hasApprovalColumn
+        ? profile.is_approved === true
+        : true;
+      const status =
+        (profile?.approval_status as string | undefined) ??
+        (isApproved ? "approved" : "pending");
+      canAccessErp =
+        profile != null &&
+        profile.is_active === true &&
+        isApproved &&
+        status === "approved";
+    }
 
     if (!canAccessErp) {
       if (pathname === "/login" || pathname === "/signup") {

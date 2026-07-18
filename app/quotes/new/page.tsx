@@ -1,12 +1,17 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import QuoteWizardForm from "@/components/quotes/QuoteWizardForm";
+import { getCurrentUserAccess } from "@/lib/crm/access";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
 import { getCustomerById, getCustomers, getEmployees } from "@/lib/crm/customers";
 import { createClient } from "@/lib/supabase-server";
 import type { Employee } from "@/types/database";
 
-const MIGRATION_HINT =
-  "supabase/migrations/20260724000001_quotes_and_simple_materials.sql 을 Supabase SQL Editor에서 실행해 주세요.";
+const MIGRATION_PATH =
+  "supabase/migrations/20260724000001_quotes_and_simple_materials.sql";
 
 type WizardCustomer = { id: string; name: string; phone: string; address: string | null };
 
@@ -30,6 +35,8 @@ export default async function NewQuotePage({
 }: NewQuotePageProps) {
   const params = await searchParams;
   const customerId = params.customerId?.trim() || null;
+  const userAccess = await getCurrentUserAccess();
+  const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
 
   let customers: WizardCustomer[] = [];
   let employees: Employee[] = [];
@@ -58,8 +65,8 @@ export default async function NewQuotePage({
         ];
       }
     }
-  } catch (error) {
-    loadError = error instanceof Error ? error.message : "고객 목록을 불러오지 못했습니다.";
+  } catch {
+    loadError = "고객 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
 
   return (
@@ -74,8 +81,10 @@ export default async function NewQuotePage({
 
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">견적관리 테이블을 찾을 수 없습니다.</p>
-            <p className="mt-2">{MIGRATION_HINT}</p>
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("견적관리")}
+            </p>
+            {devHint && <p className="mt-2 text-xs">{devHint}</p>}
           </div>
         )}
 

@@ -2,8 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerSchedulesWorkspace from "@/components/schedules/CustomerSchedulesWorkspace";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import { getCustomerById } from "@/lib/crm/customers";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
 import {
   getScheduleAccess,
@@ -13,8 +18,8 @@ import {
 import { createClient } from "@/lib/supabase-server";
 import type { CustomerSchedule, Employee, Team } from "@/types/database";
 
-const MIGRATION_HINT =
-  "supabase/migrations/20260725000001_customer_and_process_schedules.sql 을 Supabase SQL Editor에서 실행해 주세요.";
+const MIGRATION_PATH =
+  "supabase/migrations/20260725000001_customer_and_process_schedules.sql";
 
 async function isScheduleSchemaMissing(): Promise<boolean> {
   try {
@@ -37,6 +42,8 @@ export default async function CustomerSchedulesSubPage({ params }: Props) {
   if (!customer || customer.deleted_at) notFound();
 
   const access = await getScheduleAccess();
+  const userAccess = await getCurrentUserAccess();
+  const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
 
   let schedules: CustomerSchedule[] = [];
   let employees: Employee[] = [];
@@ -58,9 +65,11 @@ export default async function CustomerSchedulesSubPage({ params }: Props) {
 
   try {
     schedules = await listCustomerSchedules({ customerId }, access);
-  } catch (error) {
+  } catch {
     tablesMissing = await isScheduleSchemaMissing();
-    loadError = error instanceof Error ? error.message : "일정을 불러오지 못했습니다.";
+    loadError = tablesMissing
+      ? null
+      : "상담 일정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
 
   return (
@@ -81,8 +90,10 @@ export default async function CustomerSchedulesSubPage({ params }: Props) {
 
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">상담 일정 테이블을 찾을 수 없습니다.</p>
-            <p className="mt-2">{MIGRATION_HINT}</p>
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("상담 일정")}
+            </p>
+            {devHint && <p className="mt-2 text-xs">{devHint}</p>}
           </div>
         )}
 

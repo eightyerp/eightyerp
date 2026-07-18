@@ -1,11 +1,17 @@
 import Link from "next/link";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import InquiryImportForm from "@/components/customers/InquiryImportForm";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getEmployees, getLeadSources } from "@/lib/crm/customers";
+import {
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
 import type { Employee, LeadSource } from "@/types/database";
 
 export default async function CustomerImportPage() {
+  const access = await getCurrentUserAccess();
   let employees: Employee[] = [];
   let leadSources: LeadSource[] = [];
   let loadError: string | null = null;
@@ -20,6 +26,10 @@ export default async function CustomerImportPage() {
   }
 
   const tablesMissing = loadError === "CRM_TABLES_MISSING";
+  const crmDevHint = schemaMissingDevHint(
+    "supabase/migrations/20260716000000_crm_customers.sql",
+    access.isAdmin,
+  );
 
   return (
     <DashboardLayout>
@@ -44,20 +54,16 @@ export default async function CustomerImportPage() {
 
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">CRM 테이블이 아직 생성되지 않았습니다.</p>
-            <p className="mt-2">
-              Supabase SQL Editor에서
-              <code className="mx-1 rounded bg-white/80 px-1.5 py-0.5 text-xs">
-                supabase/migrations/20260716000000_crm_customers.sql
-              </code>
-              를 실행한 뒤 다시 시도해 주세요.
+            <p className="font-semibold">
+              {schemaMissingStaffMessage("고객관리")}
             </p>
+            {crmDevHint && <p className="mt-2 text-xs">{crmDevHint}</p>}
           </div>
         )}
 
         {loadError && !tablesMissing && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {loadError}
+            문의 등록 화면을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
           </div>
         )}
 

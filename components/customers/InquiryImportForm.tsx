@@ -40,6 +40,9 @@ type FormState = {
   special_notes: string;
   event_memo: string;
   consultation_notes: string;
+  source_order_no: string;
+  source_channel: string;
+  source_round: string;
   assigned_employee_id: string;
   status: CustomerStatus;
   next_contact_at: string;
@@ -60,10 +63,13 @@ const emptyForm: FormState = {
   special_notes: "",
   event_memo: "",
   consultation_notes: "",
+  source_order_no: "",
+  source_channel: "",
+  source_round: "",
   assigned_employee_id: "",
   status: "신규",
   next_contact_at: "",
-  happy_call_required: false,
+  happy_call_required: true,
 };
 
 const initialAction: ActionResult = { success: false };
@@ -105,10 +111,16 @@ export default function InquiryImportForm({
         special_notes: parsed.special_notes ?? "",
         event_memo: parsed.event_memo ?? "",
         consultation_notes: parsed.consultation_notes ?? "",
+        source_order_no: parsed.source_order_no ?? "",
+        source_channel: parsed.source_channel ?? "",
+        source_round: parsed.source_round ?? "",
         assigned_employee_id: parsed.assigned_employee_id ?? "",
         status: parsed.status ?? "신규",
         next_contact_at: parsed.next_contact_at ?? "",
-        happy_call_required: Boolean(parsed.happy_call_required),
+        happy_call_required:
+          parsed.happy_call_required === undefined
+            ? true
+            : Boolean(parsed.happy_call_required),
       }));
     }, 0);
     return () => window.clearTimeout(id);
@@ -187,6 +199,8 @@ export default function InquiryImportForm({
             name="happy_call_required"
             value={form.happy_call_required ? "true" : "false"}
           />
+          <input type="hidden" name="duplicate_mode" value="create" />
+          <input type="hidden" name="force_create" value="1" />
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="고객명">
@@ -250,6 +264,30 @@ export default function InquiryImportForm({
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label="채널">
+              <input
+                name="source_channel"
+                value={form.source_channel}
+                onChange={(e) => updateField("source_channel", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="차수">
+              <input
+                name="source_round"
+                value={form.source_round}
+                onChange={(e) => updateField("source_round", e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="주문번호">
+              <input
+                name="source_order_no"
+                value={form.source_order_no}
+                onChange={(e) => updateField("source_order_no", e.target.value)}
+                className={inputClass}
+              />
             </Field>
             <Field label="관심 공종">
               <input

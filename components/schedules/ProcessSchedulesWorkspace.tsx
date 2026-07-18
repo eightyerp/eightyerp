@@ -501,8 +501,7 @@ export default function ProcessSchedulesWorkspace({
           </p>
           {projectsTableMissing && (
             <p className="mt-3 text-xs text-amber-800">
-              현장(projects) 테이블이 DB에 없습니다. migration을 적용한 뒤 현장을
-              등록해 주세요.
+              현장 정보를 불러올 수 없습니다. 관리자에게 문의해 주세요.
             </p>
           )}
           <div className="mt-5 flex flex-wrap justify-center gap-2">

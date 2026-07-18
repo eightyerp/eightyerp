@@ -2,17 +2,41 @@
 
 import { useEffect, useRef, useState } from "react";
 import LogoutButton from "@/components/auth/LogoutButton";
-import { currentUser } from "@/lib/sample-data";
+import {
+  getTopBarUserAction,
+  type TopBarUserDisplay,
+} from "@/app/actions/session";
 
 type TopBarProps = {
   onMenuToggle: () => void;
 };
 
+const fallbackUser: TopBarUserDisplay = {
+  name: "직원",
+  roleLabel: "",
+  department: "",
+};
+
 export default function TopBar({ onMenuToggle }: TopBarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [user, setUser] = useState<TopBarUserDisplay>(fallbackUser);
   const searchRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTopBarUserAction()
+      .then((next) => {
+        if (!cancelled) setUser(next);
+      })
+      .catch(() => {
+        /* keep fallback */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent | TouchEvent) {
@@ -32,6 +56,9 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
     };
   }, []);
 
+  const initial = user.name.charAt(0) || "직";
+  const subtitle = [user.roleLabel, user.department].filter(Boolean).join(" · ");
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 sm:h-16 sm:gap-4 sm:px-4 lg:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
@@ -46,7 +73,6 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
           </svg>
         </button>
 
-        {/* Mobile: search icon → expand */}
         <div ref={searchRef} className="relative min-w-0 flex-1 sm:hidden">
           {searchOpen ? (
             <div className="relative">
@@ -89,10 +115,9 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
           )}
         </div>
 
-        {/* Desktop / tablet: full search */}
-        <div className="relative hidden min-w-0 sm:block">
+        <div className="relative hidden min-w-0 flex-1 sm:block">
           <svg
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -106,13 +131,13 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
           </svg>
           <input
             type="search"
-            placeholder="고객, 현장, 계약 검색..."
-            className="h-11 w-64 rounded-lg border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm text-gray-700 placeholder:text-gray-400 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500 lg:w-80"
+            placeholder="고객명, 연락처, 주소, 현장명 검색..."
+            className="h-11 w-full max-w-md rounded-lg border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm text-gray-700 placeholder:text-gray-400 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
           />
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 sm:gap-3 lg:gap-5">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <button
           type="button"
           className="relative inline-flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
@@ -133,7 +158,6 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
           ref={profileRef}
           className="relative flex items-center gap-2 border-l border-gray-200 pl-2 sm:gap-3 sm:pl-3 lg:pl-5"
         >
-          {/* Mobile: avatar opens menu (name + logout) */}
           <button
             type="button"
             onClick={() => setProfileOpen((v) => !v)}
@@ -141,19 +165,21 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
             aria-label="프로필 메뉴"
             aria-expanded={profileOpen}
           >
-            {currentUser.name.charAt(0)}
+            {initial}
           </button>
 
-          {/* Desktop: avatar + name + logout */}
           <div className="hidden items-center gap-3 sm:flex">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-800 text-sm font-semibold text-gold-400">
-              {currentUser.name.charAt(0)}
+              {initial}
             </div>
-            <div className="hidden md:block">
-              <p className="text-sm font-medium text-gray-800">
-                {currentUser.name} {currentUser.role}
+            <div className="hidden min-w-0 md:block">
+              <p className="truncate text-sm font-medium text-gray-800">
+                {user.name}
+                {user.roleLabel ? ` ${user.roleLabel}` : ""}
               </p>
-              <p className="text-xs text-gray-500">{currentUser.department}</p>
+              {user.department ? (
+                <p className="truncate text-xs text-gray-500">{user.department}</p>
+              ) : null}
             </div>
             <LogoutButton />
           </div>
@@ -161,12 +187,10 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
           {profileOpen && (
             <div className="absolute right-0 top-12 z-50 w-48 rounded-xl border border-gray-200 bg-white p-2 shadow-lg sm:hidden">
               <div className="border-b border-gray-100 px-3 py-2">
-                <p className="text-sm font-semibold text-gray-900">
-                  {currentUser.name}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {currentUser.role} · {currentUser.department}
-                </p>
+                <p className="text-sm font-semibold text-gray-900">{user.name}</p>
+                {subtitle ? (
+                  <p className="text-xs text-gray-500">{subtitle}</p>
+                ) : null}
               </div>
               <div className="pt-2">
                 <LogoutButton className="flex h-11 w-full items-center justify-center rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50" />

@@ -11,6 +11,7 @@ import {
 } from "@/lib/crm/customers";
 import { listCustomerProjects } from "@/lib/crm/projects";
 import { listQuotes } from "@/lib/crm/quote-mgmt";
+import { schemaMissingStaffMessage } from "@/lib/crm/dev-diagnostics";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
 import type {
   CustomerConsultLog,
@@ -62,8 +63,7 @@ export default async function CustomerDetailPage({
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (/projects|schema cache|Could not find/i.test(message)) {
-        projectsWarning =
-          "현장 테이블이 없습니다. supabase/migrations/20260722000001_customer_projects.sql 을 실행해 주세요.";
+        projectsWarning = schemaMissingStaffMessage("현장");
       } else {
         throw error;
       }
@@ -75,8 +75,7 @@ export default async function CustomerDetailPage({
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (/customer_consult_logs|schema cache|Could not find/i.test(message)) {
-          consultWarning =
-            "상담이력 테이블이 없습니다. supabase/migrations/20260716000007_customer_consult_logs.sql 을 실행해 주세요.";
+          consultWarning = schemaMissingStaffMessage("상담이력");
         } else {
           throw error;
         }
@@ -112,8 +111,7 @@ export default async function CustomerDetailPage({
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (/quotes|schema cache|Could not find/i.test(message)) {
-          quoteWarning =
-            "견적 테이블이 없습니다. supabase/migrations/20260724000001_quotes_and_simple_materials.sql 과 20260726000001_quotes_management_v1.sql 을 실행해 주세요.";
+          quoteWarning = schemaMissingStaffMessage("견적");
         } else {
           throw error;
         }
