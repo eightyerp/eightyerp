@@ -177,8 +177,12 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
     .filter((x): x is QuoteItemInput => Boolean(x));
 }
 
-const SELECT =
+const SELECT_FULL =
   "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id ), quote_files (*), quote_items (*)";
+
+/** quote_files / quote_items 미적용 환경용 — 목록·고객상세는 동작 유지 */
+const SELECT_BASIC =
+  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id )";
 
 function sortNested(q: ErpQuote): ErpQuote {
   q.quote_files = [...(q.quote_files ?? [])]
@@ -232,35 +236,58 @@ export async function listQuotes(
   const scopedIds = new Set(scopedEmployees.map((e) => e.id));
 
   const supabase = await createClient();
-  let query = supabase
-    .from("quotes")
-    .select(SELECT)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(500);
 
-  if (filters.customerId) query = query.eq("customer_id", filters.customerId);
-  if (filters.quoteType) query = query.eq("quote_type", filters.quoteType);
-  if (filters.status) query = query.eq("status", filters.status);
-  if (filters.employeeId) {
-    if (!access.canViewAll && !scopedIds.has(filters.employeeId)) {
-      return [];
+  function buildQuery(selectClause: string) {
+    let query = supabase
+      .from("quotes")
+      .select(selectClause)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (filters.customerId) query = query.eq("customer_id", filters.customerId);
+    if (filters.quoteType) query = query.eq("quote_type", filters.quoteType);
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.employeeId) {
+      if (!access.canViewAll && !scopedIds.has(filters.employeeId)) {
+        return null;
+      }
+      query = query.eq("assigned_employee_id", filters.employeeId);
     }
-    query = query.eq("assigned_employee_id", filters.employeeId);
-  }
-  if (filters.lxOnly) query = query.eq("is_lx_material", true);
-  if (filters.contractOnly) query = query.eq("is_contract_quote", true);
-  if (filters.createdFrom) {
-    query = query.gte("created_at", `${filters.createdFrom}T00:00:00`);
-  }
-  if (filters.createdTo) {
-    query = query.lte("created_at", `${filters.createdTo}T23:59:59`);
+    if (filters.lxOnly) query = query.eq("is_lx_material", true);
+    if (filters.contractOnly) query = query.eq("is_contract_quote", true);
+    if (filters.createdFrom) {
+      query = query.gte("created_at", `${filters.createdFrom}T00:00:00`);
+    }
+    if (filters.createdTo) {
+      query = query.lte("created_at", `${filters.createdTo}T23:59:59`);
+    }
+    return query;
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error("견적 목록을 불러오지 못했습니다.");
+  const fullQuery = buildQuery(SELECT_FULL);
+  if (!fullQuery) return [];
 
-  let rows = ((data ?? []) as ErpQuote[])
+  let { data, error } = await fullQuery;
+
+  // 하위 테이블(embed)만 없을 때는 기본 컬럼으로 재시도
+  if (
+    error &&
+    /quote_files|quote_items|Could not find the relationship|PGRST200/i.test(
+      error.message,
+    )
+  ) {
+    const basicQuery = buildQuery(SELECT_BASIC);
+    if (!basicQuery) return [];
+    ({ data, error } = await basicQuery);
+  }
+
+  if (error) {
+    // 원문 메시지 유지 → 호출측에서 missing relation / permission 구분
+    throw new Error(error.message || "견적 목록을 불러오지 못했습니다.");
+  }
+
+  let rows = ((data ?? []) as unknown as ErpQuote[])
     .map(sortNested)
     .filter((row) => quoteInScope(row, access, scopedIds));
 
@@ -287,7 +314,7 @@ export async function getQuoteById(id: string): Promise<ErpQuote | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("quotes")
-    .select(SELECT)
+    .select(SELECT_FULL)
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -301,7 +328,7 @@ export async function listQuoteVersions(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("quotes")
-    .select(SELECT)
+    .select(SELECT_FULL)
     .eq("quote_group_id", quoteGroupId)
     .is("deleted_at", null)
     .order("version_number", { ascending: true });

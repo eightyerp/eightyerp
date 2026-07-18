@@ -11,8 +11,17 @@ import {
 } from "@/lib/crm/customers";
 import { listCustomerProjects } from "@/lib/crm/projects";
 import { listQuotes } from "@/lib/crm/quote-mgmt";
-import { schemaMissingStaffMessage } from "@/lib/crm/dev-diagnostics";
-import { toCrmErrorMessage } from "@/lib/crm/errors";
+import {
+  canShowDevDiagnostics,
+  panelLoadFailedStaffMessage,
+  panelPermissionStaffMessage,
+  schemaMissingDevHint,
+  schemaMissingStaffMessage,
+} from "@/lib/crm/dev-diagnostics";
+import {
+  classifyCrmPanelLoadError,
+  toCrmErrorMessage,
+} from "@/lib/crm/errors";
 import type {
   CustomerConsultLog,
   CustomerQuote,
@@ -29,6 +38,34 @@ type CustomerDetailPageProps = {
   searchParams: Promise<{ updated?: string }>;
 };
 
+function panelWarning(
+  featureLabel: string,
+  error: unknown,
+  migrationPath: string,
+  isAdmin: boolean,
+): { message: string; devHint: string | null } {
+  const kind = classifyCrmPanelLoadError(error);
+  if (kind === "missing_relation") {
+    return {
+      message: schemaMissingStaffMessage(featureLabel),
+      devHint: schemaMissingDevHint(migrationPath, isAdmin),
+    };
+  }
+  if (kind === "permission") {
+    return {
+      message: panelPermissionStaffMessage(featureLabel),
+      devHint: null,
+    };
+  }
+  return {
+    message: panelLoadFailedStaffMessage(featureLabel),
+    devHint:
+      canShowDevDiagnostics(isAdmin) && error instanceof Error
+        ? `[개발] ${error.message}`
+        : null,
+  };
+}
+
 export default async function CustomerDetailPage({
   params,
   searchParams,
@@ -39,7 +76,9 @@ export default async function CustomerDetailPage({
 
   let loadError: string | null = null;
   let consultWarning: string | null = null;
+  let consultDevHint: string | null = null;
   let quoteWarning: string | null = null;
+  let quoteDevHint: string | null = null;
   let customer: CustomerWithRelations | null = null;
   let consultLogs: CustomerConsultLog[] = [];
   let quotes: CustomerQuote[] = [];
@@ -49,6 +88,7 @@ export default async function CustomerDetailPage({
   let employees: Employee[] = [];
   let projects: Project[] = [];
   let projectsWarning: string | null = null;
+  let projectsDevHint: string | null = null;
 
   try {
     const [found, empList] = await Promise.all([
@@ -61,24 +101,28 @@ export default async function CustomerDetailPage({
     try {
       projects = await listCustomerProjects(id);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      if (/projects|schema cache|Could not find/i.test(message)) {
-        projectsWarning = schemaMissingStaffMessage("현장");
-      } else {
-        throw error;
-      }
+      const w = panelWarning(
+        "현장",
+        error,
+        "supabase/migrations/20260722000001_customer_projects.sql",
+        access.isAdmin,
+      );
+      projectsWarning = w.message;
+      projectsDevHint = w.devHint;
     }
 
     if (customer && !customer.deleted_at) {
       try {
         consultLogs = await getCustomerConsultLogs(id);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (/customer_consult_logs|schema cache|Could not find/i.test(message)) {
-          consultWarning = schemaMissingStaffMessage("상담이력");
-        } else {
-          throw error;
-        }
+        const w = panelWarning(
+          "상담이력",
+          error,
+          "supabase/migrations/20260716000007_customer_consult_logs.sql",
+          access.isAdmin,
+        );
+        consultWarning = w.message;
+        consultDevHint = w.devHint;
       }
 
       try {
@@ -97,24 +141,22 @@ export default async function CustomerDetailPage({
           }),
         );
         quoteSendsByQuoteId = Object.fromEntries(sendEntries);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (/customer_quotes|schema cache|Could not find/i.test(message)) {
-          // legacy optional
-        } else {
-          throw error;
-        }
+      } catch {
+        // 레거시 customer_quotes — 없어도 고객 상세는 유지
+        quotes = [];
       }
 
       try {
         erpQuotes = await listQuotes({ customerId: id });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (/quotes|schema cache|Could not find/i.test(message)) {
-          quoteWarning = schemaMissingStaffMessage("견적");
-        } else {
-          throw error;
-        }
+        const w = panelWarning(
+          "견적",
+          error,
+          "supabase/migrations/20260724000001_quotes_and_simple_materials.sql (+ 20260726000001_quotes_management_v1.sql)",
+          access.isAdmin,
+        );
+        quoteWarning = w.message;
+        quoteDevHint = w.devHint;
       }
 
       try {
@@ -157,25 +199,34 @@ export default async function CustomerDetailPage({
 
         {loadError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {loadError}
+            {loadError === "CRM_TABLES_MISSING"
+              ? schemaMissingStaffMessage("고객")
+              : "고객 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."}
           </div>
         )}
 
         {consultWarning && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {consultWarning}
+            <p>{consultWarning}</p>
+            {consultDevHint && (
+              <p className="mt-1 text-xs">{consultDevHint}</p>
+            )}
           </div>
         )}
 
         {quoteWarning && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {quoteWarning}
+            <p>{quoteWarning}</p>
+            {quoteDevHint && <p className="mt-1 text-xs">{quoteDevHint}</p>}
           </div>
         )}
 
         {projectsWarning && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {projectsWarning}
+            <p>{projectsWarning}</p>
+            {projectsDevHint && (
+              <p className="mt-1 text-xs">{projectsDevHint}</p>
+            )}
           </div>
         )}
 

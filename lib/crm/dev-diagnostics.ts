@@ -11,7 +11,17 @@ export function canShowDevDiagnostics(isAdmin: boolean): boolean {
 
 /** 직원·운영 화면에 노출하는 스키마 부재 안내 (경로/SQL 없음) */
 export function schemaMissingStaffMessage(featureLabel: string): string {
-  return `${featureLabel}을(를) 사용할 수 없습니다. 관리자에게 문의해 주세요.`;
+  return `${featureLabel} 기능이 아직 준비되지 않았습니다. 관리자에게 문의해 주세요.`;
+}
+
+/** 권한 오류 (스키마 부재와 구분) */
+export function panelPermissionStaffMessage(featureLabel: string): string {
+  return `${featureLabel}을(를) 조회할 권한이 없습니다.`;
+}
+
+/** 기타 로드 실패 */
+export function panelLoadFailedStaffMessage(featureLabel: string): string {
+  return `${featureLabel}을(를) 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.`;
 }
 
 /** 개발+admin 전용 migration 경로 안내. production에서는 항상 null */
