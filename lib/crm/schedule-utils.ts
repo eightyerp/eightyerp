@@ -60,3 +60,31 @@ export function scheduleWarningKind(
   if (isNextContactOverdueWithoutFollowUp(s, all)) return "nextContact";
   return null;
 }
+
+/**
+ * 고객 일정 수정 권한
+ * - admin / super_admin (canViewAll 또는 role): 전체 (완료 일정 포함)
+ * - 그 외: 본인 담당 + 미완료만
+ */
+export function canEditCustomerSchedule(
+  access: {
+    canViewAll: boolean;
+    employeeId: string | null;
+    role?: string | null;
+  },
+  row: { assigned_employee_id: string | null; status: string },
+): boolean {
+  if (
+    access.canViewAll ||
+    access.role === "admin" ||
+    access.role === "super_admin"
+  ) {
+    return true;
+  }
+  if (row.status === "완료") return false;
+  return Boolean(
+    access.employeeId &&
+      row.assigned_employee_id &&
+      row.assigned_employee_id === access.employeeId,
+  );
+}

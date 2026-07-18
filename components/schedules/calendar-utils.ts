@@ -89,6 +89,16 @@ export function toDateTimeInputValue(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+/** datetime-local step=600(10분)에 맞는 값으로 내림 */
+export function toDateTimeLocalStep10(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const mins = Math.floor(d.getMinutes() / 10) * 10;
+  d.setMinutes(mins, 0, 0);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);

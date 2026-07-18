@@ -1,6 +1,13 @@
 import { createClient } from "@/lib/supabase-server";
 import { requireAuthenticatedAccess } from "@/lib/crm/access";
-import { writeAuditLog } from "@/lib/crm/customers";
+import {
+  getCustomerById,
+  writeAuditLog,
+} from "@/lib/crm/customers";
+import {
+  isAdminRole,
+  isContractCustomerStatus,
+} from "@/lib/crm/constants";
 import {
   PROJECT_STATUSES,
   type ProjectStatus,
@@ -8,6 +15,11 @@ import {
 import type { Project } from "@/types/database";
 
 export { PROJECT_STATUSES, type ProjectStatus };
+export { isContractCustomerStatus };
+export {
+  canShowCreateSiteButton,
+  defaultProjectName,
+} from "@/lib/crm/project-constants";
 
 function emptyToNull(value: string | null | undefined): string | null {
   const text = (value ?? "").trim();
@@ -25,11 +37,11 @@ export type ProjectFormInput = {
 export function parseProjectForm(formData: FormData): ProjectFormInput {
   const customerId = String(formData.get("customer_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
-  const status = String(formData.get("status") ?? "진행중").trim() as ProjectStatus;
+  const status = String(formData.get("status") ?? "준비").trim() as ProjectStatus;
   if (!customerId) throw new Error("고객 정보가 없습니다.");
   if (!name) throw new Error("현장명을 입력해 주세요.");
   if (!PROJECT_STATUSES.includes(status)) {
-    throw new Error("공정상태가 올바르지 않습니다.");
+    throw new Error("현장상태가 올바르지 않습니다.");
   }
   return {
     customer_id: customerId,
@@ -40,6 +52,35 @@ export function parseProjectForm(formData: FormData): ProjectFormInput {
       String(formData.get("assigned_employee_id") ?? ""),
     ),
   };
+}
+
+async function assertCanCreateProjectForCustomer(customerId: string) {
+  const access = await requireAuthenticatedAccess();
+  const customer = await getCustomerById(customerId);
+  if (!customer || customer.deleted_at) {
+    throw new Error("고객을 찾을 수 없습니다.");
+  }
+
+  const existing = await listCustomerProjects(customerId);
+  if (existing.length > 0) {
+    throw new Error(
+      "이미 등록된 현장이 있습니다. 현장 보기에서 확인해 주세요.",
+    );
+  }
+
+  if (isAdminRole(access.role)) {
+    return { access, customer };
+  }
+
+  const employeeId = access.profile?.employee_id ?? null;
+  if (!employeeId || employeeId !== customer.assigned_employee_id) {
+    throw new Error("본인 담당 고객만 현장을 생성할 수 있습니다.");
+  }
+  if (!isContractCustomerStatus(customer.status)) {
+    throw new Error("계약 완료된 고객만 현장을 생성할 수 있습니다.");
+  }
+
+  return { access, customer };
 }
 
 const SELECT =
@@ -87,7 +128,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
 export async function createProject(
   form: ProjectFormInput,
 ): Promise<Project> {
-  const access = await requireAuthenticatedAccess();
+  const { access } = await assertCanCreateProjectForCustomer(form.customer_id);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("projects")
@@ -192,7 +233,7 @@ export async function ensureDefaultProject(
     customer_id: customerId,
     name: defaults?.name || "기본 현장",
     address: defaults?.address ?? null,
-    status: "진행중",
+    status: "준비",
     assigned_employee_id: defaults?.assignedEmployeeId ?? null,
   });
 }

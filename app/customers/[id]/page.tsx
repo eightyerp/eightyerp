@@ -192,6 +192,8 @@ export default async function CustomerDetailPage({
             employees={employees}
             projects={projects}
             canDelete={access.isAdmin}
+            isAdmin={access.isAdmin}
+            currentEmployeeId={access.profile?.employee_id ?? null}
           />
         )}
       </div>

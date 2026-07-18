@@ -17,7 +17,7 @@ export const menuItems = [
   { label: "통계/분석", href: "#" },
   { label: "광고/유입경로", href: "#" },
   { label: "카카오톡 알림", href: "#" },
-  { label: "시스템관리", href: "#" },
+  { label: "시스템관리", href: "/system/approvals" },
 ] as const;
 
 export const kpiCards = [

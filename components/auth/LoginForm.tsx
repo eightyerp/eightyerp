@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 
@@ -122,8 +123,28 @@ export default function LoginForm() {
         expiresAt: data.session.expires_at,
       });
 
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_active, is_approved, approval_status")
+        .eq("id", data.user!.id)
+        .maybeSingle();
+
+      const hasApprovalColumn =
+        profile != null && typeof profile.is_approved === "boolean";
+      const isApproved = hasApprovalColumn ? profile.is_approved === true : true;
+      const status =
+        (profile?.approval_status as string | undefined) ??
+        (isApproved ? "approved" : "pending");
+      const canAccessErp =
+        profile != null &&
+        profile.is_active === true &&
+        isApproved &&
+        status === "approved";
+
       // Full navigation ensures middleware/proxy reads freshly set auth cookies.
-      window.location.assign("/dashboard");
+      window.location.assign(
+        canAccessErp ? "/dashboard" : "/pending-approval",
+      );
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "알 수 없는 로그인 오류";
@@ -207,6 +228,13 @@ export default function LoginForm() {
       >
         {pending ? "로그인 중..." : "로그인"}
       </button>
+
+      <Link
+        href="/signup"
+        className="mt-2 block w-full rounded-lg border border-gold-400/40 py-3 text-center text-sm font-medium text-gold-400 transition-colors hover:bg-gold-500/10"
+      >
+        직원 회원가입
+      </Link>
     </form>
   );
 }

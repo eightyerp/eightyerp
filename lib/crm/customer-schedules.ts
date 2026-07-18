@@ -12,7 +12,10 @@ import {
   type ScheduleAlertType,
 } from "@/lib/crm/schedule-constants";
 import type { CustomerSchedule } from "@/types/database";
-import { isCustomerScheduleOverdue } from "@/lib/crm/schedule-utils";
+import {
+  canEditCustomerSchedule,
+  isCustomerScheduleOverdue,
+} from "@/lib/crm/schedule-utils";
 
 export { isCustomerScheduleOverdue };
 
@@ -64,16 +67,21 @@ export function parseCustomerScheduleForm(
     throw new Error("우선순위가 올바르지 않습니다.");
   }
 
+  const startIso = new Date(startAt).toISOString();
+  const endRaw = emptyToNull(String(formData.get("end_at") ?? ""));
+  const endIso = endRaw ? new Date(endRaw).toISOString() : null;
+  if (endIso && new Date(endIso).getTime() < new Date(startIso).getTime()) {
+    throw new Error("종료시간은 시작시간보다 빠를 수 없습니다.");
+  }
+
   return {
     customer_id: customerId,
     assigned_employee_id: assignee,
     schedule_type: scheduleType,
     title,
     description: emptyToNull(String(formData.get("description") ?? "")),
-    start_at: new Date(startAt).toISOString(),
-    end_at: emptyToNull(String(formData.get("end_at") ?? ""))
-      ? new Date(String(formData.get("end_at"))).toISOString()
-      : null,
+    start_at: startIso,
+    end_at: endIso,
     all_day: ["on", "true", "1"].includes(
       String(formData.get("all_day") ?? "").toLowerCase(),
     ),
@@ -302,6 +310,41 @@ async function queueAlert(
   }
 }
 
+function toCustomerScheduleWritePayload(
+  form: CustomerScheduleForm,
+  userId: string | null,
+  options?: { includeOptionalColumns?: boolean },
+) {
+  const base = {
+    customer_id: form.customer_id,
+    assigned_employee_id: form.assigned_employee_id,
+    schedule_type: form.schedule_type,
+    title: form.title,
+    description: form.description,
+    start_at: form.start_at,
+    end_at: form.end_at,
+    all_day: form.all_day,
+    status: form.status,
+    priority: form.priority,
+    location: form.location,
+    result_note: form.result_note,
+    next_contact_at: form.next_contact_at,
+    updated_by: userId,
+  };
+  if (options?.includeOptionalColumns === false) {
+    return base;
+  }
+  return {
+    ...base,
+    customer_reaction: form.customer_reaction,
+    next_action: form.next_action,
+  };
+}
+
+function isMissingOptionalScheduleColumnError(message: string): boolean {
+  return /customer_reaction|next_action/i.test(message);
+}
+
 export async function createCustomerSchedule(
   form: CustomerScheduleForm,
 ): Promise<CustomerSchedule> {
@@ -315,18 +358,46 @@ export async function createCustomerSchedule(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const fullPayload = {
+    ...toCustomerScheduleWritePayload(form, access.userId),
+    created_by: access.userId,
+  };
+
+  let { data, error } = await supabase
     .from("customer_schedules")
-    .insert({
-      ...form,
-      created_by: access.userId,
-      updated_by: access.userId,
-    })
+    .insert(fullPayload)
     .select("id")
     .single();
 
-  if (error || !data) throw new Error("일정 등록에 실패했습니다.");
-  const created = (await getCustomerSchedule(data.id))!;
+  if (
+    error &&
+    isMissingOptionalScheduleColumnError(error.message ?? "")
+  ) {
+    const fallbackPayload = {
+      ...toCustomerScheduleWritePayload(form, access.userId, {
+        includeOptionalColumns: false,
+      }),
+      created_by: access.userId,
+    };
+    const retry = await supabase
+      .from("customer_schedules")
+      .insert(fallbackPayload)
+      .select("id")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (error || !data) {
+    console.error("[createCustomerSchedule]", error);
+    throw new Error(error?.message || "일정 등록에 실패했습니다.");
+  }
+  const created = await getCustomerSchedule(data.id);
+  if (!created) {
+    throw new Error(
+      "일정은 저장되었으나 조회에 실패했습니다. 목록을 새로고침해 주세요.",
+    );
+  }
   await queueAlert("schedule_changed", created, { action: "create" });
   return created;
 }
@@ -336,14 +407,18 @@ export async function updateCustomerSchedule(input: {
   form: CustomerScheduleForm;
 }): Promise<CustomerSchedule> {
   const access = await getScheduleAccess();
-  await assertAssigneeInScope(access, input.form.assigned_employee_id);
 
   const existing = await getCustomerSchedule(input.id);
   if (!existing) throw new Error("일정을 찾을 수 없습니다.");
 
+  if (!canEditCustomerSchedule(access, existing)) {
+    throw new Error("이 일정을 수정할 권한이 없습니다.");
+  }
+
+  await assertAssigneeInScope(access, input.form.assigned_employee_id);
+
   const patch: Record<string, unknown> = {
-    ...input.form,
-    updated_by: access.userId,
+    ...toCustomerScheduleWritePayload(input.form, access.userId),
   };
   if (input.form.status === "완료" && !existing.completed_at) {
     patch.completed_at = new Date().toISOString();
@@ -353,12 +428,34 @@ export async function updateCustomerSchedule(input: {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  let { error } = await supabase
     .from("customer_schedules")
     .update(patch)
     .eq("id", input.id)
     .is("deleted_at", null);
-  if (error) throw new Error("일정 수정에 실패했습니다.");
+
+  if (error && isMissingOptionalScheduleColumnError(error.message ?? "")) {
+    const fallback = toCustomerScheduleWritePayload(input.form, access.userId, {
+      includeOptionalColumns: false,
+    }) as Record<string, unknown>;
+    if (input.form.status === "완료" && !existing.completed_at) {
+      fallback.completed_at = new Date().toISOString();
+    }
+    if (input.form.status !== "완료") {
+      fallback.completed_at = null;
+    }
+    const retry = await supabase
+      .from("customer_schedules")
+      .update(fallback)
+      .eq("id", input.id)
+      .is("deleted_at", null);
+    error = retry.error;
+  }
+
+  if (error) {
+    console.error("[updateCustomerSchedule]", error);
+    throw new Error(error.message || "일정 수정에 실패했습니다.");
+  }
 
   const updated = (await getCustomerSchedule(input.id))!;
   await queueAlert("schedule_changed", updated, { action: "update" });
@@ -513,12 +610,8 @@ export function toScheduleSafeError(
   fallback = "처리 중 오류가 발생했습니다.",
 ): string {
   if (error instanceof Error) {
-    const msg = error.message || "";
-    if (
-      /[가-힣]/.test(msg) &&
-      msg.length < 180 &&
-      !/PGRST|postgres|permission|JWT|schema cache/i.test(msg)
-    ) {
+    const msg = (error.message || "").trim();
+    if (msg && msg.length < 400) {
       return msg;
     }
   }

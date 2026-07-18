@@ -5,6 +5,7 @@ import {
   completeCustomerSchedule,
   createCustomerSchedule,
   findCustomerScheduleConflicts,
+  getCustomerSchedule,
   moveCustomerSchedule,
   parseCustomerScheduleForm,
   softDeleteCustomerSchedule,
@@ -20,12 +21,15 @@ import {
   softDeleteProcessSchedule,
   updateProcessSchedule,
 } from "@/lib/crm/process-schedules";
+import type { CustomerSchedule } from "@/types/database";
 
 export type ScheduleActionResult = {
   success: boolean;
   error?: string;
   message?: string;
   id?: string;
+  /** 저장 후 관계 포함 전체 일정 (부분 패치 금지) */
+  schedule?: CustomerSchedule;
   conflicts?: { id: string; title: string; start_at: string }[];
   warnings?: string[];
 };
@@ -68,11 +72,36 @@ export async function createCustomerScheduleAction(
     }
     const row = await createCustomerSchedule(form);
     revalidateSchedules(form.customer_id);
-    return { success: true, message: "상담 일정이 등록되었습니다.", id: row.id };
+    return {
+      success: true,
+      message: "상담 일정이 등록되었습니다.",
+      id: row.id,
+      schedule: row,
+    };
   } catch (error) {
+    console.error("[createCustomerScheduleAction]", error);
     return {
       success: false,
       error: toScheduleSafeError(error, "일정 등록에 실패했습니다."),
+    };
+  }
+}
+
+/** 관계 포함 일정 1건 재조회 (클라이언트 목록/상세 동기화용) */
+export async function fetchCustomerScheduleAction(
+  id: string,
+): Promise<{ success: true; schedule: CustomerSchedule } | { success: false; error: string }> {
+  try {
+    const schedule = await getCustomerSchedule(id);
+    if (!schedule) {
+      return { success: false, error: "일정을 찾을 수 없습니다." };
+    }
+    return { success: true, schedule };
+  } catch (error) {
+    console.error("[fetchCustomerScheduleAction]", error);
+    return {
+      success: false,
+      error: toScheduleSafeError(error, "일정을 불러오지 못했습니다."),
     };
   }
 }
@@ -103,10 +132,16 @@ export async function updateCustomerScheduleAction(
         })),
       };
     }
-    await updateCustomerSchedule({ id, form });
+    const row = await updateCustomerSchedule({ id, form });
     revalidateSchedules(form.customer_id);
-    return { success: true, message: "일정이 수정되었습니다.", id };
+    return {
+      success: true,
+      message: "일정이 수정되었습니다.",
+      id: row.id,
+      schedule: row,
+    };
   } catch (error) {
+    console.error("[updateCustomerScheduleAction]", error);
     return {
       success: false,
       error: toScheduleSafeError(error, "일정 수정에 실패했습니다."),

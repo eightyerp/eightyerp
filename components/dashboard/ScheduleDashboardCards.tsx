@@ -41,7 +41,7 @@ export default function ScheduleDashboardCards({
           </Link>
           <span className="text-gray-300">·</span>
           <Link href="/schedules/processes" className="text-navy-800 underline">
-            공정 스케줄
+            공사 스케줄
           </Link>
         </div>
       </div>

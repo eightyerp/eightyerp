@@ -31,6 +31,8 @@ export type CustomerStatus =
 
 export type UserRole = "super_admin" | "admin" | "manager" | "staff";
 
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
 export type InquirySourceType =
   | "online"
   | "sms"
@@ -110,6 +112,17 @@ export type Profile = {
   role: UserRole;
   permissions: Record<string, boolean>;
   is_active: boolean;
+  email?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  requested_team?: string | null;
+  requested_title?: string | null;
+  is_approved?: boolean;
+  approval_status?: ApprovalStatus;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
   created_at: string;
   updated_at: string;
 };

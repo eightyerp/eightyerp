@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { menuItems } from "@/lib/sample-data";
+import { createClient } from "@/lib/supabase";
+import { isAdminRole } from "@/lib/crm/constants";
+import type { UserRole } from "@/types/database";
 
 type SidebarProps = {
   open: boolean;
@@ -29,26 +32,80 @@ function isGroupActive(pathname: string, item: MenuItem): boolean {
   return isActivePath(pathname, item.href);
 }
 
-const NAV: MenuItem[] = menuItems.map((item): MenuItem => {
-  const label = String(item.label);
-  const href = String(item.href);
-  if (label === "스케줄관리") {
-    return {
-      label: "스케줄관리",
-      href: "/schedules/customers",
-      children: [
-        { label: "고객상담 스케줄", href: "/schedules/customers" },
-        { label: "공정별 스케줄", href: "/schedules/processes" },
-      ],
-    };
-  }
-  return { label, href };
-});
+function buildNav(isAdmin: boolean): MenuItem[] {
+  return menuItems.map((item): MenuItem => {
+    const label = String(item.label);
+    const href = String(item.href);
+    if (label === "스케줄관리") {
+      return {
+        label: "스케줄관리",
+        href: "/schedules/customers",
+        children: [
+          { label: "고객상담 스케줄", href: "/schedules/customers" },
+          { label: "공사 스케줄", href: "/schedules/processes" },
+        ],
+      };
+    }
+    if (label === "시스템관리") {
+      return {
+        label: "시스템관리",
+        href: "/system/approvals",
+        children: isAdmin
+          ? [{ label: "가입 승인 관리", href: "/system/approvals" }]
+          : undefined,
+      };
+    }
+    return { label, href };
+  });
+}
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     스케줄관리: true,
+    시스템관리: true,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, is_active, is_approved, approval_status")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (!profile || cancelled) return;
+        const approved =
+          typeof profile.is_approved === "boolean"
+            ? profile.is_approved === true
+            : true;
+        const status =
+          (profile.approval_status as string | undefined) ??
+          (approved ? "approved" : "pending");
+        const canAccess =
+          profile.is_active === true && approved && status === "approved";
+        setIsAdmin(
+          canAccess && isAdminRole(profile.role as UserRole),
+        );
+      } catch {
+        // ignore — menu stays without admin links
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const NAV = buildNav(isAdmin).filter((item) => {
+    if (item.label === "시스템관리") return isAdmin;
+    return true;
   });
 
   return (

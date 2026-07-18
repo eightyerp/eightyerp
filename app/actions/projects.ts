@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import {
   createProject,
@@ -18,9 +19,11 @@ export type ProjectActionResult = {
 
 function revalidate(customerId: string, projectId?: string) {
   revalidatePath(`/customers/${customerId}`);
+  revalidatePath("/schedules/processes");
   if (projectId) {
     revalidatePath(`/customers/${customerId}/projects/${projectId}/materials`);
     revalidatePath(`/projects/${projectId}/materials`);
+    revalidatePath(`/projects/${projectId}/schedule`);
   }
 }
 
@@ -38,13 +41,9 @@ export async function createProjectAction(
         `/customers/${form.customer_id}/projects/${project.id}/materials`,
       );
     }
-    return {
-      success: true,
-      message: "현장이 등록되었습니다.",
-      projectId: project.id,
-    };
+    redirect(`/projects/${project.id}/schedule`);
   } catch (error) {
-    if (typeof error === "object" && error && "digest" in error) throw error;
+    if (isRedirectError(error)) throw error;
     return {
       success: false,
       error: error instanceof Error ? error.message : "현장 등록 실패",

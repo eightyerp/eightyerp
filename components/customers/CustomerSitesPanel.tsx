@@ -3,11 +3,11 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import {
-  createProjectAction,
   deleteProjectAction,
   updateProjectAction,
   type ProjectActionResult,
 } from "@/app/actions/projects";
+import CreateSiteButton from "@/components/customers/CreateSiteButton";
 import { PROJECT_STATUSES } from "@/lib/crm/project-constants";
 import type { Employee, Project } from "@/types/database";
 
@@ -30,26 +30,30 @@ type Props = {
   customerId: string;
   customerName: string;
   customerAddress: string | null;
+  customerStatus: string;
   defaultAssigneeId: string | null;
   projects: Project[];
   employees: Employee[];
+  isAdmin: boolean;
+  currentEmployeeId: string | null;
 };
 
 export default function CustomerSitesPanel({
   customerId,
   customerName,
   customerAddress,
+  customerStatus,
   defaultAssigneeId,
   projects,
   employees,
+  isAdmin,
+  currentEmployeeId,
 }: Props) {
-  const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleteOf, setDeleteOf] = useState<Project | null>(null);
-
-  const [createState, createAction] = useActionState(createProjectAction, initial);
   const [updateState, updateAction] = useActionState(updateProjectAction, initial);
-  const formState = editing ? updateState : createState;
+
+  const primaryProject = projects[0] ?? null;
 
   return (
     <div className="space-y-4">
@@ -57,60 +61,60 @@ export default function CustomerSitesPanel({
         <div>
           <h3 className="text-sm font-semibold text-navy-900">현장 목록</h3>
           <p className="mt-0.5 text-xs text-gray-500">
-            현장을 선택한 뒤 마감자재를 등록합니다.
+            계약 고객을 현장으로 전환한 뒤 공사 일정을 등록합니다.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link
             href={`/customers/${customerId}/materials`}
             className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900"
           >
             고객 전체 마감자재
           </Link>
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-            className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white"
-          >
-            현장 생성
-          </button>
+          <CreateSiteButton
+            customerId={customerId}
+            customerName={customerName}
+            customerAddress={customerAddress}
+            customerStatus={customerStatus}
+            defaultAssigneeId={defaultAssigneeId}
+            employees={employees}
+            existingProjectId={primaryProject?.id ?? null}
+            isAdmin={isAdmin}
+            currentEmployeeId={currentEmployeeId}
+            variant="panel"
+          />
         </div>
       </div>
 
-      {(showForm || editing) && (
+      {editing && (
         <form
-          action={editing ? updateAction : createAction}
+          action={updateAction}
           className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2"
         >
           <input type="hidden" name="customer_id" value={customerId} />
-          {editing && (
-            <input type="hidden" name="project_id" value={editing.id} />
-          )}
+          <input type="hidden" name="project_id" value={editing.id} />
           <label className="text-xs text-gray-600 sm:col-span-2">
             현장명 *
             <input
               name="name"
               required
-              defaultValue={editing?.name ?? `${customerName} 현장`}
+              defaultValue={editing.name}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
             />
           </label>
           <label className="text-xs text-gray-600 sm:col-span-2">
-            공사주소
+            현장주소
             <input
               name="address"
-              defaultValue={editing?.address ?? customerAddress ?? ""}
+              defaultValue={editing.address ?? ""}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
             />
           </label>
           <label className="text-xs text-gray-600">
-            공정상태
+            현장상태
             <select
               name="status"
-              defaultValue={editing?.status ?? "진행중"}
+              defaultValue={editing.status}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
             >
               {PROJECT_STATUSES.map((s) => (
@@ -124,9 +128,7 @@ export default function CustomerSitesPanel({
             담당자
             <select
               name="assigned_employee_id"
-              defaultValue={
-                editing?.assigned_employee_id ?? defaultAssigneeId ?? ""
-              }
+              defaultValue={editing.assigned_employee_id ?? ""}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
             >
               <option value="">미지정</option>
@@ -137,12 +139,6 @@ export default function CustomerSitesPanel({
               ))}
             </select>
           </label>
-          {!editing && (
-            <label className="flex items-center gap-2 text-xs sm:col-span-2">
-              <input type="checkbox" name="go_materials" value="1" defaultChecked />
-              저장 후 마감자재 화면으로 이동
-            </label>
-          )}
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
@@ -152,20 +148,17 @@ export default function CustomerSitesPanel({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setShowForm(false);
-                setEditing(null);
-              }}
+              onClick={() => setEditing(null)}
               className="rounded-lg border px-4 py-2 text-sm"
             >
               닫기
             </button>
-            {formState.error && (
-              <p className="self-center text-sm text-red-600">{formState.error}</p>
+            {updateState.error && (
+              <p className="self-center text-sm text-red-600">{updateState.error}</p>
             )}
-            {formState.message && (
+            {updateState.message && (
               <p className="self-center text-sm text-emerald-700">
-                {formState.message}
+                {updateState.message}
               </p>
             )}
           </div>
@@ -195,6 +188,12 @@ export default function CustomerSitesPanel({
             </div>
             <div className="flex flex-wrap gap-1">
               <Link
+                href={`/projects/${p.id}/schedule`}
+                className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white"
+              >
+                공사 일정 등록
+              </Link>
+              <Link
                 href={`/customers/${customerId}/projects/${p.id}/materials`}
                 className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900"
               >
@@ -202,10 +201,7 @@ export default function CustomerSitesPanel({
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  setEditing(p);
-                  setShowForm(true);
-                }}
+                onClick={() => setEditing(p)}
                 className="rounded-lg border px-3 py-2 text-xs"
               >
                 수정
@@ -222,7 +218,7 @@ export default function CustomerSitesPanel({
         ))}
         {projects.length === 0 && (
           <p className="rounded-xl border border-dashed p-8 text-center text-sm text-gray-500">
-            등록된 현장이 없습니다. 현장 생성 후 마감자재를 등록해 주세요.
+            등록된 현장이 없습니다. 계약 완료 후 현장을 생성해 주세요.
           </p>
         )}
       </div>

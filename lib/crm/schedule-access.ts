@@ -140,3 +140,4 @@ export function canSoftDeleteSchedule(
 }
 
 export { requireAuthenticatedAccess };
+export { canEditCustomerSchedule } from "@/lib/crm/schedule-utils";

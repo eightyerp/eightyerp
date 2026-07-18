@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import SoftDeleteCustomerButton from "@/components/customers/SoftDeleteCustomerButton";
+import CreateSiteButton from "@/components/customers/CreateSiteButton";
 import CustomerQuotesPanel from "@/components/customers/CustomerQuotesPanel";
 import CustomerSitesPanel from "@/components/customers/CustomerSitesPanel";
 import {
@@ -56,6 +57,8 @@ type CustomerDetailPanelsProps = {
   employees: Employee[];
   projects: Project[];
   canDelete: boolean;
+  isAdmin: boolean;
+  currentEmployeeId: string | null;
 };
 
 const initialState: ActionResult = { success: false };
@@ -90,6 +93,8 @@ export default function CustomerDetailPanels({
   employees,
   projects,
   canDelete,
+  isAdmin,
+  currentEmployeeId,
 }: CustomerDetailPanelsProps) {
   const [tab, setTab] = useState<TabKey>("consult");
   const [showConsultForm, setShowConsultForm] = useState(false);
@@ -225,6 +230,18 @@ export default function CustomerDetailPanels({
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+            <CreateSiteButton
+              customerId={customer.id}
+              customerName={customer.name}
+              customerAddress={customer.address}
+              customerStatus={customer.status}
+              defaultAssigneeId={customer.assigned_employee_id}
+              employees={employees}
+              existingProjectId={projects[0]?.id ?? null}
+              isAdmin={isAdmin}
+              currentEmployeeId={currentEmployeeId}
+              variant="header"
+            />
             <Link
               href={`/customers/${customer.id}/edit`}
               className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700"
@@ -640,9 +657,12 @@ export default function CustomerDetailPanels({
               customerId={customer.id}
               customerName={customer.name}
               customerAddress={customer.address}
+              customerStatus={customer.status}
               defaultAssigneeId={customer.assigned_employee_id}
               projects={projects}
               employees={employees}
+              isAdmin={isAdmin}
+              currentEmployeeId={currentEmployeeId}
             />
           )}
           {tab === "payment" && (

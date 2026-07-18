@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   createCustomerScheduleAction,
   deleteCustomerScheduleAction,
+  fetchCustomerScheduleAction,
   moveCustomerScheduleAction,
   updateCustomerScheduleAction,
   type ScheduleActionResult,
@@ -21,9 +23,10 @@ import {
   startOfDay,
   startOfWeek,
   toDateKeyFromIso,
-  toDateTimeInputValue,
+  toDateTimeLocalStep10,
   WEEKDAY_LABELS_KO,
 } from "@/components/schedules/calendar-utils";
+import { canEditCustomerSchedule } from "@/lib/crm/schedule-utils";
 import { downloadCsv, downloadXls, dateStamp } from "@/components/schedules/export-utils";
 import {
   isCustomerScheduleOverdue,
@@ -171,6 +174,10 @@ export default function CustomerSchedulesWorkspace({
   const [quickPending, setQuickPending] = useState(false);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [completeRow, setCompleteRow] = useState<CustomerSchedule | null>(null);
+  /** 서버 props와 동기화되는 로컬 목록 (부분 패치 금지, 전체 행 교체만) */
+  const [schedules, setSchedules] = useState(initialSchedules);
+  const [actionResetKey, setActionResetKey] = useState(0);
+  const pendingKindRef = useRef<"create" | "update" | null>(null);
   const [moveDraft, setMoveDraft] = useState<{
     id: string;
     customerId: string;
@@ -182,6 +189,7 @@ export default function CustomerSchedulesWorkspace({
     force: boolean;
   } | null>(null);
 
+  const router = useRouter();
   const [createState, createAction, createPending] = useActionState(
     createCustomerScheduleAction,
     initialActionState,
@@ -194,15 +202,68 @@ export default function CustomerSchedulesWorkspace({
   const formPending = editing ? updatePending : createPending;
 
   useEffect(() => {
-    if (!formState.success) return;
-    const id = window.setTimeout(() => {
-      setToast(formState.message ?? "저장되었습니다.");
-      setFormOpen(false);
-      setEditing(null);
-      setForceSave(false);
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, [formState]);
+    setSchedules(initialSchedules);
+  }, [initialSchedules]);
+
+  /** 목록이 갱신되면 열린 상세도 동일 id의 완전한 행으로 동기화 */
+  useEffect(() => {
+    if (!detail) return;
+    const fresh = schedules.find((s) => s.id === detail.id);
+    if (fresh && fresh !== detail) {
+      setDetail(fresh);
+    }
+  }, [schedules, detail]);
+
+  function upsertSchedule(row: CustomerSchedule) {
+    setSchedules((prev) => {
+      const idx = prev.findIndex((s) => s.id === row.id);
+      if (idx < 0) return [row, ...prev];
+      const next = prev.slice();
+      next[idx] = row;
+      return next;
+    });
+  }
+
+  async function finalizeSaveSuccess(state: ScheduleActionResult) {
+    setToast(state.message ?? "저장되었습니다.");
+    setFormOpen(false);
+    setEditing(null);
+    setDetail(null);
+    setForceSave(false);
+    setActionResetKey((k) => k + 1);
+
+    let full = state.schedule ?? null;
+    if (state.id) {
+      const fetched = await fetchCustomerScheduleAction(state.id);
+      if (fetched.success) {
+        full = fetched.schedule;
+      }
+    }
+    if (full) {
+      upsertSchedule(full);
+    }
+    router.refresh();
+  }
+
+  useEffect(() => {
+    if (updatePending) pendingKindRef.current = "update";
+    else if (createPending) pendingKindRef.current = "create";
+
+    if (updatePending || createPending) return;
+
+    const kind = pendingKindRef.current;
+    if (!kind) return;
+    pendingKindRef.current = null;
+
+    const state = kind === "update" ? updateState : createState;
+    if (state.success) {
+      void finalizeSaveSuccess(state);
+      return;
+    }
+    if (state.error) {
+      console.error("[CustomerScheduleForm]", state.error);
+    }
+  }, [updatePending, createPending, updateState, createState]);
 
   useEffect(() => {
     if (!toast) return;
@@ -211,7 +272,7 @@ export default function CustomerSchedulesWorkspace({
   }, [toast]);
 
   const filtered = useMemo(() => {
-    let rows = initialSchedules;
+    let rows = schedules;
     if (fixedCustomerId) rows = rows.filter((r) => r.customer_id === fixedCustomerId);
     if (from) {
       const f = new Date(`${from}T00:00:00`).toISOString();
@@ -246,7 +307,7 @@ export default function CustomerSchedulesWorkspace({
     }
     return rows;
   }, [
-    initialSchedules,
+    schedules,
     fixedCustomerId,
     from,
     to,
@@ -301,15 +362,21 @@ export default function CustomerSchedulesWorkspace({
     setFormOpen(true);
   }
 
+  function openDetail(row: CustomerSchedule) {
+    const full = schedules.find((s) => s.id === row.id) ?? row;
+    setDetail(full);
+  }
+
   function openEdit(row: CustomerSchedule) {
-    setEditing(row);
+    const full = schedules.find((s) => s.id === row.id) ?? row;
+    setEditing(full);
     setForceSave(false);
     setDetail(null);
     setFormOpen(true);
   }
 
   async function handleMove(id: string, newDayKey: string) {
-    const row = initialSchedules.find((r) => r.id === id);
+    const row = schedules.find((r) => r.id === id);
     if (!row) return;
     const oldStart = new Date(row.start_at);
     const [y, m, d] = newDayKey.split("-").map(Number);
@@ -350,6 +417,11 @@ export default function CustomerSchedulesWorkspace({
     }
     setMoveDraft(null);
     setToast(result.message ?? result.error ?? null);
+    if (result.success) {
+      const fetched = await fetchCustomerScheduleAction(moveDraft.id);
+      if (fetched.success) upsertSchedule(fetched.schedule);
+      router.refresh();
+    }
   }
 
   async function quickUpdate(
@@ -390,7 +462,14 @@ export default function CustomerSchedulesWorkspace({
     const result = await updateCustomerScheduleAction(initialActionState, fd);
     setQuickPending(false);
     setToast(result.message ?? result.error ?? null);
-    if (result.success) setDetail(null);
+    if (result.success) {
+      let full = result.schedule ?? null;
+      const fetched = await fetchCustomerScheduleAction(row.id);
+      if (fetched.success) full = fetched.schedule;
+      if (full) upsertSchedule(full);
+      setDetail(null);
+      router.refresh();
+    }
   }
 
   async function handleDelete(row: CustomerSchedule, reason: string) {
@@ -406,7 +485,11 @@ export default function CustomerSchedulesWorkspace({
     const result = await deleteCustomerScheduleAction(fd);
     setQuickPending(false);
     setToast(result.message ?? result.error ?? null);
-    if (result.success) setDetail(null);
+    if (result.success) {
+      setSchedules((prev) => prev.filter((s) => s.id !== row.id));
+      setDetail(null);
+      router.refresh();
+    }
   }
 
   function exportRows() {
@@ -591,13 +674,13 @@ export default function CustomerSchedulesWorkspace({
           onToday={() => setMonthCursor(startOfDay(new Date()))}
           days={monthDays}
           byDayKey={byDayKey}
-          allSchedules={initialSchedules}
+          allSchedules={schedules}
           colorByAssignee={access.canViewAll || access.canViewTeam}
           onDayClick={(d) => {
             setDayCursor(d);
             setView("day");
           }}
-          onEventClick={(row) => setDetail(row)}
+          onEventClick={openDetail}
           onDrop={handleMove}
           dragOverKey={dragOverKey}
           setDragOverKey={setDragOverKey}
@@ -611,9 +694,9 @@ export default function CustomerSchedulesWorkspace({
           onNext={() => setWeekCursor((d) => addDays(d, 7))}
           onToday={() => setWeekCursor(startOfDay(new Date()))}
           byDayKey={byDayKey}
-          allSchedules={initialSchedules}
+          allSchedules={schedules}
           colorByAssignee={access.canViewAll || access.canViewTeam}
-          onEventClick={(row) => setDetail(row)}
+          onEventClick={openDetail}
           onDrop={handleMove}
         />
       )}
@@ -625,16 +708,17 @@ export default function CustomerSchedulesWorkspace({
           onNext={() => setDayCursor((d) => addDays(d, 1))}
           onToday={() => setDayCursor(startOfDay(new Date()))}
           rows={byDayKey.get(toDateKeyFromIso(dayCursor.toISOString())) ?? []}
-          onEventClick={(row) => setDetail(row)}
+          onEventClick={openDetail}
         />
       )}
 
       {(view === "list" || view === "today" || view === "unhandled" || view === "nextContact") && (
-        <ScheduleTable rows={visible} onRowClick={(row) => setDetail(row)} showCustomerColumn={!fixedCustomerId} />
+        <ScheduleTable rows={visible} onRowClick={openDetail} showCustomerColumn={!fixedCustomerId} />
       )}
 
       {formOpen && (
         <ScheduleFormModal
+          key={`${actionResetKey}-${editing?.id ?? "create"}`}
           editing={editing}
           customers={customers}
           employees={employees}
@@ -658,6 +742,7 @@ export default function CustomerSchedulesWorkspace({
         <DetailModal
           row={detail}
           pending={quickPending}
+          canEdit={canEditCustomerSchedule(access, detail)}
           onClose={() => setDetail(null)}
           onEdit={() => openEdit(detail)}
           onComplete={() => {
@@ -1126,6 +1211,29 @@ function ScheduleFormModal({
   const [selectedCustomerId, setSelectedCustomerId] = useState(
     editing?.customer_id ?? fixedCustomerId ?? "",
   );
+  const [assignedEmployeeId, setAssignedEmployeeId] = useState(
+    editing?.assigned_employee_id ?? lockedEmployeeId ?? "",
+  );
+  const [scheduleType, setScheduleType] = useState(
+    editing?.schedule_type ?? CUSTOMER_SCHEDULE_TYPES[0],
+  );
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [startAt, setStartAt] = useState(
+    toDateTimeLocalStep10(editing?.start_at) ||
+      toDateTimeLocalStep10(new Date().toISOString()),
+  );
+  const [endAt, setEndAt] = useState(toDateTimeLocalStep10(editing?.end_at));
+  const [allDay, setAllDay] = useState(editing?.all_day ?? false);
+  const [status, setStatus] = useState(editing?.status ?? "예정");
+  const [priority, setPriority] = useState(editing?.priority ?? "보통");
+  const [location, setLocation] = useState(editing?.location ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [resultNote, setResultNote] = useState(editing?.result_note ?? "");
+  const [nextContactAt, setNextContactAt] = useState(
+    toDateTimeLocalStep10(editing?.next_contact_at),
+  );
+  const [localError, setLocalError] = useState<string | null>(null);
+
   const selectedCustomer =
     customers.find((c) => c.id === selectedCustomerId) ?? fixedCustomer ?? null;
 
@@ -1138,7 +1246,18 @@ function ScheduleFormModal({
             닫기
           </button>
         </div>
-        <form action={action} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <form
+          action={action}
+          className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
+          onSubmit={(e) => {
+            if (endAt && startAt && new Date(endAt).getTime() < new Date(startAt).getTime()) {
+              e.preventDefault();
+              setLocalError("종료시간은 시작시간보다 빠를 수 없습니다.");
+              return;
+            }
+            setLocalError(null);
+          }}
+        >
           {editing && <input type="hidden" name="schedule_id" value={editing.id} />}
           <input type="hidden" name="force_save" value={forceSave ? "1" : "0"} />
 
@@ -1202,7 +1321,8 @@ function ScheduleFormModal({
               <select
                 name="assigned_employee_id"
                 required
-                defaultValue={editing?.assigned_employee_id ?? lockedEmployeeId ?? ""}
+                value={assignedEmployeeId}
+                onChange={(e) => setAssignedEmployeeId(e.target.value)}
                 className={`${inputClass} mt-1`}
               >
                 <option value="">담당자 선택</option>
@@ -1220,7 +1340,8 @@ function ScheduleFormModal({
             <select
               name="schedule_type"
               required
-              defaultValue={editing?.schedule_type ?? CUSTOMER_SCHEDULE_TYPES[0]}
+              value={scheduleType}
+              onChange={(e) => setScheduleType(e.target.value)}
               className={`${inputClass} mt-1`}
             >
               {CUSTOMER_SCHEDULE_TYPES.map((t) => (
@@ -1233,7 +1354,13 @@ function ScheduleFormModal({
 
           <label className="text-xs text-gray-600 sm:col-span-2">
             제목 *
-            <input name="title" required defaultValue={editing?.title ?? ""} className={`${inputClass} mt-1`} />
+            <input
+              name="title"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className={`${inputClass} mt-1`}
+            />
           </label>
 
           <label className="text-xs text-gray-600">
@@ -1242,7 +1369,12 @@ function ScheduleFormModal({
               type="datetime-local"
               name="start_at"
               required
-              defaultValue={toDateTimeInputValue(editing?.start_at) || toDateTimeInputValue(new Date().toISOString())}
+              step={600}
+              value={startAt}
+              onChange={(e) => {
+                setStartAt(e.target.value);
+                setLocalError(null);
+              }}
               className={`${inputClass} mt-1`}
             />
           </label>
@@ -1251,18 +1383,34 @@ function ScheduleFormModal({
             <input
               type="datetime-local"
               name="end_at"
-              defaultValue={toDateTimeInputValue(editing?.end_at)}
+              step={600}
+              value={endAt}
+              onChange={(e) => {
+                setEndAt(e.target.value);
+                setLocalError(null);
+              }}
               className={`${inputClass} mt-1`}
             />
           </label>
 
           <label className="flex items-center gap-2 text-xs text-gray-600">
-            <input type="checkbox" name="all_day" defaultChecked={editing?.all_day ?? false} /> 종일
+            <input
+              type="checkbox"
+              name="all_day"
+              checked={allDay}
+              onChange={(e) => setAllDay(e.target.checked)}
+            />{" "}
+            종일
           </label>
 
           <label className="text-xs text-gray-600">
             상태
-            <select name="status" defaultValue={editing?.status ?? "예정"} className={`${inputClass} mt-1`}>
+            <select
+              name="status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className={`${inputClass} mt-1`}
+            >
               {CUSTOMER_SCHEDULE_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -1273,7 +1421,12 @@ function ScheduleFormModal({
 
           <label className="text-xs text-gray-600">
             우선순위
-            <select name="priority" defaultValue={editing?.priority ?? "보통"} className={`${inputClass} mt-1`}>
+            <select
+              name="priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className={`${inputClass} mt-1`}
+            >
               {SCHEDULE_PRIORITIES.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -1284,17 +1437,34 @@ function ScheduleFormModal({
 
           <label className="text-xs text-gray-600 sm:col-span-2">
             장소
-            <input name="location" defaultValue={editing?.location ?? ""} className={`${inputClass} mt-1`} />
+            <input
+              name="location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className={`${inputClass} mt-1`}
+            />
           </label>
 
           <label className="text-xs text-gray-600 sm:col-span-2">
             설명
-            <textarea name="description" rows={2} defaultValue={editing?.description ?? ""} className={`${inputClass} mt-1 resize-y`} />
+            <textarea
+              name="description"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className={`${inputClass} mt-1 resize-y`}
+            />
           </label>
 
           <label className="text-xs text-gray-600 sm:col-span-2">
             결과메모
-            <textarea name="result_note" rows={2} defaultValue={editing?.result_note ?? ""} className={`${inputClass} mt-1 resize-y`} />
+            <textarea
+              name="result_note"
+              rows={2}
+              value={resultNote}
+              onChange={(e) => setResultNote(e.target.value)}
+              className={`${inputClass} mt-1 resize-y`}
+            />
           </label>
 
           <label className="text-xs text-gray-600 sm:col-span-2">
@@ -1302,10 +1472,16 @@ function ScheduleFormModal({
             <input
               type="datetime-local"
               name="next_contact_at"
-              defaultValue={toDateTimeInputValue(editing?.next_contact_at)}
+              step={600}
+              value={nextContactAt}
+              onChange={(e) => setNextContactAt(e.target.value)}
               className={`${inputClass} mt-1`}
             />
           </label>
+
+          {localError && (
+            <p className="text-sm text-red-600 sm:col-span-2">{localError}</p>
+          )}
 
           {state.conflicts && state.conflicts.length > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 sm:col-span-2">
@@ -1325,7 +1501,9 @@ function ScheduleFormModal({
           )}
 
           {state.error && !(state.conflicts && state.conflicts.length > 0) && (
-            <p className="text-sm text-red-600 sm:col-span-2">{state.error}</p>
+            <p className="text-sm text-red-600 sm:col-span-2 whitespace-pre-wrap">
+              {state.error}
+            </p>
           )}
 
           <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -1345,6 +1523,7 @@ function ScheduleFormModal({
 function DetailModal({
   row,
   pending,
+  canEdit,
   onClose,
   onEdit,
   onComplete,
@@ -1355,6 +1534,7 @@ function DetailModal({
 }: {
   row: CustomerSchedule;
   pending: boolean;
+  canEdit: boolean;
   onClose: () => void;
   onEdit: () => void;
   onComplete: () => void;
@@ -1363,11 +1543,18 @@ function DetailModal({
   onSetNextContact: (next: string | null) => void;
   onDelete: (reason: string) => void;
 }) {
-  const [postponeAt, setPostponeAt] = useState(toDateTimeInputValue(row.start_at));
-  const [nextContactAt, setNextContactAt] = useState(toDateTimeInputValue(row.next_contact_at));
+  const [postponeAt, setPostponeAt] = useState(toDateTimeLocalStep10(row.start_at));
+  const [nextContactAt, setNextContactAt] = useState(
+    toDateTimeLocalStep10(row.next_contact_at),
+  );
   const [showDelete, setShowDelete] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const overdue = isCustomerScheduleOverdue(row);
+  const editDisabledReason = !canEdit
+    ? row.status === "완료"
+      ? "완료된 일정은 관리자만 수정할 수 있습니다."
+      : "본인 담당 일정만 수정할 수 있습니다."
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -1375,12 +1562,12 @@ function DetailModal({
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-base font-semibold text-navy-900">{row.title}</h3>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs font-medium text-gray-700">
               {row.schedule_type} · {new Date(row.start_at).toLocaleString("ko-KR")}
               {row.end_at ? ` ~ ${new Date(row.end_at).toLocaleString("ko-KR")}` : ""}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-sm text-gray-400">
+          <button type="button" onClick={onClose} className="text-sm font-medium text-gray-600">
             닫기
           </button>
         </div>
@@ -1392,44 +1579,63 @@ function DetailModal({
         </div>
 
         <dl className="mt-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-gray-400">고객</dt>
-            <dd>
-              <Link href={`/customers/${row.customer_id}`} className="text-navy-800 underline">
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">고객</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              <Link href={`/customers/${row.customer_id}`} className="text-navy-900 underline">
                 {row.customers?.name ?? "-"}
               </Link>
             </dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-400">연락처</dt>
-            <dd>{row.customers?.phone ?? "-"}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">연락처</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {row.customers?.phone ?? "-"}
+            </dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-400">담당자</dt>
-            <dd>{row.employees ? employeeLabel(row.employees) : "-"}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">담당자</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {row.employees ? employeeLabel(row.employees) : "-"}
+            </dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-400">장소</dt>
-            <dd>{row.location ?? "-"}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">장소</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {row.location ?? "-"}
+            </dd>
           </div>
           {row.description && (
             <div>
-              <dt className="text-gray-400">설명</dt>
-              <dd className="mt-1 whitespace-pre-wrap text-gray-700">{row.description}</dd>
+              <dt className="font-medium text-gray-600">설명</dt>
+              <dd className="mt-1 whitespace-pre-wrap font-medium text-navy-900">
+                {row.description}
+              </dd>
             </div>
           )}
           {row.result_note && (
             <div>
-              <dt className="text-gray-400">결과메모</dt>
-              <dd className="mt-1 whitespace-pre-wrap text-gray-700">{row.result_note}</dd>
+              <dt className="font-medium text-gray-600">결과메모</dt>
+              <dd className="mt-1 whitespace-pre-wrap font-medium text-navy-900">
+                {row.result_note}
+              </dd>
             </div>
           )}
         </dl>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={pending} onClick={onEdit} className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-60">
+          <button
+            type="button"
+            disabled={!canEdit || pending}
+            title={editDisabledReason ?? undefined}
+            onClick={onEdit}
+            className="rounded-lg border border-navy-800 bg-navy-800 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-500"
+          >
             수정
           </button>
+          {!canEdit && editDisabledReason && (
+            <p className="w-full text-xs text-gray-600">{editDisabledReason}</p>
+          )}
           <button
             type="button"
             disabled={pending}
@@ -1442,7 +1648,7 @@ function DetailModal({
             type="button"
             disabled={pending}
             onClick={onCancel}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 disabled:opacity-60"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-60"
           >
             취소 처리
           </button>
@@ -1458,9 +1664,10 @@ function DetailModal({
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-gray-100 p-3">
-            <p className="text-xs font-medium text-gray-600">연기</p>
+            <p className="text-xs font-medium text-gray-700">연기</p>
             <input
               type="datetime-local"
+              step={600}
               value={postponeAt}
               onChange={(e) => setPostponeAt(e.target.value)}
               className={`${inputClass} mt-2`}
@@ -1475,9 +1682,10 @@ function DetailModal({
             </button>
           </div>
           <div className="rounded-lg border border-gray-100 p-3">
-            <p className="text-xs font-medium text-gray-600">다음 연락일 지정</p>
+            <p className="text-xs font-medium text-gray-700">다음 연락일 지정</p>
             <input
               type="datetime-local"
+              step={600}
               value={nextContactAt}
               onChange={(e) => setNextContactAt(e.target.value)}
               className={`${inputClass} mt-2`}

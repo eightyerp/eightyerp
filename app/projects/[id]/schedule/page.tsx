@@ -29,10 +29,12 @@ async function isScheduleSchemaMissing(): Promise<boolean> {
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ new?: string }>;
 };
 
-export default async function ProjectSchedulePage({ params }: Props) {
+export default async function ProjectSchedulePage({ params, searchParams }: Props) {
   const { id: projectId } = await params;
+  const query = await searchParams;
   const project = await getProjectById(projectId).catch(() => null);
   if (!project || project.deleted_at) notFound();
 
@@ -63,25 +65,35 @@ export default async function ProjectSchedulePage({ params }: Props) {
     loadError = error instanceof Error ? error.message : "공정 일정을 불러오지 못했습니다.";
   }
 
+  const openCreate = query.new === "1";
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs font-medium text-gray-400">{project.name} · 공정 스케줄</p>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">현장 공정 스케줄</h1>
+            <p className="text-xs font-medium text-gray-400">{project.name} · 공사 스케줄</p>
+            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">현장 공사 스케줄</h1>
           </div>
-          <Link
-            href={`/customers/${project.customer_id}`}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-          >
-            고객 상세로 돌아가기
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/projects/${projectId}/schedule?new=1`}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+            >
+              공사 일정 등록
+            </Link>
+            <Link
+              href={`/customers/${project.customer_id}`}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              고객 상세로 돌아가기
+            </Link>
+          </div>
         </div>
 
         {tablesMissing && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">공정 일정 테이블을 찾을 수 없습니다.</p>
+            <p className="font-semibold">공사 스케줄 테이블을 찾을 수 없습니다.</p>
             <p className="mt-2">{MIGRATION_HINT}</p>
           </div>
         )}
@@ -113,6 +125,7 @@ export default async function ProjectSchedulePage({ params }: Props) {
               role: access.role,
             }}
             fixedProjectId={projectId}
+            initialCreateOpen={openCreate}
           />
         )}
       </div>

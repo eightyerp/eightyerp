@@ -162,7 +162,7 @@ export const LEAD_SOURCE_NAMES = [
 
 export const EMPLOYEE_DIRECTORY = [
   { name: "이응세", title: "대표이사", recommendedRole: "super_admin" as UserRole },
-  { name: "김설화", title: "이사", recommendedRole: "super_admin" as UserRole },
+  { name: "김설화", title: "이사", recommendedRole: "admin" as UserRole },
   { name: "양현준", title: "인테리어 팀장", recommendedRole: "manager" as UserRole },
   { name: "양현제", title: "인테리어 팀장", recommendedRole: "manager" as UserRole },
   { name: "조근아", title: "인테리어 실장", recommendedRole: "manager" as UserRole },
@@ -190,6 +190,13 @@ export function formatEmployeeLabel(name: string, title: string): string {
 
 export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "admin" || role === "super_admin";
+}
+
+/** 계약 고객(현장 전환 대상) — 관리자는 계약 여부와 무관하게 현장 생성 가능 */
+export function isContractCustomerStatus(
+  status: string | null | undefined,
+): boolean {
+  return status === "계약완료" || status === "계약";
 }
 
 /** manager + admin + super_admin (executive 역할은 DB에 없으며 super_admin으로 취급) */

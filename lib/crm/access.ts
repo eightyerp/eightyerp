@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase-server";
 import { isAdminRole } from "@/lib/crm/constants";
-import type { ProfileWithEmployee, UserRole } from "@/types/database";
+import type {
+  ApprovalStatus,
+  ProfileWithEmployee,
+  UserRole,
+} from "@/types/database";
 
 export type CurrentUserAccess = {
   userId: string | null;
@@ -8,8 +12,39 @@ export type CurrentUserAccess = {
   role: UserRole | null;
   isAdmin: boolean;
   isAuthenticated: boolean;
+  /** 승인 + 활성 — ERP 업무 접근 가능 */
+  canAccessErp: boolean;
+  approvalStatus: ApprovalStatus | null;
   permissions: Record<string, boolean>;
 };
+
+function resolveApproval(profile: ProfileWithEmployee | null): {
+  canAccessErp: boolean;
+  approvalStatus: ApprovalStatus | null;
+  role: UserRole | null;
+} {
+  if (!profile) {
+    return { canAccessErp: false, approvalStatus: null, role: null };
+  }
+
+  // 마이그레이션 전: is_approved 컬럼 없음 → 기존처럼 is_active만 사용
+  const hasApprovalColumn = typeof profile.is_approved === "boolean";
+  const isApproved = hasApprovalColumn ? profile.is_approved === true : true;
+  const status: ApprovalStatus =
+    profile.approval_status ??
+    (isApproved ? "approved" : profile.is_active ? "approved" : "pending");
+
+  const canAccessErp =
+    profile.is_active === true &&
+    isApproved &&
+    status === "approved";
+
+  return {
+    canAccessErp,
+    approvalStatus: status,
+    role: canAccessErp ? profile.role : null,
+  };
+}
 
 export async function getCurrentUserAccess(): Promise<CurrentUserAccess> {
   const supabase = await createClient();
@@ -24,51 +59,68 @@ export async function getCurrentUserAccess(): Promise<CurrentUserAccess> {
       role: null,
       isAdmin: false,
       isAuthenticated: false,
+      canAccessErp: false,
+      approvalStatus: null,
       permissions: {},
     };
   }
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("*, employees ( id, name, title )")
+    .select("*, employees ( id, name, title, team_id )")
     .eq("id", user.id)
     .maybeSingle();
 
   if (error) {
-    // profiles table may not exist yet before migration
     return {
       userId: user.id,
       profile: null,
       role: null,
       isAdmin: false,
       isAuthenticated: true,
+      canAccessErp: false,
+      approvalStatus: null,
       permissions: {},
     };
   }
 
   const typed = profile as ProfileWithEmployee | null;
-  const role = typed?.is_active ? typed.role : null;
+  const resolved = resolveApproval(typed);
 
   return {
     userId: user.id,
     profile: typed,
-    role,
-    isAdmin: isAdminRole(role),
+    role: resolved.role,
+    isAdmin: isAdminRole(resolved.role),
     isAuthenticated: true,
+    canAccessErp: resolved.canAccessErp,
+    approvalStatus: resolved.approvalStatus,
     permissions: typed?.permissions ?? {},
   };
 }
 
 export async function requireAdminAccess() {
   const access = await getCurrentUserAccess();
-  if (!access.isAdmin) {
+  if (!access.isAdmin || !access.canAccessErp) {
     throw new Error("관리자만 수행할 수 있는 작업입니다.");
   }
   return access;
 }
 
-/** 로그인 직원 공통 (견적서 삭제 등). 고객/자재 삭제와 분리. */
+/** 로그인 + ERP 승인 필요 (고객/현장 등 업무 액션) */
 export async function requireAuthenticatedAccess() {
+  const access = await getCurrentUserAccess();
+  if (!access.isAuthenticated || !access.userId) {
+    throw new Error("로그인이 필요합니다.");
+  }
+  if (!access.canAccessErp) {
+    throw new Error("관리자 승인 후 이용할 수 있습니다.");
+  }
+  return access;
+}
+
+/** 세션만 필요 (승인 대기 화면 등) */
+export async function requireSessionAccess() {
   const access = await getCurrentUserAccess();
   if (!access.isAuthenticated || !access.userId) {
     throw new Error("로그인이 필요합니다.");

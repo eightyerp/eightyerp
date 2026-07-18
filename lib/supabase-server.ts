@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { isPublicRoute } from "@/lib/auth";
+import { isPendingRoute, isPublicRoute } from "@/lib/auth";
 import { getSupabaseEnv } from "@/lib/supabase-env";
 
 function isMissingSessionError(error: {
@@ -110,6 +110,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   const isAuthenticated = Boolean(user);
+  const isPendingPath = isPendingRoute(pathname);
 
   // Unauthenticated users may always reach /login (and other public routes).
   if (!isAuthenticated && !isPublic) {
@@ -120,13 +121,78 @@ export async function updateSession(request: NextRequest) {
     return copyAllCookies(supabaseResponse, redirectResponse);
   }
 
-  // Already signed in: keep /login from being a dead-end loop.
-  if (isAuthenticated && pathname === "/login") {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/dashboard";
-    redirectUrl.search = "";
-    const redirectResponse = NextResponse.redirect(redirectUrl);
-    return copyAllCookies(supabaseResponse, redirectResponse);
+  // Approval / active gate for authenticated users
+  if (isAuthenticated && user) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_active, is_approved, approval_status")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    // 마이그레이션 전(컬럼 없음)이면 기존처럼 활성 여부만 보고, 없으면 통과
+    if (profileError) {
+      if (pathname === "/login" || pathname === "/signup") {
+        const redirectUrl = request.nextUrl.clone();
+        redirectUrl.pathname = "/dashboard";
+        redirectUrl.search = "";
+        return copyAllCookies(
+          supabaseResponse,
+          NextResponse.redirect(redirectUrl),
+        );
+      }
+      return supabaseResponse;
+    }
+
+    const hasApprovalColumn =
+      profile != null && typeof profile.is_approved === "boolean";
+    const isApproved = hasApprovalColumn
+      ? profile.is_approved === true
+      : true;
+    const status =
+      (profile?.approval_status as string | undefined) ??
+      (isApproved ? "approved" : "pending");
+    const canAccessErp =
+      profile != null &&
+      profile.is_active === true &&
+      isApproved &&
+      status === "approved";
+
+    if (!canAccessErp) {
+      if (pathname === "/login" || pathname === "/signup") {
+        const redirectUrl = request.nextUrl.clone();
+        redirectUrl.pathname = "/pending-approval";
+        redirectUrl.search = "";
+        return copyAllCookies(
+          supabaseResponse,
+          NextResponse.redirect(redirectUrl),
+        );
+      }
+      // /pending-approval 은 PUBLIC_ROUTES에 포함 — 미승인 사용자 허용
+      if (!isPendingPath && !isPublic) {
+        const redirectUrl = request.nextUrl.clone();
+        redirectUrl.pathname = "/pending-approval";
+        redirectUrl.search = "";
+        return copyAllCookies(
+          supabaseResponse,
+          NextResponse.redirect(redirectUrl),
+        );
+      }
+      return supabaseResponse;
+    }
+
+    if (
+      pathname === "/login" ||
+      pathname === "/signup" ||
+      isPendingPath
+    ) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/dashboard";
+      redirectUrl.search = "";
+      return copyAllCookies(
+        supabaseResponse,
+        NextResponse.redirect(redirectUrl),
+      );
+    }
   }
 
   return supabaseResponse;

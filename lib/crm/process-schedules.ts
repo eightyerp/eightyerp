@@ -91,8 +91,43 @@ export function parseProcessScheduleForm(formData: FormData): ProcessScheduleFor
   };
 }
 
-const SELECT =
-  "*, customers ( id, name, phone, address ), employees ( id, name, title, team_id ), projects ( id, name, address, status, construction_start_at )";
+/** projects 임베드는 FK/테이블 미적용 환경에서 PGRST200을 내므로 기본 select에서 제외 */
+const SELECT_BASE =
+  "*, customers ( id, name, phone, address ), employees ( id, name, title, team_id )";
+
+const PROJECT_SELECT =
+  "id, name, address, status, construction_start_at";
+
+async function attachProjects(
+  rows: ProjectProcessSchedule[],
+): Promise<ProjectProcessSchedule[]> {
+  const ids = [
+    ...new Set(
+      rows
+        .map((r) => r.project_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (ids.length === 0) return rows;
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select(PROJECT_SELECT)
+      .in("id", ids);
+    if (error || !data) return rows;
+    const map = new Map(
+      data.map((p) => [p.id as string, p as NonNullable<ProjectProcessSchedule["projects"]>]),
+    );
+    return rows.map((r) => ({
+      ...r,
+      projects: r.project_id ? map.get(r.project_id) ?? null : null,
+    }));
+  } catch {
+    return rows;
+  }
+}
 
 export type ProcessScheduleFilters = {
   from?: string;
@@ -117,7 +152,7 @@ export async function listProcessSchedules(
 
   let query = supabase
     .from("project_process_schedules")
-    .select(SELECT)
+    .select(SELECT_BASE)
     .is("deleted_at", null)
     .order("start_at", { ascending: true })
     .limit(800);
@@ -147,9 +182,12 @@ export async function listProcessSchedules(
   }
 
   const { data, error } = await query;
-  if (error) throw new Error("공정 일정을 불러오지 못했습니다.");
+  if (error) {
+    console.error("[listProcessSchedules]", error);
+    throw new Error(error.message || "공사 일정을 불러오지 못했습니다.");
+  }
 
-  let rows = (data ?? []) as ProjectProcessSchedule[];
+  let rows = await attachProjects((data ?? []) as ProjectProcessSchedule[]);
 
   if (!sch.canViewAll && sch.canViewTeam && sch.teamId && !filters.employeeId) {
     rows = rows.filter(
@@ -205,12 +243,17 @@ export async function getProcessSchedule(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("project_process_schedules")
-    .select(SELECT)
+    .select(SELECT_BASE)
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
-  if (error) throw new Error("공정 일정을 불러오지 못했습니다.");
-  return data as ProjectProcessSchedule | null;
+  if (error) {
+    console.error("[getProcessSchedule]", error);
+    throw new Error(error.message || "공사 일정을 불러오지 못했습니다.");
+  }
+  if (!data) return null;
+  const [withProject] = await attachProjects([data as ProjectProcessSchedule]);
+  return withProject ?? (data as ProjectProcessSchedule);
 }
 
 export async function findProcessAssigneeConflicts(input: {

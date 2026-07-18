@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useActionState,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   createProcessScheduleAction,
   deleteProcessScheduleAction,
@@ -28,6 +35,7 @@ import {
   WEEKDAY_LABELS_KO,
 } from "@/components/schedules/calendar-utils";
 import { downloadCsv, downloadXls, dateStamp } from "@/components/schedules/export-utils";
+import { getProjectColor } from "@/components/schedules/project-colors";
 import { isProcessDelayed } from "@/lib/crm/schedule-utils";
 import {
   PROCESS_NAME_SUGGESTIONS,
@@ -58,6 +66,10 @@ type Props = {
   projects: ProjectLite[];
   access: Access;
   fixedProjectId?: string | null;
+  /** projects 테이블 미적용 또는 현장 0건일 때 안내 UI */
+  projectsTableMissing?: boolean;
+  /** 현장 상세에서 공사 일정 등록 진입 시 폼 자동 오픈 */
+  initialCreateOpen?: boolean;
 };
 
 type ViewMode =
@@ -74,7 +86,7 @@ const VIEW_TABS: { key: ViewMode; label: string }[] = [
   { key: "month", label: "월간" },
   { key: "week", label: "주간" },
   { key: "byProject", label: "현장별" },
-  { key: "byProcess", label: "공정별" },
+  { key: "byProcess", label: "공종별" },
   { key: "gantt", label: "간트" },
   { key: "today", label: "오늘" },
   { key: "delayed", label: "지연" },
@@ -94,13 +106,39 @@ function statusBadgeClass(status: string): string {
   return SCHEDULE_STATUS_BADGE[status] ?? "bg-gray-100 text-gray-600";
 }
 
+function projectSiteName(row: ProjectProcessSchedule): string {
+  return row.projects?.name?.trim() || "현장 미지정";
+}
+
+function formatTimeRange(row: ProjectProcessSchedule): string {
+  const start = formatTime(row.start_at);
+  if (!row.end_at) return start;
+  return `${start}~${formatTime(row.end_at)}`;
+}
+
+/** 현장별 색상 + 상태(완료/지연/취소) 오버레이 */
 function chipClass(row: ProjectProcessSchedule): string {
   const delayed = isProcessDelayed(row);
   const done = row.status === "완료";
-  const base = "block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium cursor-pointer";
-  if (done) return `${base} bg-gray-100 text-gray-500 opacity-60`;
-  if (delayed) return `${base} border border-red-400 bg-red-50 text-red-700`;
-  return `${base} bg-navy-800/5 text-navy-800`;
+  const cancelled = row.status === "취소";
+  const tone = getProjectColor(row.project_id);
+  const base =
+    "block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] font-semibold cursor-pointer";
+  if (cancelled) {
+    return `${base} border-gray-300 bg-gray-100 text-gray-500 line-through`;
+  }
+  if (done) {
+    return `${base} border-gray-200 bg-gray-50 text-gray-500 opacity-70`;
+  }
+  if (delayed) {
+    return `${base} border-2 border-red-500 ${tone.bg} ${tone.text}`;
+  }
+  return `${base} ${tone.border} ${tone.bg} ${tone.text}`;
+}
+
+function chipLabel(row: ProjectProcessSchedule): string {
+  const check = row.status === "완료" ? "✓ " : "";
+  return `${check}${projectSiteName(row)} · ${row.process_name}`;
 }
 
 export default function ProcessSchedulesWorkspace({
@@ -110,6 +148,8 @@ export default function ProcessSchedulesWorkspace({
   projects,
   access,
   fixedProjectId = null,
+  projectsTableMissing = false,
+  initialCreateOpen = false,
 }: Props) {
   const [view, setView] = useState<ViewMode>(() =>
     typeof window !== "undefined" && window.innerWidth < 768 ? "byProject" : "month",
@@ -129,7 +169,7 @@ export default function ProcessSchedulesWorkspace({
   const [delayedOnly, setDelayedOnly] = useState(false);
   const [q, setQ] = useState("");
 
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(initialCreateOpen);
   const [editing, setEditing] = useState<ProjectProcessSchedule | null>(null);
   const [detail, setDetail] = useState<ProjectProcessSchedule | null>(null);
   const [forceSave, setForceSave] = useState(false);
@@ -147,6 +187,13 @@ export default function ProcessSchedulesWorkspace({
   );
   const formState = editing ? updateState : createState;
   const formPending = editing ? updatePending : createPending;
+
+  useEffect(() => {
+    if (!initialCreateOpen) return;
+    setEditing(null);
+    setForceSave(false);
+    setFormOpen(true);
+  }, [initialCreateOpen]);
 
   useEffect(() => {
     if (!formState.success) return;
@@ -167,6 +214,13 @@ export default function ProcessSchedulesWorkspace({
     const t = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  const processNameOptions = useMemo(() => {
+    const fromData = initialSchedules.map((r) => r.process_name).filter(Boolean);
+    return [...new Set([...PROCESS_NAME_SUGGESTIONS, ...fromData])].sort((a, b) =>
+      a.localeCompare(b, "ko"),
+    );
+  }, [initialSchedules]);
 
   const filtered = useMemo(() => {
     let rows = initialSchedules;
@@ -377,21 +431,35 @@ export default function ProcessSchedulesWorkspace({
     ? initialSchedules.find((s) => s.id === detail.dependency_schedule_id) ?? null
     : null;
 
+  const noProjects = !fixedProjectId && projects.length === 0;
+  const noSchedules = initialSchedules.length === 0;
+  const showProjectFirstGuide = noProjects && noSchedules;
+
   return (
     <div className="space-y-5">
       {toast && <ToastBanner message={toast} />}
 
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">공정 스케줄</h1>
-          <p className="mt-1 text-sm text-gray-500">현장별 공정 진행 일정을 관리합니다.</p>
-        </div>
+        {!fixedProjectId ? (
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">공사 스케줄</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              현장별 공사·공종 일정을 관리합니다. 일정 색상은 현장 기준으로 구분됩니다.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-gray-600">
+              이 현장의 공사 일정입니다. 동일 현장 일정은 같은 색으로 표시됩니다.
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => {
               const { headers, rows } = exportRows();
-              downloadCsv(`process-schedules-${dateStamp()}.csv`, headers, rows);
+              downloadCsv(`construction-schedules-${dateStamp()}.csv`, headers, rows);
             }}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
           >
@@ -401,7 +469,7 @@ export default function ProcessSchedulesWorkspace({
             type="button"
             onClick={() => {
               const { headers, rows } = exportRows();
-              downloadXls(`process-schedules-${dateStamp()}.xls`, headers, rows);
+              downloadXls(`construction-schedules-${dateStamp()}.xls`, headers, rows);
             }}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
           >
@@ -410,13 +478,46 @@ export default function ProcessSchedulesWorkspace({
           <button
             type="button"
             onClick={openCreate}
-            className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700"
+            disabled={noProjects && !fixedProjectId}
+            title={
+              noProjects && !fixedProjectId
+                ? "현장을 먼저 등록해 주세요."
+                : undefined
+            }
+            className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            + 공정 등록
+            + 공사 일정 등록
           </button>
         </div>
       </div>
 
+      {showProjectFirstGuide && (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center">
+          <p className="text-base font-semibold text-navy-900">
+            등록된 공사 일정이 없습니다
+          </p>
+          <p className="mt-2 text-sm text-gray-700">
+            현장관리에서 현장을 먼저 등록해주세요.
+          </p>
+          {projectsTableMissing && (
+            <p className="mt-3 text-xs text-amber-800">
+              현장(projects) 테이블이 DB에 없습니다. migration을 적용한 뒤 현장을
+              등록해 주세요.
+            </p>
+          )}
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Link
+              href="/customers"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-navy-900 hover:bg-gray-50"
+            >
+              고객·현장 관리로 이동
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!showProjectFirstGuide && (
+      <>
       <div className="flex flex-wrap gap-1 rounded-lg border border-gray-100 bg-white p-1">
         {VIEW_TABS.map((t) => (
           <button
@@ -452,7 +553,7 @@ export default function ProcessSchedulesWorkspace({
             ))}
           </select>
         </div>
-        {access.canViewAll && (
+        {(access.canViewAll || access.canViewTeam) && (
           <div>
             <label className="mb-1 block text-xs text-gray-500">팀</label>
             <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={inputClass}>
@@ -479,10 +580,10 @@ export default function ProcessSchedulesWorkspace({
           </div>
         )}
         <div>
-          <label className="mb-1 block text-xs text-gray-500">공정명</label>
+          <label className="mb-1 block text-xs text-gray-500">공종</label>
           <select value={processName} onChange={(e) => setProcessName(e.target.value)} className={inputClass}>
             <option value="">전체</option>
-            {PROCESS_NAME_SUGGESTIONS.map((p) => (
+            {processNameOptions.map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
@@ -538,15 +639,15 @@ export default function ProcessSchedulesWorkspace({
       )}
 
       {view === "byProject" && (
-        <GroupedView groups={byProjectGroups} onEventClick={(row) => setDetail(row)} emptyLabel="조건에 맞는 공정 일정이 없습니다." />
+        <GroupedView groups={byProjectGroups} onEventClick={(row) => setDetail(row)} emptyLabel="조건에 맞는 공사 일정이 없습니다." />
       )}
 
       {view === "byProcess" && (
-        <GroupedView groups={byProcessGroups} onEventClick={(row) => setDetail(row)} emptyLabel="조건에 맞는 공정 일정이 없습니다." />
+        <GroupedView groups={byProcessGroups} onEventClick={(row) => setDetail(row)} emptyLabel="조건에 맞는 공사 일정이 없습니다." />
       )}
 
       {view === "byEmployee" && (
-        <GroupedView groups={byEmployeeGroups} onEventClick={(row) => setDetail(row)} emptyLabel="조건에 맞는 공정 일정이 없습니다." />
+        <GroupedView groups={byEmployeeGroups} onEventClick={(row) => setDetail(row)} emptyLabel="조건에 맞는 공사 일정이 없습니다." />
       )}
 
       {view === "gantt" && (
@@ -566,11 +667,15 @@ export default function ProcessSchedulesWorkspace({
             <ProcessCard key={r.id} row={r} onClick={() => setDetail(r)} />
           ))}
           {visible.length === 0 && (
-            <p className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-gray-400">
-              조건에 맞는 공정 일정이 없습니다.
+            <p className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-gray-500">
+              {noSchedules
+                ? "등록된 공사 일정이 없습니다. 상단에서 공사 일정을 등록해 주세요."
+                : "조건에 맞는 공사 일정이 없습니다."}
             </p>
           )}
         </div>
+      )}
+      </>
       )}
 
       {formOpen && (
@@ -649,36 +754,51 @@ function ToastBanner({ message }: { message: string }) {
 
 function ProcessCard({ row, onClick }: { row: ProjectProcessSchedule; onClick: () => void }) {
   const delayed = isProcessDelayed(row);
+  const done = row.status === "완료";
+  const cancelled = row.status === "취소";
+  const tone = getProjectColor(row.project_id);
   return (
     <div
       onClick={onClick}
       draggable
       onDragStart={(e) => e.dataTransfer.setData("text/plain", row.id)}
       className={`cursor-pointer rounded-lg border p-3 text-xs transition hover:shadow-sm ${
-        delayed ? "border-red-300 bg-red-50" : "border-gray-100 bg-white"
-      } ${row.status === "완료" ? "opacity-60" : ""}`}
+        cancelled
+          ? "border-gray-300 bg-gray-100 opacity-70"
+          : delayed
+            ? `border-2 border-red-500 ${tone.bg}`
+            : done
+              ? "border-gray-200 bg-gray-50 opacity-75"
+              : `${tone.border} ${tone.bg}`
+      }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="rounded-full bg-navy-800/5 px-2 py-0.5 font-medium text-navy-800">{row.process_name}</span>
-        <span className={`rounded-full px-2 py-0.5 font-medium ${statusBadgeClass(row.status)}`}>{row.status}</span>
+        <p className={`truncate font-bold ${cancelled || done ? "text-gray-600" : tone.text}`}>
+          {done ? "✓ " : ""}
+          {projectSiteName(row)}
+        </p>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${statusBadgeClass(row.status)}`}>
+          {row.status}
+        </span>
       </div>
-      <p className="mt-1.5 font-medium text-gray-900">{row.title}</p>
-      <p className="mt-0.5 text-gray-500">
-        {row.projects?.name ?? "현장 미지정"} · {row.customers?.name ?? "-"}
+      <p className={`mt-1.5 font-semibold ${cancelled ? "text-gray-500 line-through" : "text-navy-900"}`}>
+        공종: {row.process_name}
       </p>
-      <p className="text-gray-400">
-        {new Date(row.start_at).toLocaleDateString("ko-KR")}
-        {row.end_at ? ` ~ ${new Date(row.end_at).toLocaleDateString("ko-KR")}` : ""}
+      <p className="mt-1 font-medium text-navy-900">
+        담당: {row.employees ? employeeLabel(row.employees) : "미배정"}
       </p>
-      {row.employees && <p className="text-gray-500">담당 {employeeLabel(row.employees)}</p>}
-      <div className="mt-1.5 h-1.5 w-full rounded-full bg-gray-100">
-        <div className="h-1.5 rounded-full bg-gold-500" style={{ width: `${row.progress}%` }} />
-      </div>
-      <p className="mt-0.5 text-right text-[10px] text-gray-400">{row.progress}%</p>
-      {(row.contractor_name || row.contractor_contact) && (
-        <p className="mt-1 text-gray-500">협력업체: {[row.contractor_name, row.contractor_contact].filter(Boolean).join(" · ")}</p>
+      <p className="mt-0.5 font-medium text-navy-800">
+        {new Date(row.start_at).toLocaleDateString("ko-KR")} {formatTimeRange(row)}
+      </p>
+      {row.title && (
+        <p className="mt-1 truncate text-gray-700">{row.title}</p>
       )}
-      {delayed && <p className="mt-1 font-semibold text-red-600">지연됨</p>}
+      <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/70">
+        <div className="h-1.5 rounded-full bg-navy-700" style={{ width: `${row.progress}%` }} />
+      </div>
+      {delayed && !cancelled && (
+        <p className="mt-1 font-semibold text-red-700">⚠ 지연</p>
+      )}
     </div>
   );
 }
@@ -796,9 +916,9 @@ function MonthGrid({
                     onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
                     onClick={() => onEventClick(r)}
                     className={chipClass(r)}
-                    title={r.title}
+                    title={`${projectSiteName(r)} / ${r.process_name} / ${r.title}`}
                   >
-                    {r.process_name} · {r.title}
+                    {chipLabel(r)}
                   </div>
                 ))}
                 {rows.length > 3 && <div className="px-1 text-[10px] text-gray-400">+{rows.length - 3}건 더보기</div>}
@@ -866,9 +986,16 @@ function WeekColumns({
               <div className={`mb-2 text-xs font-medium ${isToday ? "text-gold-600" : "text-gray-500"}`}>{formatDayLabel(d)}</div>
               <div className="space-y-1">
                 {rows.map((r) => (
-                  <div key={r.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)} onClick={() => onEventClick(r)} className={chipClass(r)}>
-                    <span className="mr-1 text-[10px] text-gray-400">{formatTime(r.start_at)}</span>
-                    {r.process_name} · {r.title}
+                  <div
+                    key={r.id}
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
+                    onClick={() => onEventClick(r)}
+                    className={chipClass(r)}
+                    title={`${projectSiteName(r)} / ${r.process_name}`}
+                  >
+                    <span className="mr-1 text-[10px] opacity-80">{formatTime(r.start_at)}</span>
+                    {chipLabel(r)}
                   </div>
                 ))}
                 {rows.length === 0 && <p className="text-[11px] text-gray-300">일정 없음</p>}
@@ -881,12 +1008,37 @@ function WeekColumns({
   );
 }
 
-function ganttBarClass(r: ProjectProcessSchedule): string {
+function ganttBarStyle(r: ProjectProcessSchedule): {
+  className: string;
+  style: CSSProperties;
+} {
   const delayed = isProcessDelayed(r);
-  const base = "cursor-pointer truncate rounded px-1 py-1 text-[10px] text-white";
-  if (delayed) return `${base} bg-red-500`;
-  if (r.status === "완료") return `${base} bg-emerald-500/80`;
-  return `${base} bg-navy-700`;
+  const done = r.status === "완료";
+  const cancelled = r.status === "취소";
+  const tone = getProjectColor(r.project_id);
+  const base = "cursor-pointer truncate rounded border px-1 py-1 text-[10px] font-semibold";
+  if (cancelled) {
+    return {
+      className: `${base} border-gray-300 bg-gray-200 text-gray-500 line-through`,
+      style: {},
+    };
+  }
+  if (done) {
+    return {
+      className: `${base} border-gray-200 bg-gray-100 text-gray-600 opacity-80`,
+      style: {},
+    };
+  }
+  if (delayed) {
+    return {
+      className: `${base} border-2 border-red-500`,
+      style: { backgroundColor: tone.bgHex, color: tone.textHex },
+    };
+  }
+  return {
+    className: `${base} border-transparent`,
+    style: { backgroundColor: tone.bgHex, color: tone.textHex },
+  };
 }
 
 function GanttView({
@@ -961,23 +1113,28 @@ function GanttView({
             const s = clamp(dayIndexInRange(r.start_at, rangeStart), 0, totalDays - 1);
             const e = clamp(dayIndexInRange(r.end_at ?? r.start_at, rangeStart), s, totalDays - 1);
             const span = e - s + 1;
+            const bar = ganttBarStyle(r);
             return (
               <Fragment key={r.id}>
                 <div
                   style={{ gridRow: i + 2, gridColumn: "1 / 2" }}
-                  className="sticky left-0 z-10 truncate bg-white pr-2 text-xs text-gray-700"
+                  className="sticky left-0 z-10 truncate bg-white pr-2 text-xs font-medium text-navy-900"
                   title={r.title}
                 >
-                  {r.projects?.name ? `${r.projects.name} · ` : ""}
-                  {r.process_name}
+                  {projectSiteName(r)} · {r.process_name}
                 </div>
                 <div
-                  style={{ gridRow: i + 2, gridColumn: `${s + 2} / span ${span}` }}
-                  className={ganttBarClass(r)}
+                  style={{
+                    gridRow: i + 2,
+                    gridColumn: `${s + 2} / span ${span}`,
+                    ...bar.style,
+                  }}
+                  className={bar.className}
                   onClick={() => onEventClick(r)}
-                  title={r.title}
+                  title={`${projectSiteName(r)} / ${r.process_name} / ${r.title}`}
                 >
-                  {r.title}
+                  {r.status === "완료" ? "✓ " : ""}
+                  {projectSiteName(r)} · {r.process_name}
                 </div>
               </Fragment>
             );
@@ -1032,7 +1189,9 @@ function ProcessFormModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-navy-900">{editing ? "공정 일정 수정" : "공정 일정 등록"}</h3>
+          <h3 className="text-base font-semibold text-navy-900">
+            {editing ? "공사 일정 수정" : "공사 일정 등록"}
+          </h3>
           <button type="button" onClick={onClose} className="text-sm text-gray-400">
             닫기
           </button>
@@ -1274,6 +1433,11 @@ function DetailModal({
   const [showDelete, setShowDelete] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
   const delayed = isProcessDelayed(row);
+  const address = row.location || row.projects?.address || row.customers?.address || "-";
+  const memo =
+    [row.completion_note, row.checklist_note, row.description]
+      .filter(Boolean)
+      .join("\n\n") || null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -1281,12 +1445,12 @@ function DetailModal({
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-base font-semibold text-navy-900">{row.title}</h3>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs font-medium text-gray-700">
               {row.process_name} · {new Date(row.start_at).toLocaleString("ko-KR")}
               {row.end_at ? ` ~ ${new Date(row.end_at).toLocaleString("ko-KR")}` : ""}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-sm text-gray-400">
+          <button type="button" onClick={onClose} className="text-sm font-medium text-gray-600">
             닫기
           </button>
         </div>
@@ -1298,49 +1462,71 @@ function DetailModal({
 
         {dependency && isProcessDelayed(dependency) && (
           <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            선행 공정({dependency.process_name})이 지연되었습니다.
+            선행 공종({dependency.process_name})이 지연되었습니다.
           </p>
         )}
 
-        <dl className="mt-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-gray-400">현장</dt>
-            <dd>
+        <dl className="mt-4 space-y-2.5 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">현장명</dt>
+            <dd className="text-right font-semibold text-navy-900">
               {row.project_id ? (
-                <Link href={`/projects/${row.project_id}/schedule`} className="text-navy-800 underline">
-                  {row.projects?.name ?? "-"}
+                <Link href={`/projects/${row.project_id}/schedule`} className="underline">
+                  {projectSiteName(row)}
                 </Link>
               ) : (
-                "미지정"
+                projectSiteName(row)
               )}
             </dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-400">고객</dt>
-            <dd>
-              <Link href={`/customers/${row.customer_id}`} className="text-navy-800 underline">
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">고객명</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              <Link href={`/customers/${row.customer_id}`} className="underline">
                 {row.customers?.name ?? "-"}
               </Link>
             </dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-400">담당자</dt>
-            <dd>{row.employees ? employeeLabel(row.employees) : "미배정"}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">주소</dt>
+            <dd className="text-right font-semibold text-navy-900">{address}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-400">장소</dt>
-            <dd>{row.location ?? "-"}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">공종</dt>
+            <dd className="text-right font-semibold text-navy-900">{row.process_name}</dd>
           </div>
-          {(row.contractor_name || row.contractor_contact) && (
-            <div className="flex justify-between">
-              <dt className="text-gray-400">협력업체</dt>
-              <dd>{[row.contractor_name, row.contractor_contact].filter(Boolean).join(" · ")}</dd>
-            </div>
-          )}
-          {row.description && (
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">담당자</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {row.employees ? employeeLabel(row.employees) : "미배정"}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">협력업체</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {[row.contractor_name, row.contractor_contact].filter(Boolean).join(" · ") || "-"}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">시작일시</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {new Date(row.start_at).toLocaleString("ko-KR")}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">종료일시</dt>
+            <dd className="text-right font-semibold text-navy-900">
+              {row.end_at ? new Date(row.end_at).toLocaleString("ko-KR") : "-"}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 font-medium text-gray-600">상태</dt>
+            <dd className="text-right font-semibold text-navy-900">{row.status}</dd>
+          </div>
+          {memo && (
             <div>
-              <dt className="text-gray-400">설명</dt>
-              <dd className="mt-1 whitespace-pre-wrap text-gray-700">{row.description}</dd>
+              <dt className="font-medium text-gray-600">메모</dt>
+              <dd className="mt-1 whitespace-pre-wrap font-medium text-navy-900">{memo}</dd>
             </div>
           )}
         </dl>
