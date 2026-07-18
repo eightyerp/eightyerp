@@ -429,7 +429,7 @@ export type ErpQuoteType = "창호" | "인테리어" | "기타";
 
 export type ErpQuoteMode = "simple" | "detailed";
 
-export type ErpQuoteCostType = "자재" | "시공" | "기타";
+export type ErpQuoteCostType = "자재" | "시공" | "시공+자재" | "기타";
 
 export type ErpQuoteStatus =
   | "작성중"
@@ -512,6 +512,8 @@ export type ErpQuoteItem = {
   amount: number;
   cost_type?: ErpQuoteCostType | string;
   is_lx_material?: boolean;
+  /** 시공+자재 + LX 시 할인 대상 자재금액. 자재 구분은 0이어도 전체 금액 적용 */
+  lx_discount_base_amount?: number;
   sort_order: number;
   created_at: string;
   updated_at: string;

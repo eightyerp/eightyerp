@@ -14,6 +14,7 @@ import {
   QUOTE_FILES_BUCKET,
   QUOTE_MODES,
   buildQuoteGuideMessage,
+  canCostTypeHaveLx,
   computeQuoteAmounts,
   type QuoteCostType,
   type QuoteMode,
@@ -95,6 +96,7 @@ export type QuoteItemInput = {
   amount: number;
   cost_type: QuoteCostType;
   is_lx_material: boolean;
+  lx_discount_base_amount: number;
 };
 
 function parseLxDiscountRate(value: FormDataEntryValue | null): number {
@@ -201,7 +203,24 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
       const wantsLx = ["on", "true", "1", true].includes(
         r.is_lx_material as string | boolean,
       );
-      const is_lx_material = cost_type === "자재" && wantsLx;
+      const is_lx_material = canCostTypeHaveLx(cost_type) && wantsLx;
+
+      let lx_discount_base_amount = Math.max(
+        0,
+        Math.round(Number(r.lx_discount_base_amount ?? 0) || 0),
+      );
+      if (!is_lx_material) {
+        lx_discount_base_amount = 0;
+      } else if (cost_type === "자재") {
+        // 자재는 항목 전체가 대상 — 저장값은 0이어도 계산 시 amount 사용
+        lx_discount_base_amount = 0;
+      } else if (cost_type === "시공+자재") {
+        if (lx_discount_base_amount > amount) {
+          throw new Error(
+            "LX 할인 대상 자재금액은 항목금액을 초과할 수 없습니다.",
+          );
+        }
+      }
 
       return {
         trade_name: trade || itemName,
@@ -214,6 +233,7 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
         amount,
         cost_type,
         is_lx_material,
+        lx_discount_base_amount,
       } satisfies QuoteItemInput;
     })
     .filter((x): x is QuoteItemInput => Boolean(x));
@@ -446,6 +466,7 @@ async function replaceQuoteItems(
       amount: item.amount,
       cost_type: item.cost_type,
       is_lx_material: item.is_lx_material,
+      lx_discount_base_amount: item.lx_discount_base_amount,
       sort_order: index,
     })),
   );
@@ -672,7 +693,11 @@ export async function createQuoteVersion(input: {
             : "기타"
         ),
         is_lx_material:
-          i.cost_type === "자재" ? Boolean(i.is_lx_material) : false,
+          canCostTypeHaveLx(i.cost_type) && Boolean(i.is_lx_material),
+        lx_discount_base_amount: Math.max(
+          0,
+          Math.round(Number(i.lx_discount_base_amount ?? 0) || 0),
+        ),
       })),
     );
   }
@@ -793,6 +818,7 @@ export type QuoteSharePayload = {
     amount: number;
     cost_type?: string;
     is_lx_material?: boolean;
+    lx_discount_base_amount?: number;
     sort_order: number;
   }[];
   files: {

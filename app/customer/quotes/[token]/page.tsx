@@ -1,5 +1,8 @@
 import { createSignedQuoteFileUrl, getQuoteShareByToken } from "@/lib/crm/quote-mgmt";
-import { ERP_QUOTE_STATUS_BADGE } from "@/lib/crm/quote-constants";
+import {
+  ERP_QUOTE_STATUS_BADGE,
+  quoteDocumentTitle,
+} from "@/lib/crm/quote-constants";
 
 type Props = {
   params: Promise<{ token: string }>;
@@ -124,17 +127,17 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
             </div>
           )}
 
-          <p className="mt-4 text-xs text-gray-400">
+          <p className="mt-4 text-xs text-gray-700">
             ※ 내부 메모·단가 등 원가 정보는 표시되지 않습니다.
           </p>
         </section>
 
         {(share.items?.length ?? 0) > 0 && (
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-navy-900">
-              {share.quote_mode === "simple" ? "항목별 금액" : "공종별 금액"}
+            <h2 className="text-base font-semibold text-gray-900">
+              {quoteDocumentTitle(share.quote_mode)}
             </h2>
-            <ul className="mt-3 divide-y divide-gray-100">
+            <ul className="mt-3 divide-y divide-gray-200">
               {share.items.map((item, idx) => {
                 const title =
                   share.quote_mode === "simple"
@@ -143,14 +146,13 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
                 return (
                   <li
                     key={`${title}-${idx}`}
-                    className="flex items-center justify-between gap-3 py-2 text-sm"
+                    className="flex items-start justify-between gap-3 py-3 text-sm"
                   >
-                    <div>
-                      <p className="font-medium text-gray-900">{title}</p>
-                      <p className="text-xs text-gray-500">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900">{title}</p>
+                      <p className="mt-0.5 text-xs text-gray-700">
                         {[
                           item.cost_type || "기타",
-                          item.is_lx_material ? "LX 자재" : null,
                           share.quote_mode !== "simple" && item.item_name
                             ? item.item_name
                             : null,
@@ -158,8 +160,19 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
+                      {item.is_lx_material && (
+                        <p className="mt-1">
+                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-300">
+                            LX 자재
+                            {item.cost_type === "시공+자재" &&
+                            (item.lx_discount_base_amount ?? 0) > 0
+                              ? ` · 할인대상 ${(item.lx_discount_base_amount ?? 0).toLocaleString("ko-KR")}원`
+                              : ""}
+                          </span>
+                        </p>
+                      )}
                     </div>
-                    <p className="font-medium text-navy-800">
+                    <p className="shrink-0 font-semibold text-gray-900">
                       {(item.amount ?? 0).toLocaleString("ko-KR")}원
                     </p>
                   </li>

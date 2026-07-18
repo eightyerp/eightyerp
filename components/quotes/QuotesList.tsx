@@ -428,7 +428,7 @@ export default function QuotesList({
                       </td>
                       <td className="px-4 py-3">
                         {quote.is_lx_material ? (
-                          <span className="rounded-full bg-gold-500/15 px-2 py-0.5 text-xs font-semibold text-navy-800">
+                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300">
                             LX
                           </span>
                         ) : (

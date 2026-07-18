@@ -13,9 +13,12 @@ import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
   QUOTE_COST_TYPES,
+  QUOTE_DOCUMENT_TITLES,
   QUOTE_MODE_LABELS,
   TRADE_SUGGESTIONS,
+  canCostTypeHaveLx,
   computeQuoteAmounts,
+  quoteDocumentTitle,
   type QuoteCostType,
   type QuoteMode,
 } from "@/lib/crm/quote-constants";
@@ -48,6 +51,7 @@ type TradeItemRow = {
   amount: string;
   cost_type: QuoteCostType;
   is_lx_material: boolean;
+  lx_discount_base_amount: string;
 };
 
 const STEPS = [
@@ -72,6 +76,8 @@ function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
       ? source.cost_type
       : "기타"
   ) as QuoteCostType;
+  const isLx =
+    canCostTypeHaveLx(costType) && Boolean(source?.is_lx_material);
   return {
     key: rowKey(),
     trade_name: source?.trade_name ?? "",
@@ -82,7 +88,8 @@ function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
     unit_price: source?.unit_price ?? "0",
     amount: source?.amount ?? "0",
     cost_type: costType,
-    is_lx_material: costType === "자재" ? Boolean(source?.is_lx_material) : false,
+    is_lx_material: isLx,
+    lx_discount_base_amount: source?.lx_discount_base_amount ?? "0",
   };
 }
 
@@ -179,6 +186,7 @@ export default function QuoteWizardForm({
         amount: String(item.amount),
         cost_type: (item.cost_type as QuoteCostType) || "기타",
         is_lx_material: Boolean(item.is_lx_material),
+        lx_discount_base_amount: String(item.lx_discount_base_amount ?? 0),
       }),
     );
     if (mapped.length === 0 && resolveInitialMode(initialQuote) === "simple") {
@@ -197,7 +205,8 @@ export default function QuoteWizardForm({
     const parsedItems = items.map((row) => ({
       amount: toNumber(row.amount),
       cost_type: row.cost_type,
-      is_lx_material: row.cost_type === "자재" && row.is_lx_material,
+      is_lx_material: canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
+      lx_discount_base_amount: toNumber(row.lx_discount_base_amount),
     }));
     return computeQuoteAmounts({
       items: isSimple || hasItems ? parsedItems : [],
@@ -251,8 +260,12 @@ export default function QuoteWizardForm({
       prev.map((row) => {
         if (row.key !== key) return row;
         const next = { ...row, ...patch };
-        if (patch.cost_type && patch.cost_type !== "자재") {
+        if (patch.cost_type !== undefined && !canCostTypeHaveLx(next.cost_type)) {
           next.is_lx_material = false;
+          next.lx_discount_base_amount = "0";
+        }
+        if (patch.is_lx_material === false) {
+          next.lx_discount_base_amount = "0";
         }
         if (
           quoteMode === "detailed" &&
@@ -316,6 +329,18 @@ export default function QuoteWizardForm({
         setStepError("공종 내역을 1개 이상 추가해 주세요.");
         return;
       }
+      for (const row of items) {
+        if (
+          row.cost_type === "시공+자재" &&
+          row.is_lx_material &&
+          toNumber(row.lx_discount_base_amount) > toNumber(row.amount)
+        ) {
+          setStepError(
+            "LX 할인 대상 자재금액은 항목금액을 초과할 수 없습니다.",
+          );
+          return;
+        }
+      }
       const rate = toNumber(lxDiscountRate);
       if (rate < 0 || rate > 100) {
         setStepError("LX 자재 할인율은 0~100 사이여야 합니다.");
@@ -345,7 +370,11 @@ export default function QuoteWizardForm({
         quoteMode === "detailed" ? toNumber(row.unit_price) : 0,
       amount: toNumber(row.amount),
       cost_type: row.cost_type,
-      is_lx_material: row.cost_type === "자재" && row.is_lx_material,
+      is_lx_material: canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
+      lx_discount_base_amount:
+        row.cost_type === "시공+자재" && row.is_lx_material
+          ? toNumber(row.lx_discount_base_amount)
+          : 0,
     })),
   );
 
@@ -646,24 +675,31 @@ export default function QuoteWizardForm({
                 : ""}
             </p>
 
+            <h3 className="text-sm font-semibold text-gray-900">
+              {QUOTE_DOCUMENT_TITLES[quoteMode]}
+            </h3>
+
             {isSimple ? (
               <div className="space-y-3">
-                <div className="overflow-x-auto rounded-lg border border-gray-100">
-                  <table className="w-full min-w-[640px] text-left text-sm">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full min-w-[720px] text-left text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50 text-xs text-gray-500">
+                      <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-600">
                         <th className="px-3 py-2 font-medium">항목명</th>
                         <th className="px-3 py-2 font-medium">구분</th>
                         <th className="px-3 py-2 font-medium text-right">금액</th>
                         <th className="px-3 py-2 font-medium text-center">
                           LX 자재
                         </th>
+                        <th className="px-3 py-2 font-medium text-right">
+                          LX 할인 대상 자재금액
+                        </th>
                         <th className="px-3 py-2" />
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((row) => (
-                        <tr key={row.key} className="border-b border-gray-50">
+                        <tr key={row.key} className="border-b border-gray-100">
                           <td className="px-3 py-2">
                             <input
                               value={row.item_name}
@@ -674,7 +710,7 @@ export default function QuoteWizardForm({
                                 })
                               }
                               placeholder="항목명"
-                              className={cellInputClass}
+                              className={`${cellInputClass} text-gray-900`}
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -685,7 +721,7 @@ export default function QuoteWizardForm({
                                   cost_type: e.target.value as QuoteCostType,
                                 })
                               }
-                              className={cellInputClass}
+                              className={`${cellInputClass} text-gray-900`}
                             >
                               {QUOTE_COST_TYPES.map((t) => (
                                 <option key={t} value={t}>
@@ -701,14 +737,14 @@ export default function QuoteWizardForm({
                                 updateRow(row.key, { amount: e.target.value })
                               }
                               inputMode="numeric"
-                              className={`${cellInputClass} text-right font-medium`}
+                              className={`${cellInputClass} text-right font-medium text-gray-900`}
                             />
                           </td>
                           <td className="px-3 py-2 text-center">
                             <input
                               type="checkbox"
                               checked={row.is_lx_material}
-                              disabled={row.cost_type !== "자재"}
+                              disabled={!canCostTypeHaveLx(row.cost_type)}
                               onChange={(e) =>
                                 updateRow(row.key, {
                                   is_lx_material: e.target.checked,
@@ -718,10 +754,28 @@ export default function QuoteWizardForm({
                             />
                           </td>
                           <td className="px-3 py-2 text-right">
+                            {row.cost_type === "시공+자재" &&
+                            row.is_lx_material ? (
+                              <input
+                                value={row.lx_discount_base_amount}
+                                onChange={(e) =>
+                                  updateRow(row.key, {
+                                    lx_discount_base_amount: e.target.value,
+                                  })
+                                }
+                                inputMode="numeric"
+                                placeholder="자재금액"
+                                className={`${cellInputClass} text-right font-medium text-gray-900`}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-700">-</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">
                             <button
                               type="button"
                               onClick={() => removeRow(row.key)}
-                              className="text-xs text-red-500 hover:text-red-700"
+                              className="text-xs font-medium text-red-600 hover:text-red-700"
                             >
                               삭제
                             </button>
@@ -782,10 +836,10 @@ export default function QuoteWizardForm({
                   </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-lg border border-gray-100">
-                  <table className="w-full min-w-[860px] text-left text-sm">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full min-w-[980px] text-left text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50 text-xs text-gray-500">
+                      <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-600">
                         <th className="px-3 py-2 font-medium">공종</th>
                         <th className="px-3 py-2 font-medium">품목</th>
                         <th className="px-3 py-2 font-medium">구분</th>
@@ -796,6 +850,9 @@ export default function QuoteWizardForm({
                         <th className="px-3 py-2 font-medium text-center">
                           LX 자재
                         </th>
+                        <th className="px-3 py-2 font-medium text-right">
+                          LX 할인 대상 자재금액
+                        </th>
                         <th className="px-3 py-2" />
                       </tr>
                     </thead>
@@ -803,8 +860,8 @@ export default function QuoteWizardForm({
                       {items.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={9}
-                            className="px-3 py-8 text-center text-sm text-gray-400"
+                            colSpan={10}
+                            className="px-3 py-8 text-center text-sm text-gray-700"
                           >
                             {isInterior
                               ? "공종을 추가해 주세요."
@@ -813,7 +870,7 @@ export default function QuoteWizardForm({
                         </tr>
                       ) : (
                         items.map((row) => (
-                          <tr key={row.key} className="border-b border-gray-50">
+                          <tr key={row.key} className="border-b border-gray-100">
                             <td className="px-3 py-2">
                               <input
                                 value={row.trade_name}
@@ -822,7 +879,7 @@ export default function QuoteWizardForm({
                                     trade_name: e.target.value,
                                   })
                                 }
-                                className={cellInputClass}
+                                className={`${cellInputClass} text-gray-900`}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -834,7 +891,7 @@ export default function QuoteWizardForm({
                                   })
                                 }
                                 placeholder="선택"
-                                className={cellInputClass}
+                                className={`${cellInputClass} text-gray-900`}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -846,7 +903,7 @@ export default function QuoteWizardForm({
                                       .value as QuoteCostType,
                                   })
                                 }
-                                className={cellInputClass}
+                                className={`${cellInputClass} text-gray-900`}
                               >
                                 {QUOTE_COST_TYPES.map((t) => (
                                   <option key={t} value={t}>
@@ -864,7 +921,7 @@ export default function QuoteWizardForm({
                                   })
                                 }
                                 inputMode="decimal"
-                                className={`${cellInputClass} w-20`}
+                                className={`${cellInputClass} w-20 text-gray-900`}
                               />
                             </td>
                             <td className="px-3 py-2">
@@ -874,7 +931,7 @@ export default function QuoteWizardForm({
                                   updateRow(row.key, { unit: e.target.value })
                                 }
                                 placeholder="㎡, 개"
-                                className={`${cellInputClass} w-16`}
+                                className={`${cellInputClass} w-16 text-gray-900`}
                               />
                             </td>
                             <td className="px-3 py-2 text-right">
@@ -886,7 +943,7 @@ export default function QuoteWizardForm({
                                   })
                                 }
                                 inputMode="numeric"
-                                className={`${cellInputClass} text-right`}
+                                className={`${cellInputClass} text-right text-gray-900`}
                               />
                             </td>
                             <td className="px-3 py-2 text-right">
@@ -898,14 +955,14 @@ export default function QuoteWizardForm({
                                   })
                                 }
                                 inputMode="numeric"
-                                className={`${cellInputClass} text-right font-medium`}
+                                className={`${cellInputClass} text-right font-medium text-gray-900`}
                               />
                             </td>
                             <td className="px-3 py-2 text-center">
                               <input
                                 type="checkbox"
                                 checked={row.is_lx_material}
-                                disabled={row.cost_type !== "자재"}
+                                disabled={!canCostTypeHaveLx(row.cost_type)}
                                 onChange={(e) =>
                                   updateRow(row.key, {
                                     is_lx_material: e.target.checked,
@@ -915,10 +972,28 @@ export default function QuoteWizardForm({
                               />
                             </td>
                             <td className="px-3 py-2 text-right">
+                              {row.cost_type === "시공+자재" &&
+                              row.is_lx_material ? (
+                                <input
+                                  value={row.lx_discount_base_amount}
+                                  onChange={(e) =>
+                                    updateRow(row.key, {
+                                      lx_discount_base_amount: e.target.value,
+                                    })
+                                  }
+                                  inputMode="numeric"
+                                  placeholder="자재금액"
+                                  className={`${cellInputClass} text-right font-medium text-gray-900`}
+                                />
+                              ) : (
+                                <span className="text-xs text-gray-700">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
                               <button
                                 type="button"
                                 onClick={() => removeRow(row.key)}
-                                className="text-xs text-red-500 hover:text-red-700"
+                                className="text-xs font-medium text-red-600 hover:text-red-700"
                               >
                                 삭제
                               </button>
@@ -1039,7 +1114,7 @@ export default function QuoteWizardForm({
               <SummaryItem label="견적유형" value={quoteType || "-"} />
               <SummaryItem
                 label="작성방식"
-                value={QUOTE_MODE_LABELS[quoteMode]}
+                value={quoteDocumentTitle(quoteMode)}
               />
               <SummaryItem label="견적명" value={title || "-"} />
               <SummaryItem

@@ -17,6 +17,7 @@ import { formatEmployeeLabel } from "@/lib/crm/constants";
 import {
   buildQuoteGuideMessage,
   ERP_QUOTE_STATUS_BADGE,
+  quoteDocumentTitle,
 } from "@/lib/crm/quote-constants";
 import type {
   Employee,
@@ -243,7 +244,7 @@ export default function QuoteDetailView({
                 {quote.quote_type} · v{quote.version_number}
               </span>
               {quote.is_lx_material && (
-                <span className="inline-flex rounded-full bg-gold-500/15 px-2.5 py-1 text-xs font-semibold text-navy-800">
+                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-300">
                   LX 자재
                 </span>
               )}
@@ -465,71 +466,81 @@ export default function QuoteDetailView({
       {/* Items */}
       {items.length > 0 && (
         <section className="dashboard-card p-5">
-          <h3 className="dashboard-section-title">
-            {quote.quote_mode === "simple" ? "항목 내역" : "공종 내역"}
+          <h3 className="dashboard-section-title text-gray-900">
+            {quoteDocumentTitle(quote.quote_mode)}
           </h3>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-500">
-                  <th className="py-2 font-medium">
+                <tr className="border-b border-gray-200 text-xs text-gray-600">
+                  <th className="py-2 font-semibold">
                     {quote.quote_mode === "simple" ? "항목명" : "공종"}
                   </th>
                   {quote.quote_mode !== "simple" && (
-                    <th className="py-2 font-medium">품목</th>
+                    <th className="py-2 font-semibold">품목</th>
                   )}
-                  <th className="py-2 font-medium">구분</th>
+                  <th className="py-2 font-semibold">구분</th>
                   {quote.quote_mode !== "simple" && (
                     <>
-                      <th className="py-2 font-medium">수량</th>
-                      <th className="py-2 font-medium">단위</th>
-                      <th className="py-2 font-medium text-right">단가</th>
+                      <th className="py-2 font-semibold">수량</th>
+                      <th className="py-2 font-semibold">단위</th>
+                      <th className="py-2 font-semibold text-right">단가</th>
                     </>
                   )}
-                  <th className="py-2 font-medium text-right">금액</th>
-                  <th className="py-2 font-medium text-center">LX</th>
+                  <th className="py-2 font-semibold text-right">금액</th>
+                  <th className="py-2 font-semibold text-center">LX</th>
+                  <th className="py-2 font-semibold text-right">
+                    LX 할인 대상 자재금액
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-50">
-                    <td className="py-2">
+                  <tr key={item.id} className="border-b border-gray-100">
+                    <td className="py-2 font-medium text-gray-900">
                       {quote.quote_mode === "simple"
                         ? item.item_name || item.trade_name
                         : item.trade_name}
                     </td>
                     {quote.quote_mode !== "simple" && (
-                      <td className="py-2 text-gray-600">
+                      <td className="py-2 text-gray-700">
                         {item.item_name ?? "-"}
                       </td>
                     )}
-                    <td className="py-2 text-gray-600">
+                    <td className="py-2 text-gray-700">
                       {item.cost_type ?? "기타"}
                     </td>
                     {quote.quote_mode !== "simple" && (
                       <>
-                        <td className="py-2 text-gray-600">
+                        <td className="py-2 text-gray-700">
                           {item.quantity ?? "-"}
                         </td>
-                        <td className="py-2 text-gray-600">
+                        <td className="py-2 text-gray-700">
                           {item.unit ?? "-"}
                         </td>
-                        <td className="py-2 text-right text-gray-600">
+                        <td className="py-2 text-right font-medium text-gray-900">
                           {formatMoney(item.unit_price)}
                         </td>
                       </>
                     )}
-                    <td className="py-2 text-right font-medium text-gray-900">
+                    <td className="py-2 text-right font-semibold text-gray-900">
                       {formatMoney(item.amount)}
                     </td>
                     <td className="py-2 text-center text-xs">
                       {item.is_lx_material ? (
-                        <span className="rounded-full bg-gold-500/15 px-2 py-0.5 font-semibold text-navy-800">
+                        <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-300">
                           LX
                         </span>
                       ) : (
-                        "-"
+                        <span className="text-gray-700">-</span>
                       )}
+                    </td>
+                    <td className="py-2 text-right font-medium text-gray-900">
+                      {item.is_lx_material && item.cost_type === "시공+자재"
+                        ? formatMoney(item.lx_discount_base_amount ?? 0)
+                        : item.is_lx_material && item.cost_type === "자재"
+                          ? formatMoney(item.amount)
+                          : "-"}
                     </td>
                   </tr>
                 ))}
@@ -537,15 +548,15 @@ export default function QuoteDetailView({
               <tfoot>
                 <tr>
                   <td
-                    colSpan={quote.quote_mode === "simple" ? 3 : 6}
-                    className="py-2 text-right font-medium text-gray-500"
+                    colSpan={quote.quote_mode === "simple" ? 4 : 7}
+                    className="py-2 text-right font-medium text-gray-700"
                   >
                     합계
                   </td>
                   <td className="py-2 text-right font-bold text-gray-900">
                     {formatMoney(itemsSum)}
                   </td>
-                  <td />
+                  <td colSpan={2} />
                 </tr>
               </tfoot>
             </table>

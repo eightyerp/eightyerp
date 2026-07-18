@@ -48,13 +48,50 @@ export const INTERIOR_TRADE_SUGGESTIONS = TRADE_SUGGESTIONS;
 export const QUOTE_MODES = ["simple", "detailed"] as const;
 export type QuoteMode = (typeof QUOTE_MODES)[number];
 
-export const QUOTE_COST_TYPES = ["자재", "시공", "기타"] as const;
+export const QUOTE_COST_TYPES = ["자재", "시공", "시공+자재", "기타"] as const;
 export type QuoteCostType = (typeof QUOTE_COST_TYPES)[number];
+
+/** LX 체크 가능한 구분 */
+export const QUOTE_LX_COST_TYPES = ["자재", "시공+자재"] as const;
 
 export const QUOTE_MODE_LABELS: Record<QuoteMode, string> = {
   simple: "간편견적",
   detailed: "상세견적",
 };
+
+/** 항목 표/문서 섹션 제목 */
+export const QUOTE_DOCUMENT_TITLES: Record<QuoteMode, string> = {
+  simple: "간편견적서",
+  detailed: "상세견적서",
+};
+
+export function quoteDocumentTitle(mode?: string | null): string {
+  return mode === "detailed"
+    ? QUOTE_DOCUMENT_TITLES.detailed
+    : QUOTE_DOCUMENT_TITLES.simple;
+}
+
+export function canCostTypeHaveLx(costType?: string | null): boolean {
+  return (QUOTE_LX_COST_TYPES as readonly string[]).includes(costType ?? "");
+}
+
+/**
+ * LX 할인 대상 금액 (항목 단위)
+ * - 자재 + LX: 항목 전체 금액 (lx_discount_base_amount=0 이어도 호환)
+ * - 시공+자재 + LX: 사용자가 입력한 lx_discount_base_amount
+ */
+export function lxDiscountBaseForItem(row: {
+  amount: number;
+  cost_type?: string | null;
+  is_lx_material?: boolean | null;
+  lx_discount_base_amount?: number | null;
+}): number {
+  if (!row.is_lx_material || !canCostTypeHaveLx(row.cost_type)) return 0;
+  const amount = Math.max(0, Math.round(Number(row.amount) || 0));
+  if (row.cost_type === "자재") return amount;
+  const base = Math.max(0, Math.round(Number(row.lx_discount_base_amount) || 0));
+  return Math.min(base, amount);
+}
 
 /** 화면·서버 공통 금액 계산 (클라이언트 최종금액을 신뢰하지 않음) */
 export function computeQuoteAmounts(input: {
@@ -62,6 +99,7 @@ export function computeQuoteAmounts(input: {
     amount: number;
     cost_type?: string | null;
     is_lx_material?: boolean | null;
+    lx_discount_base_amount?: number | null;
   }>;
   /** 항목이 없을 때(상세·선택 공종) 사용할 총견적금액 */
   fallbackTotal?: number;
@@ -89,15 +127,10 @@ export function computeQuoteAmounts(input: {
     ? Math.min(100, Math.max(0, Math.round(rateRaw * 100) / 100))
     : 0;
 
-  const lxMaterialSum = input.items
-    .filter(
-      (row) =>
-        row.cost_type === "자재" && Boolean(row.is_lx_material),
-    )
-    .reduce(
-      (sum, row) => sum + Math.max(0, Math.round(Number(row.amount) || 0)),
-      0,
-    );
+  const lxMaterialSum = input.items.reduce(
+    (sum, row) => sum + lxDiscountBaseForItem(row),
+    0,
+  );
 
   const lxDiscountAmount = Math.round((lxMaterialSum * lxDiscountRate) / 100);
   const discountAmount = Math.max(
@@ -106,7 +139,7 @@ export function computeQuoteAmounts(input: {
   );
   const finalAmount = Math.max(0, total - discountAmount - lxDiscountAmount);
   const isLxMaterial = input.items.some(
-    (row) => row.cost_type === "자재" && Boolean(row.is_lx_material),
+    (row) => Boolean(row.is_lx_material) && canCostTypeHaveLx(row.cost_type),
   );
 
   return {
