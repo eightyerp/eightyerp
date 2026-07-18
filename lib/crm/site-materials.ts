@@ -9,7 +9,8 @@ import {
   MATERIAL_MAX_IMAGES,
   PROJECT_MATERIALS_BUCKET,
 } from "@/lib/crm/material-constants";
-import type { ProjectMaterial } from "@/types/database";
+import { writeMaterialHistory } from "@/lib/crm/site-material-ops";
+import type { MaterialCatalogItem, ProjectMaterial } from "@/types/database";
 
 function emptyToNull(value: string | null | undefined): string | null {
   const text = (value ?? "").trim();
@@ -73,14 +74,19 @@ export type SiteMaterialFormInput = {
   application_location: string | null;
   quantity: number | null;
   unit: string | null;
-  base_price: number;
+  unit_price: number;
   additional_price: number;
   supplier: string | null;
   delivery_expected_at: string | null;
+  expected_delivery_at: string | null;
+  order_status: string;
+  order_note: string | null;
+  note: string | null;
   staff_note: string | null;
   site_note: string | null;
   is_active: boolean;
   save_to_catalog: boolean;
+  force_save_catalog: boolean;
 };
 
 export function parseSiteMaterialForm(formData: FormData): SiteMaterialFormInput {
@@ -90,6 +96,14 @@ export function parseSiteMaterialForm(formData: FormData): SiteMaterialFormInput
   if (!customerId) throw new Error("고객 정보가 없습니다.");
   if (!categoryId) throw new Error("자재분류를 선택해 주세요.");
   if (!productName) throw new Error("제품명을 입력해 주세요.");
+
+  const unitPriceRaw =
+    formData.get("unit_price") ?? formData.get("base_price");
+  const delivery =
+    emptyToNull(String(formData.get("expected_delivery_at") ?? "")) ||
+    emptyToNull(String(formData.get("delivery_expected_at") ?? ""));
+  const orderStatus =
+    emptyToNull(String(formData.get("order_status") ?? "")) || "미발주";
 
   return {
     customer_id: customerId,
@@ -109,68 +123,35 @@ export function parseSiteMaterialForm(formData: FormData): SiteMaterialFormInput
     ),
     quantity: parseQuantity(formData.get("quantity")),
     unit: emptyToNull(String(formData.get("unit") ?? "")),
-    base_price: parsePrice(formData.get("base_price"), "기본단가"),
+    unit_price: parsePrice(unitPriceRaw, "단가"),
     additional_price: parsePrice(formData.get("additional_price"), "추가금액"),
     supplier: emptyToNull(String(formData.get("supplier") ?? "")),
-    delivery_expected_at: emptyToNull(
-      String(formData.get("delivery_expected_at") ?? ""),
-    ),
+    delivery_expected_at: delivery,
+    expected_delivery_at: delivery,
+    order_status: orderStatus,
+    order_note: emptyToNull(String(formData.get("order_note") ?? "")),
+    note:
+      emptyToNull(String(formData.get("note") ?? "")) ||
+      emptyToNull(String(formData.get("site_note") ?? "")) ||
+      emptyToNull(String(formData.get("staff_note") ?? "")),
     staff_note: emptyToNull(String(formData.get("staff_note") ?? "")),
-    site_note: emptyToNull(String(formData.get("site_note") ?? "")),
+    site_note:
+      emptyToNull(String(formData.get("site_note") ?? "")) ||
+      emptyToNull(String(formData.get("note") ?? "")),
     is_active: ["on", "true", "1"].includes(
       String(formData.get("is_active") ?? "true").toLowerCase(),
     ),
     save_to_catalog: ["on", "true", "1"].includes(
       String(formData.get("save_to_catalog") ?? "").toLowerCase(),
     ),
+    force_save_catalog: ["on", "true", "1"].includes(
+      String(formData.get("force_save_catalog") ?? "").toLowerCase(),
+    ),
   };
 }
 
 const SELECT =
   "*, material_categories (*), project_material_images (*)";
-
-export async function listCustomerMaterials(
-  customerId: string,
-): Promise<ProjectMaterial[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("project_materials")
-    .select(SELECT)
-    .eq("customer_id", customerId)
-    .is("deleted_at", null)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as ProjectMaterial[]).map(sortImages);
-}
-
-export async function listProjectIdMaterials(
-  projectId: string,
-): Promise<ProjectMaterial[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("project_materials")
-    .select(SELECT)
-    .eq("project_id", projectId)
-    .is("deleted_at", null)
-    .order("sort_order", { ascending: true });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as ProjectMaterial[]).map(sortImages);
-}
-
-export async function getSiteMaterial(
-  id: string,
-): Promise<ProjectMaterial | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("project_materials")
-    .select(SELECT)
-    .eq("id", id)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? sortImages(data as ProjectMaterial) : null;
-}
 
 function sortImages(item: ProjectMaterial): ProjectMaterial {
   if (item.project_material_images) {
@@ -179,6 +160,86 @@ function sortImages(item: ProjectMaterial): ProjectMaterial {
     );
   }
   return item;
+}
+
+export async function listCustomerMaterials(
+  customerId: string,
+  options?: { includeDeleted?: boolean; projectId?: string | null },
+): Promise<ProjectMaterial[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("project_materials")
+    .select(SELECT)
+    .eq("customer_id", customerId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (options?.projectId) {
+    query = query.eq("project_id", options.projectId);
+  }
+  if (!options?.includeDeleted) {
+    query = query.is("deleted_at", null);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error("자재 목록을 불러오지 못했습니다.");
+  return ((data ?? []) as ProjectMaterial[]).map(sortImages);
+}
+
+export async function listProjectIdMaterials(
+  projectId: string,
+  options?: { includeDeleted?: boolean },
+): Promise<ProjectMaterial[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("project_materials")
+    .select(SELECT)
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true });
+
+  if (!options?.includeDeleted) {
+    query = query.is("deleted_at", null);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error("자재 목록을 불러오지 못했습니다.");
+  return ((data ?? []) as ProjectMaterial[]).map(sortImages);
+}
+
+export async function getSiteMaterial(
+  id: string,
+  options?: { includeDeleted?: boolean },
+): Promise<ProjectMaterial | null> {
+  const supabase = await createClient();
+  let query = supabase.from("project_materials").select(SELECT).eq("id", id);
+  if (!options?.includeDeleted) {
+    query = query.is("deleted_at", null);
+  }
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error("자재를 불러오지 못했습니다.");
+  return data ? sortImages(data as ProjectMaterial) : null;
+}
+
+/** 최근 현장에 사용된 카탈로그 자재 ID (최신순) */
+export async function listRecentCatalogMaterialIds(
+  limit = 12,
+): Promise<string[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_materials")
+    .select("catalog_material_id, created_at")
+    .not("catalog_material_id", "is", null)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  if (error) return [];
+  const ids: string[] = [];
+  for (const row of data ?? []) {
+    const id = row.catalog_material_id as string | null;
+    if (id && !ids.includes(id)) ids.push(id);
+    if (ids.length >= limit) break;
+  }
+  return ids;
 }
 
 async function nextSortOrder(customerId: string): Promise<number> {
@@ -191,6 +252,35 @@ async function nextSortOrder(customerId: string): Promise<number> {
     .order("sort_order", { ascending: false })
     .limit(1);
   return (data?.[0]?.sort_order ?? -1) + 1;
+}
+
+/** 카탈로그 중복(제품명·모델번호) 조회 */
+export async function findCatalogDuplicates(input: {
+  productName: string;
+  modelNumber?: string | null;
+}): Promise<MaterialCatalogItem[]> {
+  const supabase = await createClient();
+  const name = input.productName.trim();
+  if (!name) return [];
+
+  const query = supabase
+    .from("material_catalog")
+    .select("*, material_categories (*)")
+    .is("deleted_at", null)
+    .ilike("product_name", name)
+    .limit(10);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const model = (input.modelNumber ?? "").trim();
+  const rows = (data ?? []) as MaterialCatalogItem[];
+  if (!model) return rows;
+  return rows.filter(
+    (r) =>
+      (r.model_number ?? "").trim().toLowerCase() === model.toLowerCase() ||
+      (r.product_name ?? "").trim().toLowerCase() === name.toLowerCase(),
+  );
 }
 
 async function uploadSiteImages(input: {
@@ -261,6 +351,55 @@ async function uploadSiteImages(input: {
   }
 }
 
+export async function setSiteImageCover(input: {
+  materialId: string;
+  imageId: string;
+}) {
+  await requireAuthenticatedAccess();
+  const before = await getSiteMaterial(input.materialId);
+  const supabase = await createClient();
+  const { data: image, error } = await supabase
+    .from("project_material_images")
+    .select("*")
+    .eq("id", input.imageId)
+    .eq("material_id", input.materialId)
+    .maybeSingle();
+  if (error || !image) throw new Error("이미지를 찾을 수 없습니다.");
+
+  await supabase
+    .from("project_material_images")
+    .update({ is_cover: false })
+    .eq("material_id", input.materialId);
+  await supabase
+    .from("project_material_images")
+    .update({ is_cover: true })
+    .eq("id", input.imageId);
+  await supabase
+    .from("project_materials")
+    .update({ cover_image_path: image.file_path })
+    .eq("id", input.materialId);
+
+  const after = await getSiteMaterial(input.materialId);
+  if (before && after) {
+    await writeMaterialHistory({
+      projectMaterialId: input.materialId,
+      customerId: after.customer_id,
+      projectId: after.project_id,
+      action: "대표사진 변경",
+      before,
+      after,
+    });
+  }
+}
+
+export class CatalogDuplicateError extends Error {
+  duplicates: MaterialCatalogItem[];
+  constructor(duplicates: MaterialCatalogItem[]) {
+    super("CATALOG_DUPLICATE");
+    this.duplicates = duplicates;
+  }
+}
+
 export async function createSiteMaterial(input: {
   form: SiteMaterialFormInput;
   files?: File[];
@@ -269,6 +408,14 @@ export async function createSiteMaterial(input: {
   let catalogId = input.form.catalog_material_id;
 
   if (input.form.save_to_catalog && !catalogId) {
+    const duplicates = await findCatalogDuplicates({
+      productName: input.form.product_name,
+      modelNumber: input.form.model_number,
+    });
+    if (duplicates.length > 0 && !input.form.force_save_catalog) {
+      throw new CatalogDuplicateError(duplicates);
+    }
+
     const catalog = await createCatalogItem({
       form: {
         category_id: input.form.category_id,
@@ -278,7 +425,7 @@ export async function createSiteMaterial(input: {
         color: input.form.color,
         specification: input.form.specification,
         unit: input.form.unit,
-        base_price: input.form.base_price,
+        base_price: input.form.unit_price,
         supplier: input.form.supplier,
         description: input.form.staff_note,
         internal_memo: null,
@@ -291,6 +438,8 @@ export async function createSiteMaterial(input: {
     catalogId = catalog.id;
   }
 
+  const delivery =
+    input.form.expected_delivery_at || input.form.delivery_expected_at;
   const supabase = await createClient();
   const sortOrder = await nextSortOrder(input.form.customer_id);
   const { data, error } = await supabase
@@ -309,12 +458,16 @@ export async function createSiteMaterial(input: {
       application_location: input.form.application_location,
       quantity: input.form.quantity,
       unit: input.form.unit,
-      base_price: input.form.base_price,
+      unit_price: input.form.unit_price,
       additional_price: input.form.additional_price,
       supplier: input.form.supplier,
-      delivery_expected_at: input.form.delivery_expected_at,
-      staff_note: input.form.staff_note,
-      site_note: input.form.site_note,
+      delivery_expected_at: delivery,
+      expected_delivery_at: delivery,
+      order_status: input.form.order_status || "미발주",
+      order_note: input.form.order_note,
+      note: input.form.note,
+      staff_note: input.form.staff_note || input.form.note,
+      site_note: input.form.site_note || input.form.note,
       sort_order: sortOrder,
       is_active: input.form.is_active,
       created_by: access.userId,
@@ -323,7 +476,7 @@ export async function createSiteMaterial(input: {
     .select("*")
     .single();
 
-  if (error || !data) throw new Error(error?.message || "현장 자재 등록 실패");
+  if (error || !data) throw new Error("현장 자재 등록에 실패했습니다.");
 
   await uploadSiteImages({
     customerId: input.form.customer_id,
@@ -332,7 +485,6 @@ export async function createSiteMaterial(input: {
     userId: access.userId!,
   });
 
-  // 사진 없이 카탈로그만 동시저장한 경우 커버 경로 공유
   if (!(input.files?.length) && catalogId) {
     const catalog = await getCatalogItem(catalogId);
     if (catalog?.cover_image_path) {
@@ -343,6 +495,15 @@ export async function createSiteMaterial(input: {
     }
   }
 
+  const created = (await getSiteMaterial(data.id))!;
+  await writeMaterialHistory({
+    projectMaterialId: created.id,
+    customerId: created.customer_id,
+    projectId: created.project_id,
+    action: "등록",
+    before: null,
+    after: created,
+  });
   await writeAuditLog({
     entity_type: "project_material",
     entity_id: data.id,
@@ -353,7 +514,7 @@ export async function createSiteMaterial(input: {
     },
   });
 
-  return (await getSiteMaterial(data.id))!;
+  return created;
 }
 
 export async function addFromCatalog(input: {
@@ -365,6 +526,7 @@ export async function addFromCatalog(input: {
   quantity?: number | null;
   applicationLocation?: string | null;
   additionalPrice?: number;
+  unitPrice?: number;
 }): Promise<ProjectMaterial> {
   const catalog = await getCatalogItem(input.catalogId);
   if (!catalog) throw new Error("카탈로그 자재를 찾을 수 없습니다.");
@@ -384,14 +546,19 @@ export async function addFromCatalog(input: {
       application_location: emptyToNull(input.applicationLocation),
       quantity: input.quantity ?? 1,
       unit: catalog.unit,
-      base_price: catalog.base_price ?? 0,
+      unit_price: input.unitPrice ?? catalog.base_price ?? 0,
       additional_price: input.additionalPrice ?? 0,
       supplier: catalog.supplier,
       delivery_expected_at: null,
+      expected_delivery_at: null,
+      order_status: "미발주",
+      order_note: null,
+      note: catalog.description,
       staff_note: catalog.description,
       site_note: null,
       is_active: true,
       save_to_catalog: false,
+      force_save_catalog: false,
     },
   });
 }
@@ -403,6 +570,11 @@ export async function updateSiteMaterial(input: {
 }): Promise<ProjectMaterial> {
   const access = await requireAuthenticatedAccess();
   const supabase = await createClient();
+  const before = await getSiteMaterial(input.id);
+  if (!before) throw new Error("자재를 찾을 수 없습니다.");
+
+  const delivery =
+    input.form.expected_delivery_at || input.form.delivery_expected_at;
 
   const { error } = await supabase
     .from("project_materials")
@@ -419,30 +591,40 @@ export async function updateSiteMaterial(input: {
       application_location: input.form.application_location,
       quantity: input.form.quantity,
       unit: input.form.unit,
-      base_price: input.form.base_price,
+      unit_price: input.form.unit_price,
       additional_price: input.form.additional_price,
       supplier: input.form.supplier,
-      delivery_expected_at: input.form.delivery_expected_at,
-      staff_note: input.form.staff_note,
-      site_note: input.form.site_note,
+      delivery_expected_at: delivery,
+      expected_delivery_at: delivery,
+      order_status: input.form.order_status || before.order_status || "미발주",
+      order_note: input.form.order_note,
+      note: input.form.note,
+      staff_note: input.form.staff_note || input.form.note,
+      site_note: input.form.site_note || input.form.note,
       is_active: input.form.is_active,
       updated_by: access.userId,
     })
     .eq("id", input.id)
     .is("deleted_at", null);
 
-  if (error) throw new Error(error.message);
-
-  const existing = await getSiteMaterial(input.id);
-  if (!existing) throw new Error("자재를 찾을 수 없습니다.");
+  if (error) throw new Error("자재 수정에 실패했습니다.");
 
   await uploadSiteImages({
-    customerId: existing.customer_id,
+    customerId: before.customer_id,
     materialId: input.id,
     files: input.files ?? [],
     userId: access.userId!,
   });
 
+  const after = (await getSiteMaterial(input.id))!;
+  await writeMaterialHistory({
+    projectMaterialId: input.id,
+    customerId: after.customer_id,
+    projectId: after.project_id,
+    action: "수정",
+    before,
+    after,
+  });
   await writeAuditLog({
     entity_type: "project_material",
     entity_id: input.id,
@@ -450,14 +632,14 @@ export async function updateSiteMaterial(input: {
     payload: { product_name: input.form.product_name },
   });
 
-  return (await getSiteMaterial(input.id))!;
+  return after;
 }
 
 export async function duplicateSiteMaterial(id: string): Promise<ProjectMaterial> {
   const src = await getSiteMaterial(id);
   if (!src) throw new Error("원본 자재를 찾을 수 없습니다.");
 
-  return createSiteMaterial({
+  const created = await createSiteMaterial({
     form: {
       customer_id: src.customer_id,
       project_id: src.project_id,
@@ -472,16 +654,37 @@ export async function duplicateSiteMaterial(id: string): Promise<ProjectMaterial
       application_location: src.application_location,
       quantity: src.quantity,
       unit: src.unit,
-      base_price: src.base_price ?? 0,
+      unit_price: src.unit_price ?? 0,
       additional_price: src.additional_price ?? 0,
       supplier: src.supplier,
-      delivery_expected_at: src.delivery_expected_at,
+      delivery_expected_at: getDeliveryFallback(src),
+      expected_delivery_at: getDeliveryFallback(src),
+      order_status: "미발주",
+      order_note: null,
+      note: src.note || src.site_note || src.staff_note,
       staff_note: src.staff_note,
       site_note: src.site_note,
       is_active: true,
       save_to_catalog: false,
+      force_save_catalog: false,
     },
   });
+
+  await writeMaterialHistory({
+    projectMaterialId: created.id,
+    customerId: created.customer_id,
+    projectId: created.project_id,
+    action: "복제",
+    before: src,
+    after: created,
+    reason: `원본: ${src.product_name}`,
+  });
+
+  return created;
+}
+
+function getDeliveryFallback(m: ProjectMaterial): string | null {
+  return m.expected_delivery_at || m.delivery_expected_at || null;
 }
 
 export async function softDeleteSiteMaterial(input: {
@@ -491,6 +694,9 @@ export async function softDeleteSiteMaterial(input: {
   const access = await requireAuthenticatedAccess();
   const reason = input.deleteReason.trim();
   if (!reason) throw new Error("삭제 사유를 입력해 주세요.");
+
+  const before = await getSiteMaterial(input.id);
+  if (!before) throw new Error("자재를 찾을 수 없습니다.");
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -504,11 +710,20 @@ export async function softDeleteSiteMaterial(input: {
     })
     .eq("id", input.id)
     .is("deleted_at", null)
-    .select("id, product_name, customer_id")
+    .select("*")
     .single();
 
-  if (error || !data) throw new Error(error?.message || "삭제 실패");
+  if (error || !data) throw new Error("삭제에 실패했습니다.");
 
+  await writeMaterialHistory({
+    projectMaterialId: input.id,
+    customerId: data.customer_id,
+    projectId: data.project_id,
+    action: "삭제",
+    before,
+    after: data as ProjectMaterial,
+    reason,
+  });
   await writeAuditLog({
     entity_type: "project_material",
     entity_id: input.id,
@@ -529,7 +744,9 @@ export async function reorderSiteMaterial(input: {
   const current = await getSiteMaterial(input.id);
   if (!current) throw new Error("자재를 찾을 수 없습니다.");
 
-  const list = await listCustomerMaterials(current.customer_id);
+  const list = current.project_id
+    ? await listProjectIdMaterials(current.project_id)
+    : await listCustomerMaterials(current.customer_id);
   const index = list.findIndex((m) => m.id === input.id);
   if (index < 0) return;
   const swap = input.direction === "up" ? index - 1 : index + 1;
@@ -548,6 +765,28 @@ export async function reorderSiteMaterial(input: {
     .eq("id", b.id);
 }
 
+/** 드래그 정렬: 전체 id 순서대로 sort_order 재부여 */
+export async function reorderSiteMaterialsByIds(input: {
+  customerId: string;
+  projectId?: string | null;
+  orderedIds: string[];
+}) {
+  const access = await requireAuthenticatedAccess();
+  if (!input.orderedIds.length) return;
+  const supabase = await createClient();
+
+  for (let i = 0; i < input.orderedIds.length; i += 1) {
+    const id = input.orderedIds[i]!;
+    const { error } = await supabase
+      .from("project_materials")
+      .update({ sort_order: i, updated_by: access.userId })
+      .eq("id", id)
+      .eq("customer_id", input.customerId)
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+  }
+}
+
 export async function listRecentSpaceNames(
   customerId: string,
 ): Promise<string[]> {
@@ -560,6 +799,17 @@ export async function listRecentSpaceNames(
 
 export function calcTotalAdditionalPrice(materials: ProjectMaterial[]): number {
   return materials.reduce((sum, m) => sum + (m.additional_price ?? 0), 0);
+}
+
+export function calcLineAmount(m: ProjectMaterial): number {
+  const qty = Number(m.quantity ?? 0);
+  const price = Number(m.unit_price ?? 0);
+  if (!Number.isFinite(qty) || !Number.isFinite(price)) return 0;
+  return Math.round(qty * price);
+}
+
+export function calcTotalLineAmount(materials: ProjectMaterial[]): number {
+  return materials.reduce((sum, m) => sum + calcLineAmount(m), 0);
 }
 
 export function groupBySpace(
@@ -591,7 +841,6 @@ export async function createSignedProjectMaterialUrl(
   expiresInSeconds = 60 * 30,
 ): Promise<string> {
   const supabase = await createClient();
-  // 카탈로그 경로를 cover로 쓰는 경우 fallback
   let result = await supabase.storage
     .from(PROJECT_MATERIALS_BUCKET)
     .createSignedUrl(filePath, expiresInSeconds);

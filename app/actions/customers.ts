@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import {
   createCustomer,
   createCustomerConsultLog,
@@ -44,15 +45,6 @@ export type ActionResult = {
 function emptyToNull(value: FormDataEntryValue | null): string | null {
   const text = String(value ?? "").trim();
   return text ? text : null;
-}
-
-function isRedirectError(error: unknown): boolean {
-  return (
-    !!error &&
-    typeof error === "object" &&
-    "digest" in error &&
-    String((error as { digest?: string }).digest).startsWith("NEXT_REDIRECT")
-  );
 }
 
 function formDataToCustomerInsert(formData: FormData): CustomerInsert {

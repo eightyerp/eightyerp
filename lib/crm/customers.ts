@@ -68,6 +68,32 @@ function toCustomerWritePayload(input: CustomerInsert, phone: string) {
   };
 }
 
+function toCustomerWriteError(error: {
+  message?: string;
+  code?: string;
+}): string {
+  const message = error.message ?? "";
+  if (/invalid input value for enum consultation_type/i.test(message)) {
+    return (
+      "선택한 상담유형이 DB에 없습니다. Supabase에서 " +
+      "supabase/migrations/20260730000001_consultation_type_enum_extend.sql " +
+      "을 실행한 뒤 다시 등록해 주세요."
+    );
+  }
+  if (/invalid input value for enum customer_status/i.test(message)) {
+    return (
+      "선택한 상담상태가 DB에 없습니다. customer_status enum migration을 확인해 주세요."
+    );
+  }
+  if (error.code === "42501" || /row-level security/i.test(message)) {
+    return "고객 등록 권한이 없습니다. 로그인 세션과 RLS 정책을 확인해 주세요.";
+  }
+  if (/Could not find the|schema cache|PGRST/i.test(message)) {
+    return "고객 테이블 스키마를 확인하지 못했습니다. CRM migration 적용 여부를 확인해 주세요.";
+  }
+  return message || "고객 저장에 실패했습니다.";
+}
+
 function enrichCustomer(customer: CustomerWithRelations): CustomerWithRelations {
   const checklists = customer.customer_checklists ?? [];
   const activities = customer.customer_activities ?? [];
@@ -408,7 +434,7 @@ export async function createCustomer(input: CustomerInsert) {
 
   if (error) {
     if (error.code === "23505") throw new Error("이미 등록된 연락처입니다.");
-    throw new Error(error.message);
+    throw new Error(toCustomerWriteError(error));
   }
 
   const customer = data as Customer;
@@ -449,7 +475,7 @@ export async function updateCustomer(id: string, input: CustomerInsert) {
 
   if (error) {
     if (error.code === "23505") throw new Error("이미 등록된 연락처입니다.");
-    throw new Error(error.message);
+    throw new Error(toCustomerWriteError(error));
   }
 
   const customer = data as Customer;

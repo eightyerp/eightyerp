@@ -3,19 +3,24 @@ import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerDetailPanels from "@/components/customers/CustomerDetailPanels";
 import { getCurrentUserAccess } from "@/lib/crm/access";
+import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
   getCustomerById,
   getCustomerConsultLogs,
   getEmployees,
 } from "@/lib/crm/customers";
-import { getCustomerQuotes, getQuoteSends } from "@/lib/crm/quotes";
+import { listCustomerProjects } from "@/lib/crm/projects";
+import { listQuotes } from "@/lib/crm/quote-mgmt";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
 import type {
   CustomerConsultLog,
   CustomerQuote,
   CustomerQuoteSend,
+  CustomerSchedule,
   CustomerWithRelations,
   Employee,
+  ErpQuote,
+  Project,
 } from "@/types/database";
 
 type CustomerDetailPageProps = {
@@ -38,7 +43,11 @@ export default async function CustomerDetailPage({
   let consultLogs: CustomerConsultLog[] = [];
   let quotes: CustomerQuote[] = [];
   let quoteSendsByQuoteId: Record<string, CustomerQuoteSend[]> = {};
+  let erpQuotes: ErpQuote[] = [];
+  let schedules: CustomerSchedule[] = [];
   let employees: Employee[] = [];
+  let projects: Project[] = [];
+  let projectsWarning: string | null = null;
 
   try {
     const [found, empList] = await Promise.all([
@@ -47,6 +56,18 @@ export default async function CustomerDetailPage({
     ]);
     customer = found;
     employees = empList;
+
+    try {
+      projects = await listCustomerProjects(id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/projects|schema cache|Could not find/i.test(message)) {
+        projectsWarning =
+          "현장 테이블이 없습니다. supabase/migrations/20260722000001_customer_projects.sql 을 실행해 주세요.";
+      } else {
+        throw error;
+      }
+    }
 
     if (customer && !customer.deleted_at) {
       try {
@@ -62,6 +83,9 @@ export default async function CustomerDetailPage({
       }
 
       try {
+        const { getCustomerQuotes, getQuoteSends } = await import(
+          "@/lib/crm/quotes"
+        );
         quotes = await getCustomerQuotes(id);
         const sendEntries = await Promise.all(
           quotes.map(async (quote) => {
@@ -77,11 +101,28 @@ export default async function CustomerDetailPage({
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (/customer_quotes|schema cache|Could not find/i.test(message)) {
-          quoteWarning =
-            "견적 테이블/Storage가 없습니다. supabase/migrations/20260716000008_customer_quotes.sql 을 실행해 주세요.";
+          // legacy optional
         } else {
           throw error;
         }
+      }
+
+      try {
+        erpQuotes = await listQuotes({ customerId: id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/quotes|schema cache|Could not find/i.test(message)) {
+          quoteWarning =
+            "견적 테이블이 없습니다. supabase/migrations/20260724000001_quotes_and_simple_materials.sql 과 20260726000001_quotes_management_v1.sql 을 실행해 주세요.";
+        } else {
+          throw error;
+        }
+      }
+
+      try {
+        schedules = await listCustomerSchedules({ customerId: id });
+      } catch {
+        schedules = [];
       }
     }
   } catch (error) {
@@ -134,15 +175,23 @@ export default async function CustomerDetailPage({
           </div>
         )}
 
+        {projectsWarning && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {projectsWarning}
+          </div>
+        )}
+
         {!loadError && (
           <CustomerDetailPanels
             customer={customer}
             consultLogs={consultLogs}
             quotes={quotes}
             quoteSendsByQuoteId={quoteSendsByQuoteId}
+            erpQuotes={erpQuotes}
+            schedules={schedules}
             employees={employees}
+            projects={projects}
             canDelete={access.isAdmin}
-            isAdmin={access.isAdmin}
           />
         )}
       </div>

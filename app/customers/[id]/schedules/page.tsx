@@ -1,0 +1,113 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import CustomerSchedulesWorkspace from "@/components/schedules/CustomerSchedulesWorkspace";
+import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
+import { getCustomerById } from "@/lib/crm/customers";
+import { isMissingRelationError } from "@/lib/crm/errors";
+import {
+  getScheduleAccess,
+  listEmployeesInScope,
+  listTeams,
+} from "@/lib/crm/schedule-access";
+import { createClient } from "@/lib/supabase-server";
+import type { CustomerSchedule, Employee, Team } from "@/types/database";
+
+const MIGRATION_HINT =
+  "supabase/migrations/20260725000001_customer_and_process_schedules.sql 을 Supabase SQL Editor에서 실행해 주세요.";
+
+async function isScheduleSchemaMissing(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.from("customer_schedules").select("id").limit(1);
+    if (!error) return false;
+    return isMissingRelationError(new Error(error.message));
+  } catch {
+    return false;
+  }
+}
+
+type Props = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function CustomerSchedulesSubPage({ params }: Props) {
+  const { id: customerId } = await params;
+  const customer = await getCustomerById(customerId).catch(() => null);
+  if (!customer || customer.deleted_at) notFound();
+
+  const access = await getScheduleAccess();
+
+  let schedules: CustomerSchedule[] = [];
+  let employees: Employee[] = [];
+  let teams: Team[] = [];
+  let loadError: string | null = null;
+  let tablesMissing = false;
+
+  try {
+    employees = await listEmployeesInScope(access);
+  } catch {
+    employees = [];
+  }
+
+  try {
+    teams = await listTeams();
+  } catch {
+    teams = [];
+  }
+
+  try {
+    schedules = await listCustomerSchedules({ customerId }, access);
+  } catch (error) {
+    tablesMissing = await isScheduleSchemaMissing();
+    loadError = error instanceof Error ? error.message : "일정을 불러오지 못했습니다.";
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-400">{customer.name} · 상담 일정</p>
+            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">고객 상담 일정</h1>
+          </div>
+          <Link
+            href={`/customers/${customerId}`}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            고객 상세로 돌아가기
+          </Link>
+        </div>
+
+        {tablesMissing && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+            <p className="font-semibold">상담 일정 테이블을 찾을 수 없습니다.</p>
+            <p className="mt-2">{MIGRATION_HINT}</p>
+          </div>
+        )}
+
+        {loadError && !tablesMissing && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {loadError}
+          </div>
+        )}
+
+        {!loadError && (
+          <CustomerSchedulesWorkspace
+            initialSchedules={schedules}
+            employees={employees}
+            teams={teams}
+            customers={[{ id: customer.id, name: customer.name, phone: customer.phone, address: customer.address }]}
+            access={{
+              canViewAll: access.canViewAll,
+              canViewTeam: access.canViewTeam,
+              employeeId: access.employeeId,
+              role: access.role,
+            }}
+            fixedCustomerId={customerId}
+          />
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}

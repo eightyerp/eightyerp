@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { menuItems } from "@/lib/sample-data";
 
 type SidebarProps = {
   open: boolean;
   onClose: () => void;
+};
+
+type MenuItem = {
+  label: string;
+  href: string;
+  children?: { label: string; href: string }[];
 };
 
 function isActivePath(pathname: string, href: string): boolean {
@@ -15,8 +22,34 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function isGroupActive(pathname: string, item: MenuItem): boolean {
+  if (item.children?.length) {
+    return item.children.some((c) => isActivePath(pathname, c.href));
+  }
+  return isActivePath(pathname, item.href);
+}
+
+const NAV: MenuItem[] = menuItems.map((item): MenuItem => {
+  const label = String(item.label);
+  const href = String(item.href);
+  if (label === "스케줄관리") {
+    return {
+      label: "스케줄관리",
+      href: "/schedules/customers",
+      children: [
+        { label: "고객상담 스케줄", href: "/schedules/customers" },
+        { label: "공정별 스케줄", href: "/schedules/processes" },
+      ],
+    };
+  }
+  return { label, href };
+});
+
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    스케줄관리: true,
+  });
 
   return (
     <>
@@ -43,8 +76,62 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-0.5">
-            {menuItems.map((item) => {
-              const active = isActivePath(pathname, item.href);
+            {NAV.map((item) => {
+              const active = isGroupActive(pathname, item);
+              const hasChildren = Boolean(item.children?.length);
+              const expanded = openGroups[item.label] ?? active;
+
+              if (hasChildren) {
+                return (
+                  <li key={item.label}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenGroups((prev) => ({
+                          ...prev,
+                          [item.label]: !expanded,
+                        }))
+                      }
+                      className={`flex w-full items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors ${
+                        active
+                          ? "bg-gold-500/15 font-medium text-gold-400"
+                          : "text-white/70 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      <span className="text-xs opacity-60">
+                        {expanded ? "▾" : "▸"}
+                      </span>
+                    </button>
+                    {expanded && (
+                      <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-white/10 pl-3">
+                        {item.children!.map((child) => {
+                          const childActive = isActivePath(
+                            pathname,
+                            child.href,
+                          );
+                          return (
+                            <li key={child.href}>
+                              <Link
+                                href={child.href}
+                                onClick={onClose}
+                                className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                                  childActive
+                                    ? "bg-gold-500/15 font-medium text-gold-400"
+                                    : "text-white/60 hover:bg-white/5 hover:text-white"
+                                }`}
+                              >
+                                {child.label}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                );
+              }
+
               return (
                 <li key={item.label}>
                   <Link

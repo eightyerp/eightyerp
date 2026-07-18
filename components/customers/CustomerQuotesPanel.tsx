@@ -86,15 +86,19 @@ export default function CustomerQuotesPanel({
       finalState.error ||
       sendState.error ||
       deleteState.error;
-    if (message) {
-      setToast(message);
-      setShowUpload(false);
-      setRevisionOf(null);
-      setSendOf(null);
-      setDeleteOf(null);
-    } else if (error) {
-      setToast(error);
-    }
+    if (!message && !error) return;
+    const id = window.setTimeout(() => {
+      if (message) {
+        setToast(message);
+        setShowUpload(false);
+        setRevisionOf(null);
+        setSendOf(null);
+        setDeleteOf(null);
+      } else if (error) {
+        setToast(error);
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [uploadState, finalState, sendState, deleteState]);
 
   useEffect(() => {

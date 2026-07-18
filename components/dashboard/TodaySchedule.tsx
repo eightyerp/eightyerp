@@ -1,36 +1,50 @@
-import { todaySchedule } from "@/lib/sample-data";
+import Link from "next/link";
+import type { CustomerSchedule } from "@/types/database";
 
-const typeColor: Record<string, string> = {
-  현장: "bg-blue-100 text-blue-700",
-  상담: "bg-purple-100 text-purple-700",
-  검수: "bg-green-100 text-green-700",
-  수금: "bg-amber-100 text-amber-700",
-  회의: "bg-navy-800 text-gold-400",
+type Props = {
+  items?: CustomerSchedule[];
 };
 
-export default function TodaySchedule() {
+export default function TodaySchedule({ items = [] }: Props) {
   return (
     <div className="dashboard-card p-5">
-      <h3 className="dashboard-section-title">오늘 일정</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="dashboard-section-title">오늘 상담 일정</h3>
+        <Link
+          href="/schedules/customers"
+          className="text-xs text-navy-800 underline"
+        >
+          전체
+        </Link>
+      </div>
 
       <div className="mt-4 space-y-3">
-        {todaySchedule.map((item) => (
+        {items.length === 0 && (
+          <p className="py-4 text-center text-sm text-gray-400">
+            오늘 예정된 상담 일정이 없습니다.
+          </p>
+        )}
+        {items.slice(0, 6).map((item) => (
           <div
-            key={item.time + item.title}
+            key={item.id}
             className="flex items-start gap-3 rounded-lg border border-gray-100 px-3 py-2.5"
           >
             <span className="shrink-0 text-sm font-semibold text-gold-600">
-              {item.time}
+              {new Date(item.start_at).toLocaleTimeString("ko-KR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-800">{item.title}</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${typeColor[item.type]}`}
-                >
-                  {item.type}
+                <span className="rounded-full bg-navy-800/5 px-2 py-0.5 text-xs font-medium text-navy-800">
+                  {item.schedule_type}
                 </span>
-                <span className="text-xs text-gray-400">{item.manager}</span>
+                <span className="text-xs text-gray-400">
+                  {item.customers?.name ?? "-"}
+                  {item.employees ? ` · ${item.employees.name}` : ""}
+                </span>
               </div>
             </div>
           </div>

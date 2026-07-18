@@ -60,6 +60,16 @@ export default async function NewCustomerPage() {
           </div>
         )}
 
+        {!loadError && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            상담유형(종합인테리어·주방 등) 등록 오류가 나면 Supabase SQL Editor에서
+            <code className="mx-1 rounded bg-white/80 px-1.5 py-0.5 text-xs">
+              supabase/migrations/20260730000001_consultation_type_enum_extend.sql
+            </code>
+            를 실행해 주세요. (기본값「기타」는 migration 없이도 등록 가능합니다.)
+          </div>
+        )}
+
         {!loadError && leadSources.length === 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             유입경로 데이터가 없습니다. Supabase SQL Editor에서

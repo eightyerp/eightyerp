@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   softDeleteCustomerAction,
   type ActionResult,
@@ -27,9 +27,7 @@ export default function SoftDeleteCustomerButton({
     initialState,
   );
 
-  useEffect(() => {
-    if (state.error) setOpen(true);
-  }, [state]);
+  const modalOpen = open || Boolean(state.error);
 
   return (
     <>
@@ -37,7 +35,7 @@ export default function SoftDeleteCustomerButton({
         삭제
       </button>
 
-      {open && (
+      {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900">고객 삭제 확인</h3>

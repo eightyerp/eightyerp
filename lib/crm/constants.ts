@@ -192,6 +192,11 @@ export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "admin" || role === "super_admin";
 }
 
+/** manager + admin + super_admin (executive 역할은 DB에 없으며 super_admin으로 취급) */
+export function isManagerOrAboveRole(role: UserRole | null | undefined): boolean {
+  return role === "manager" || isAdminRole(role);
+}
+
 export const STATUS_BADGE_CLASS: Record<string, string> = {
   신규: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
   미연락: "bg-red-50 text-red-700 ring-1 ring-red-200",

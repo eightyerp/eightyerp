@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import SoftDeleteCustomerButton from "@/components/customers/SoftDeleteCustomerButton";
 import CustomerQuotesPanel from "@/components/customers/CustomerQuotesPanel";
+import CustomerSitesPanel from "@/components/customers/CustomerSitesPanel";
 import {
   addConsultLogAction,
   quickChannelAction,
@@ -27,12 +28,18 @@ import type {
   CustomerConsultLog,
   CustomerQuote,
   CustomerQuoteSend,
+  CustomerSchedule,
   CustomerWithRelations,
   Employee,
+  ErpQuote,
+  Project,
 } from "@/types/database";
+import { isCustomerScheduleOverdue } from "@/lib/crm/schedule-utils";
+import { SCHEDULE_STATUS_BADGE } from "@/lib/crm/schedule-constants";
 
 type TabKey =
   | "consult"
+  | "schedule"
   | "quote"
   | "contract"
   | "site"
@@ -44,15 +51,18 @@ type CustomerDetailPanelsProps = {
   consultLogs: CustomerConsultLog[];
   quotes: CustomerQuote[];
   quoteSendsByQuoteId: Record<string, CustomerQuoteSend[]>;
+  erpQuotes?: ErpQuote[];
+  schedules?: CustomerSchedule[];
   employees: Employee[];
+  projects: Project[];
   canDelete: boolean;
-  isAdmin: boolean;
 };
 
 const initialState: ActionResult = { success: false };
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "consult", label: "상담이력" },
+  { key: "schedule", label: "상담일정" },
   { key: "quote", label: "견적" },
   { key: "contract", label: "계약" },
   { key: "site", label: "현장" },
@@ -75,13 +85,16 @@ export default function CustomerDetailPanels({
   consultLogs,
   quotes,
   quoteSendsByQuoteId,
+  erpQuotes = [],
+  schedules = [],
   employees,
+  projects,
   canDelete,
-  isAdmin,
 }: CustomerDetailPanelsProps) {
   const [tab, setTab] = useState<TabKey>("consult");
   const [showConsultForm, setShowConsultForm] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [localToast, setLocalToast] = useState<string | null>(null);
+  const [hiddenFeedback, setHiddenFeedback] = useState<string | null>(null);
 
   const [consultState, consultAction, consultPending] = useActionState(
     addConsultLogAction,
@@ -96,27 +109,52 @@ export default function CustomerDetailPanels({
     initialState,
   );
 
-  useEffect(() => {
-    const message =
-      consultState.message || quickState.message || channelState.message;
-    const error = consultState.error || quickState.error || channelState.error;
-    if (message) {
-      setToast(message);
-      setShowConsultForm(false);
-    } else if (error) {
-      setToast(error);
-    }
-  }, [consultState, quickState, channelState]);
+  const feedback =
+    consultState.message ||
+    quickState.message ||
+    channelState.message ||
+    consultState.error ||
+    quickState.error ||
+    channelState.error ||
+    null;
+  const toast =
+    localToast ||
+    (feedback && feedback !== hiddenFeedback ? feedback : null);
 
   useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 2800);
+    if (!feedback && !localToast) return;
+    const timer = window.setTimeout(() => {
+      if (feedback) setHiddenFeedback(feedback);
+      setLocalToast(null);
+    }, 2800);
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [feedback, localToast]);
+
+  const consultFormOpen =
+    showConsultForm && !(consultState.success && Boolean(consultState.message));
 
   const bucket = customer.contact_bucket ?? "none";
   const latestLog = consultLogs[0] ?? null;
   const pending = consultPending || quickPending || channelPending;
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  const todaySchedules = schedules.filter((s) => {
+    const t = new Date(s.start_at).getTime();
+    return t >= startOfToday.getTime() && t <= endOfToday.getTime();
+  });
+  const overdueSchedules = schedules.filter((s) => isCustomerScheduleOverdue(s));
+  const nextContactSchedule = [...schedules]
+    .filter((s) => s.next_contact_at)
+    .sort(
+      (a, b) =>
+        new Date(a.next_contact_at!).getTime() -
+        new Date(b.next_contact_at!).getTime(),
+    )[0];
+  const upcomingNext =
+    nextContactSchedule?.next_contact_at ?? customer.next_contact_at;
 
   return (
     <div className="space-y-5">
@@ -193,11 +231,24 @@ export default function CustomerDetailPanels({
             >
               수정
             </Link>
+            <button
+              type="button"
+              onClick={() => setTab("site")}
+              className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900 hover:bg-gold-100"
+            >
+              현장 / 마감자재
+            </button>
             <Link
               href={`/customers/${customer.id}/materials`}
               className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900 hover:bg-gold-100"
             >
               마감자재
+            </Link>
+            <Link
+              href={`/customers/${customer.id}/schedules`}
+              className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900 hover:bg-gold-100"
+            >
+              상담 일정
             </Link>
             <button
               type="button"
@@ -206,8 +257,7 @@ export default function CustomerDetailPanels({
             >
               견적서
             </button>
-            <ActionPlaceholder label="계약등록" onNotify={setToast} />
-            <ActionPlaceholder label="현장생성" onNotify={setToast} />
+            <ActionPlaceholder label="계약등록" onNotify={setLocalToast} />
             {canDelete ? (
               <SoftDeleteCustomerButton
                 customerId={customer.id}
@@ -372,8 +422,12 @@ export default function CustomerDetailPanels({
               {item.key === "consult" && consultLogs.length > 0
                 ? ` (${consultLogs.length})`
                 : ""}
-              {item.key === "quote" && quotes.length > 0
-                ? ` (${quotes.length})`
+              {item.key === "schedule" && schedules.length > 0
+                ? ` (${schedules.length})`
+                : ""}
+              {item.key === "quote" &&
+              (erpQuotes.length > 0 || quotes.length > 0)
+                ? ` (${erpQuotes.length || quotes.length})`
                 : ""}
             </button>
           ))}
@@ -384,7 +438,7 @@ export default function CustomerDetailPanels({
             <ConsultTab
               customerId={customer.id}
               logs={consultLogs}
-              showForm={showConsultForm}
+              showForm={consultFormOpen}
               onToggleForm={() => setShowConsultForm((v) => !v)}
               formAction={consultAction}
               pending={consultPending}
@@ -392,14 +446,184 @@ export default function CustomerDetailPanels({
             />
           )}
 
+          {tab === "schedule" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold-300 bg-gold-50 px-4 py-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy-900">상담일정</h3>
+                  <p className="mt-0.5 text-xs text-navy-700/80">
+                    오늘 예정 {todaySchedules.length}건
+                    {overdueSchedules.length > 0
+                      ? ` · 지난 미처리 ${overdueSchedules.length}건`
+                      : ""}
+                    {upcomingNext
+                      ? ` · 다음 연락일 ${formatDate(upcomingNext)}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/customers/${customer.id}/schedules`}
+                    className="rounded-lg border border-navy-800 bg-white px-3 py-2 text-xs font-medium text-navy-900 hover:bg-navy-800/5"
+                  >
+                    일정 전체 보기
+                  </Link>
+                  <Link
+                    href={`/customers/${customer.id}/schedules`}
+                    className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700"
+                  >
+                    새 일정 등록
+                  </Link>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <MiniStat
+                  label="오늘 예정"
+                  value={`${todaySchedules.length}건`}
+                  accent="blue"
+                />
+                <MiniStat
+                  label="지난 미처리"
+                  value={`${overdueSchedules.length}건`}
+                  accent={overdueSchedules.length ? "red" : "gray"}
+                />
+                <MiniStat
+                  label="다음 연락일"
+                  value={formatDate(upcomingNext)}
+                  accent="gold"
+                />
+              </div>
+
+              {schedules.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-400">
+                  등록된 상담 일정이 없습니다.
+                </p>
+              ) : (
+                <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                  {schedules.slice(0, 8).map((s) => {
+                    const overdue = isCustomerScheduleOverdue(s);
+                    return (
+                      <li
+                        key={s.id}
+                        className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {s.title}
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {formatDateTime(s.start_at)} · {s.schedule_type}
+                            {s.employees
+                              ? ` · ${s.employees.name}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {overdue && (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                              미처리
+                            </span>
+                          )}
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              SCHEDULE_STATUS_BADGE[s.status] ??
+                              "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {s.status}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
           {tab === "quote" && (
-            <CustomerQuotesPanel
-              customerId={customer.id}
-              customerName={customer.name}
-              quotes={quotes}
-              sendsByQuoteId={quoteSendsByQuoteId}
-              employees={employees}
-            />
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold-300 bg-gold-50 px-4 py-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy-900">견적서</h3>
+                  <p className="mt-0.5 text-xs text-navy-700/80">
+                    등록 {erpQuotes.length}건
+                    {erpQuotes[0]
+                      ? ` · 최근 ${erpQuotes[0].final_amount.toLocaleString("ko-KR")}원`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/customers/${customer.id}/quotes`}
+                    className="rounded-lg border border-navy-800 bg-white px-3 py-2 text-xs font-medium text-navy-900 hover:bg-navy-800/5"
+                  >
+                    견적 목록 보기
+                  </Link>
+                  <Link
+                    href={`/quotes/new?customerId=${customer.id}`}
+                    className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700"
+                  >
+                    새 견적 등록
+                  </Link>
+                </div>
+              </div>
+
+              {erpQuotes.length > 0 ? (
+                <div className="space-y-2">
+                  {erpQuotes.slice(0, 5).map((q) => (
+                    <Link
+                      key={q.id}
+                      href={`/quotes/${q.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white px-4 py-3 hover:border-navy-800/30"
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-navy-900">
+                            {q.title}
+                          </p>
+                          <span className="text-xs text-gray-500">
+                            v{q.version_number} · {q.quote_type}
+                          </span>
+                          {q.is_contract_quote && (
+                            <span className="rounded-full bg-navy-800 px-2 py-0.5 text-[10px] font-semibold text-gold-400">
+                              계약견적
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {q.status}
+                          {q.valid_until ? ` · 유효 ${q.valid_until}` : ""}
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-navy-900">
+                        {q.final_amount.toLocaleString("ko-KR")}원
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed p-6 text-center text-sm text-gray-500">
+                  등록된 견적이 없습니다. 새 견적을 등록해 주세요.
+                </p>
+              )}
+
+              {quotes.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-gray-400">
+                    이전 견적(레거시) · 창호 견적서 업로드 보관용
+                  </p>
+                  <CustomerQuotesPanel
+                    customerId={customer.id}
+                    customerName={customer.name}
+                    quotes={quotes}
+                    sendsByQuoteId={quoteSendsByQuoteId}
+                    employees={employees}
+                  />
+                </div>
+              )}
+            </div>
           )}
           {tab === "contract" && (
             <PlaceholderTab
@@ -407,18 +631,18 @@ export default function CustomerDetailPanels({
               description="계약 등록·계약금 확인 내역이 이 탭에 표시됩니다."
               actionLabel="계약등록"
               onAction={() =>
-                setToast("계약 모듈은 준비 중입니다. 곧 연결됩니다.")
+                setLocalToast("계약 모듈은 준비 중입니다. 곧 연결됩니다.")
               }
             />
           )}
           {tab === "site" && (
-            <PlaceholderTab
-              title="현장"
-              description="현장 생성·시공 진행 현황이 이 탭에 표시됩니다."
-              actionLabel="현장생성"
-              onAction={() =>
-                setToast("현장 모듈은 준비 중입니다. 곧 연결됩니다.")
-              }
+            <CustomerSitesPanel
+              customerId={customer.id}
+              customerName={customer.name}
+              customerAddress={customer.address}
+              defaultAssigneeId={customer.assigned_employee_id}
+              projects={projects}
+              employees={employees}
             />
           )}
           {tab === "payment" && (
@@ -427,7 +651,7 @@ export default function CustomerDetailPanels({
               description="수금·미수금 내역이 이 탭에 표시됩니다."
               actionLabel="수금등록"
               onAction={() =>
-                setToast("수금 모듈은 준비 중입니다. 곧 연결됩니다.")
+                setLocalToast("수금 모듈은 준비 중입니다. 곧 연결됩니다.")
               }
             />
           )}
@@ -437,7 +661,7 @@ export default function CustomerDetailPanels({
               description="AS 접수·처리 이력이 이 탭에 표시됩니다."
               actionLabel="AS 접수"
               onAction={() =>
-                setToast("AS 모듈은 준비 중입니다. 곧 연결됩니다.")
+                setLocalToast("AS 모듈은 준비 중입니다. 곧 연결됩니다.")
               }
             />
           )}
@@ -629,6 +853,31 @@ function PlaceholderTab({
       >
         {actionLabel}
       </button>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: "blue" | "red" | "gray" | "gold";
+}) {
+  const accentClass =
+    accent === "red"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : accent === "blue"
+        ? "border-sky-200 bg-sky-50 text-sky-800"
+        : accent === "gold"
+          ? "border-gold-300 bg-gold-50 text-navy-900"
+          : "border-gray-100 bg-gray-50 text-gray-600";
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${accentClass}`}>
+      <p className="text-xs opacity-70">{label}</p>
+      <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
   );
 }

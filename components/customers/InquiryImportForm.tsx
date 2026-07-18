@@ -90,25 +90,28 @@ export default function InquiryImportForm({
       (source) => source.name === parsed.lead_source_name,
     );
 
-    setForm((prev) => ({
-      ...prev,
-      source_type: analyzeState.sourceType ?? prev.source_type,
-      name: parsed.name ?? "",
-      phone: parsed.phone ?? "",
-      address: parsed.address ?? "",
-      lead_source_id: matchedSource?.id ?? "",
-      lead_source_name: parsed.lead_source_name ?? "",
-      consultation_type: parsed.consultation_type ?? "기타",
-      interest_items: interestItemsToInput(parsed.interest_items),
-      desired_timing: parsed.desired_timing ?? "",
-      special_notes: parsed.special_notes ?? "",
-      event_memo: parsed.event_memo ?? "",
-      consultation_notes: parsed.consultation_notes ?? "",
-      assigned_employee_id: parsed.assigned_employee_id ?? "",
-      status: parsed.status ?? "신규",
-      next_contact_at: parsed.next_contact_at ?? "",
-      happy_call_required: Boolean(parsed.happy_call_required),
-    }));
+    const id = window.setTimeout(() => {
+      setForm((prev) => ({
+        ...prev,
+        source_type: analyzeState.sourceType ?? prev.source_type,
+        name: parsed.name ?? "",
+        phone: parsed.phone ?? "",
+        address: parsed.address ?? "",
+        lead_source_id: matchedSource?.id ?? "",
+        lead_source_name: parsed.lead_source_name ?? "",
+        consultation_type: parsed.consultation_type ?? "기타",
+        interest_items: interestItemsToInput(parsed.interest_items),
+        desired_timing: parsed.desired_timing ?? "",
+        special_notes: parsed.special_notes ?? "",
+        event_memo: parsed.event_memo ?? "",
+        consultation_notes: parsed.consultation_notes ?? "",
+        assigned_employee_id: parsed.assigned_employee_id ?? "",
+        status: parsed.status ?? "신규",
+        next_contact_at: parsed.next_contact_at ?? "",
+        happy_call_required: Boolean(parsed.happy_call_required),
+      }));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [analyzeState, leadSources]);
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {

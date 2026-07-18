@@ -139,7 +139,7 @@ export async function uploadCustomerQuote(input: {
 
   let quoteGroupId = input.meta.quote_group_id || crypto.randomUUID();
   let version = 1;
-  let parentQuoteId = input.meta.parent_quote_id || null;
+  const parentQuoteId = input.meta.parent_quote_id || null;
 
   if (parentQuoteId) {
     const { data: parent, error: parentError } = await supabase

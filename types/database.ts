@@ -115,7 +115,7 @@ export type Profile = {
 };
 
 export type ProfileWithEmployee = Profile & {
-  employees: Pick<Employee, "id" | "name" | "title"> | null;
+  employees: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
 };
 
 export type Customer = {
@@ -399,6 +399,100 @@ export type CustomerQuoteInsert = {
   quote_group_id?: string | null;
 };
 
+/** 신규 견적관리 (public.quotes) */
+export type ErpQuoteType = "창호" | "인테리어" | "기타";
+
+export type ErpQuoteStatus =
+  | "작성중"
+  | "검토중"
+  | "발송완료"
+  | "수정요청"
+  | "승인"
+  | "계약전환"
+  | "만료"
+  | "취소";
+
+export type ErpQuoteFileType = "pdf" | "xls" | "xlsx";
+
+export type ErpQuote = {
+  id: string;
+  customer_id: string;
+  project_id: string | null;
+  quote_group_id: string;
+  parent_quote_id: string | null;
+  quote_type: ErpQuoteType | string;
+  title: string;
+  quote_number: string | null;
+  version_number: number;
+  status: ErpQuoteStatus | string;
+  total_amount: number;
+  discount_amount: number;
+  final_amount: number;
+  valid_until: string | null;
+  issued_at: string | null;
+  sent_at: string | null;
+  sent_by: string | null;
+  assigned_employee_id: string | null;
+  is_lx_material: boolean;
+  is_contract_quote: boolean;
+  customer_message: string | null;
+  share_token?: string | null;
+  memo: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  customers?: Pick<Customer, "id" | "name" | "phone" | "address" | "assigned_employee_id" | "status"> | null;
+  employees?: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
+  quote_files?: ErpQuoteFile[];
+  quote_items?: ErpQuoteItem[];
+};
+
+export type ErpQuoteFile = {
+  id: string;
+  quote_id: string;
+  file_type: ErpQuoteFileType | string;
+  file_path: string;
+  file_name: string;
+  original_file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  is_primary: boolean;
+  uploaded_by: string | null;
+  created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+};
+
+export type ErpQuoteItem = {
+  id: string;
+  quote_id: string;
+  trade_name: string;
+  item_name: string | null;
+  description: string | null;
+  quantity: number | null;
+  unit: string | null;
+  unit_price: number;
+  amount: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+};
+
+export type ErpQuoteSendLog = {
+  id: string;
+  quote_id: string;
+  customer_id: string;
+  guide_message: string | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
 export type MaterialSpace =
   | "공통"
   | "현관"
@@ -463,6 +557,7 @@ export type Project = {
   address: string | null;
   status: string;
   assigned_employee_id: string | null;
+  construction_start_at?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -559,6 +654,13 @@ export type ProjectMaterialSet = {
   deleted_at: string | null;
 };
 
+export type MaterialOrderStatus =
+  | "미발주"
+  | "발주대기"
+  | "발주완료"
+  | "입고완료"
+  | "취소";
+
 export type ProjectMaterial = {
   id: string;
   customer_id: string;
@@ -574,10 +676,17 @@ export type ProjectMaterial = {
   application_location: string | null;
   quantity: number | null;
   unit: string | null;
-  base_price: number;
+  unit_price: number;
   additional_price: number;
   supplier: string | null;
   delivery_expected_at: string | null;
+  expected_delivery_at?: string | null;
+  order_status?: MaterialOrderStatus | string;
+  ordered_at?: string | null;
+  ordered_by?: string | null;
+  delivered_at?: string | null;
+  order_note?: string | null;
+  note?: string | null;
   staff_note: string | null;
   site_note: string | null;
   cover_image_path: string | null;
@@ -592,6 +701,41 @@ export type ProjectMaterial = {
   delete_reason?: string | null;
   material_categories?: MaterialCategory | null;
   project_material_images?: ProjectMaterialImage[];
+};
+
+export type ProjectMaterialHistory = {
+  id: string;
+  project_material_id: string;
+  customer_id: string;
+  project_id: string | null;
+  action: string;
+  before_data: Record<string, unknown> | null;
+  after_data: Record<string, unknown> | null;
+  reason: string | null;
+  changed_by: string | null;
+  changed_at: string;
+};
+
+export type MaterialTemplate = {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  material_template_items?: MaterialTemplateItem[];
+};
+
+export type MaterialTemplateItem = {
+  id: string;
+  template_id: string;
+  sort_order: number;
+  item_data: Record<string, unknown>;
+  created_at: string;
 };
 
 export type MaterialApprovalVersion = {
@@ -717,4 +861,95 @@ export type MaterialChangeRequest = {
   ip_address: string | null;
   user_agent: string | null;
   created_at: string;
+};
+
+export type CustomerSchedule = {
+  id: string;
+  customer_id: string;
+  assigned_employee_id: string;
+  schedule_type: string;
+  title: string;
+  description: string | null;
+  start_at: string;
+  end_at: string | null;
+  all_day: boolean;
+  status: string;
+  priority: string;
+  location: string | null;
+  result_note: string | null;
+  customer_reaction?: string | null;
+  next_action?: string | null;
+  next_contact_at: string | null;
+  completed_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  customers?: Pick<
+    Customer,
+    "id" | "name" | "phone" | "address" | "status"
+  > | null;
+  employees?: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
+};
+
+export type ProjectProcessSchedule = {
+  id: string;
+  project_id: string | null;
+  customer_id: string;
+  assigned_employee_id: string | null;
+  process_name: string;
+  title: string;
+  description: string | null;
+  start_at: string;
+  end_at: string | null;
+  all_day: boolean;
+  status: string;
+  progress: number;
+  contractor_name: string | null;
+  contractor_contact: string | null;
+  location: string | null;
+  dependency_schedule_id: string | null;
+  color_key: string | null;
+  checklist_note: string | null;
+  completion_note: string | null;
+  completed_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  customers?: Pick<Customer, "id" | "name" | "phone" | "address"> | null;
+  employees?: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
+  projects?: Pick<Project, "id" | "name" | "address" | "status" | "construction_start_at"> | null;
+};
+
+export type EmployeeTaskPriority = "낮음" | "보통" | "높음" | "긴급";
+export type EmployeeTaskStatus = "대기" | "진행중" | "완료" | "취소";
+
+export type EmployeeTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  assigned_employee_id: string;
+  customer_id: string | null;
+  project_id: string | null;
+  quote_id: string | null;
+  due_at: string | null;
+  priority: EmployeeTaskPriority | string;
+  status: EmployeeTaskStatus | string;
+  completed_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+  customers?: Pick<Customer, "id" | "name" | "phone" | "address"> | null;
+  employees?: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
 };
