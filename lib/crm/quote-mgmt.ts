@@ -8,10 +8,15 @@ import {
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
+  QUOTE_COST_TYPES,
   QUOTE_FILE_EXTENSIONS,
   QUOTE_FILE_MAX_BYTES,
   QUOTE_FILES_BUCKET,
+  QUOTE_MODES,
   buildQuoteGuideMessage,
+  computeQuoteAmounts,
+  type QuoteCostType,
+  type QuoteMode,
 } from "@/lib/crm/quote-constants";
 import type {
   ErpQuote,
@@ -63,16 +68,18 @@ export type QuoteFormInput = {
   customer_id: string;
   project_id: string | null;
   quote_type: ErpQuoteType;
+  quote_mode: QuoteMode;
   title: string;
   quote_number: string | null;
   status: ErpQuoteStatus;
+  /** 항목이 없을 때 사용하는 총액 후보 (서버에서 재계산) */
   total_amount: number;
   discount_amount: number;
+  lx_discount_rate: number;
   final_amount: number;
   valid_until: string | null;
   issued_at: string | null;
   assigned_employee_id: string | null;
-  is_lx_material: boolean;
   is_contract_quote: boolean;
   customer_message: string | null;
   memo: string | null;
@@ -86,11 +93,28 @@ export type QuoteItemInput = {
   unit: string | null;
   unit_price: number;
   amount: number;
+  cost_type: QuoteCostType;
+  is_lx_material: boolean;
 };
+
+function parseLxDiscountRate(value: FormDataEntryValue | null): number {
+  const raw = String(value ?? "0").replace(/%/g, "").replace(/,/g, "").trim();
+  const num = Number(raw || 0);
+  if (!Number.isFinite(num) || num < 0 || num > 100) {
+    throw new Error("LX 자재 할인율은 0~100 사이여야 합니다.");
+  }
+  return Math.round(num * 100) / 100;
+}
 
 export function parseQuoteForm(formData: FormData): QuoteFormInput {
   const customerId = String(formData.get("customer_id") ?? "").trim();
   const quoteType = String(formData.get("quote_type") ?? "").trim() as ErpQuoteType;
+  const quoteModeRaw = String(formData.get("quote_mode") ?? "simple").trim();
+  const quoteMode = (
+    (QUOTE_MODES as readonly string[]).includes(quoteModeRaw)
+      ? quoteModeRaw
+      : "simple"
+  ) as QuoteMode;
   const title = String(formData.get("title") ?? "").trim();
   const status = (String(formData.get("status") ?? "작성중").trim() ||
     "작성중") as ErpQuoteStatus;
@@ -105,29 +129,25 @@ export function parseQuoteForm(formData: FormData): QuoteFormInput {
   }
 
   const total = parseMoney(formData.get("total_amount"), "총견적금액");
-  const discount = parseMoney(formData.get("discount_amount"), "할인금액");
-  const final = Math.max(0, total - discount);
-  if (discount > total) {
-    throw new Error("할인금액이 총견적금액을 초과할 수 없습니다.");
-  }
+  const discount = parseMoney(formData.get("discount_amount"), "일반 할인금액");
+  const lxDiscountRate = parseLxDiscountRate(formData.get("lx_discount_rate"));
 
   return {
     customer_id: customerId,
     project_id: emptyToNull(String(formData.get("project_id") ?? "")),
     quote_type: quoteType,
+    quote_mode: quoteMode,
     title,
     quote_number: emptyToNull(String(formData.get("quote_number") ?? "")),
     status,
     total_amount: total,
     discount_amount: discount,
-    final_amount: final,
+    lx_discount_rate: lxDiscountRate,
+    final_amount: 0,
     valid_until: emptyToNull(String(formData.get("valid_until") ?? "")),
     issued_at: emptyToNull(String(formData.get("issued_at") ?? "")),
     assigned_employee_id: emptyToNull(
       String(formData.get("assigned_employee_id") ?? ""),
-    ),
-    is_lx_material: ["on", "true", "1"].includes(
-      String(formData.get("is_lx_material") ?? "").toLowerCase(),
     ),
     is_contract_quote: ["on", "true", "1"].includes(
       String(formData.get("is_contract_quote") ?? "").toLowerCase(),
@@ -145,14 +165,23 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("공종 내역 형식이 올바르지 않습니다.");
+    throw new Error("견적 항목 형식이 올바르지 않습니다.");
   }
   if (!Array.isArray(parsed)) return [];
   return parsed
     .map((row) => {
       const r = row as Record<string, unknown>;
-      const trade = String(r.trade_name ?? "").trim();
-      if (!trade) return null;
+      const itemName = String(r.item_name ?? "").trim();
+      const trade = String(r.trade_name ?? "").trim() || itemName;
+      if (!trade && !itemName) return null;
+
+      const costRaw = String(r.cost_type ?? "기타").trim();
+      const cost_type = (
+        (QUOTE_COST_TYPES as readonly string[]).includes(costRaw)
+          ? costRaw
+          : "기타"
+      ) as QuoteCostType;
+
       const unitPrice = Math.max(0, Math.round(Number(r.unit_price ?? 0) || 0));
       const qtyRaw = r.quantity;
       const quantity =
@@ -160,21 +189,66 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
           ? null
           : Number(qtyRaw);
       let amount = Math.max(0, Math.round(Number(r.amount ?? 0) || 0));
-      if (quantity != null && Number.isFinite(quantity)) {
+      if (
+        quantity != null &&
+        Number.isFinite(quantity) &&
+        quantity > 0 &&
+        unitPrice > 0
+      ) {
         amount = Math.round(quantity * unitPrice);
       }
+
+      const wantsLx = ["on", "true", "1", true].includes(
+        r.is_lx_material as string | boolean,
+      );
+      const is_lx_material = cost_type === "자재" && wantsLx;
+
       return {
-        trade_name: trade,
-        item_name: emptyToNull(String(r.item_name ?? "")),
+        trade_name: trade || itemName,
+        item_name: emptyToNull(itemName),
         description: emptyToNull(String(r.description ?? "")),
         quantity:
           quantity != null && Number.isFinite(quantity) ? quantity : null,
         unit: emptyToNull(String(r.unit ?? "")),
         unit_price: unitPrice,
         amount,
+        cost_type,
+        is_lx_material,
       } satisfies QuoteItemInput;
     })
     .filter((x): x is QuoteItemInput => Boolean(x));
+}
+
+function resolveQuoteAmounts(
+  form: QuoteFormInput,
+  items: QuoteItemInput[],
+) {
+  if (form.quote_mode === "simple" && items.length === 0) {
+    throw new Error("간편견적은 항목을 1개 이상 추가해 주세요.");
+  }
+  if (
+    form.quote_mode === "detailed" &&
+    form.quote_type === "인테리어" &&
+    items.length === 0
+  ) {
+    throw new Error("인테리어 상세견적은 공종 내역을 1개 이상 추가해 주세요.");
+  }
+
+  const amounts = computeQuoteAmounts({
+    items,
+    fallbackTotal: form.total_amount,
+    discountAmount: form.discount_amount,
+    lxDiscountRate: form.lx_discount_rate,
+  });
+
+  if (amounts.discount_amount + amounts.lx_discount_amount > amounts.total_amount) {
+    // 최종금액은 0으로 클램프되며, 일반할인만 총액 초과는 막음
+    if (amounts.discount_amount > amounts.total_amount) {
+      throw new Error("일반 할인금액이 총견적금액을 초과할 수 없습니다.");
+    }
+  }
+
+  return amounts;
 }
 
 const SELECT_FULL =
@@ -370,10 +444,12 @@ async function replaceQuoteItems(
       unit: item.unit,
       unit_price: item.unit_price,
       amount: item.amount,
+      cost_type: item.cost_type,
+      is_lx_material: item.is_lx_material,
       sort_order: index,
     })),
   );
-  if (error) throw new Error("공종 내역 저장에 실패했습니다.");
+  if (error) throw new Error("견적 항목 저장에 실패했습니다.");
 }
 
 async function uploadQuoteFiles(input: {
@@ -425,13 +501,8 @@ export async function createQuote(input: {
   const access = await requireAuthenticatedAccess();
   const supabase = await createClient();
 
-  let total = input.form.total_amount;
-  let final = input.form.final_amount;
   const items = input.items ?? [];
-  if (items.length > 0) {
-    total = items.reduce((sum, i) => sum + (i.amount || 0), 0);
-    final = Math.max(0, total - input.form.discount_amount);
-  }
+  const amounts = resolveQuoteAmounts(input.form, items);
 
   const { data, error } = await supabase
     .from("quotes")
@@ -439,17 +510,20 @@ export async function createQuote(input: {
       customer_id: input.form.customer_id,
       project_id: input.form.project_id,
       quote_type: input.form.quote_type,
+      quote_mode: input.form.quote_mode,
       title: input.form.title,
       quote_number: input.form.quote_number,
       version_number: 1,
       status: input.form.status,
-      total_amount: total,
-      discount_amount: input.form.discount_amount,
-      final_amount: final,
+      total_amount: amounts.total_amount,
+      discount_amount: amounts.discount_amount,
+      lx_discount_rate: amounts.lx_discount_rate,
+      lx_discount_amount: amounts.lx_discount_amount,
+      final_amount: amounts.final_amount,
       valid_until: input.form.valid_until,
       issued_at: input.form.issued_at || new Date().toISOString().slice(0, 10),
       assigned_employee_id: input.form.assigned_employee_id,
-      is_lx_material: input.form.is_lx_material,
+      is_lx_material: amounts.is_lx_material,
       is_contract_quote: false,
       customer_message: input.form.customer_message,
       memo: input.form.memo,
@@ -487,13 +561,8 @@ export async function updateQuote(input: {
   const existing = await getQuoteById(input.id);
   if (!existing) throw new Error("견적을 찾을 수 없습니다.");
 
-  let total = input.form.total_amount;
-  let final = input.form.final_amount;
-  const items = input.items;
-  if (items && items.length > 0) {
-    total = items.reduce((sum, i) => sum + (i.amount || 0), 0);
-    final = Math.max(0, total - input.form.discount_amount);
-  }
+  const items = input.items ?? [];
+  const amounts = resolveQuoteAmounts(input.form, items);
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -501,16 +570,20 @@ export async function updateQuote(input: {
     .update({
       project_id: input.form.project_id,
       quote_type: input.form.quote_type,
+      quote_mode: input.form.quote_mode,
       title: input.form.title,
-      quote_number: input.form.quote_number,
+      // 수정 시 견적번호는 변경하지 않음
+      quote_number: existing.quote_number,
       status: input.form.status,
-      total_amount: total,
-      discount_amount: input.form.discount_amount,
-      final_amount: final,
+      total_amount: amounts.total_amount,
+      discount_amount: amounts.discount_amount,
+      lx_discount_rate: amounts.lx_discount_rate,
+      lx_discount_amount: amounts.lx_discount_amount,
+      final_amount: amounts.final_amount,
       valid_until: input.form.valid_until,
       issued_at: input.form.issued_at,
       assigned_employee_id: input.form.assigned_employee_id,
-      is_lx_material: input.form.is_lx_material,
+      is_lx_material: amounts.is_lx_material,
       memo: input.form.memo,
       customer_message: input.form.customer_message,
       updated_by: access.userId,
@@ -520,7 +593,7 @@ export async function updateQuote(input: {
 
   if (error) throw new Error("견적 수정에 실패했습니다.");
 
-  if (items) await replaceQuoteItems(input.id, items);
+  await replaceQuoteItems(input.id, items);
   await uploadQuoteFiles({
     customerId: existing.customer_id,
     quoteId: input.id,
@@ -555,6 +628,7 @@ export async function createQuoteVersion(input: {
       quote_group_id: source.quote_group_id,
       parent_quote_id: source.id,
       quote_type: source.quote_type,
+      quote_mode: source.quote_mode || "simple",
       title: input.titleSuffix
         ? `${source.title} ${input.titleSuffix}`
         : source.title,
@@ -563,6 +637,8 @@ export async function createQuoteVersion(input: {
       status: "작성중",
       total_amount: source.total_amount,
       discount_amount: source.discount_amount,
+      lx_discount_rate: source.lx_discount_rate ?? 0,
+      lx_discount_amount: source.lx_discount_amount ?? 0,
       final_amount: source.final_amount,
       valid_until: source.valid_until,
       issued_at: new Date().toISOString().slice(0, 10),
@@ -590,6 +666,13 @@ export async function createQuoteVersion(input: {
         unit: i.unit,
         unit_price: i.unit_price,
         amount: i.amount,
+        cost_type: (
+          (QUOTE_COST_TYPES as readonly string[]).includes(i.cost_type ?? "")
+            ? (i.cost_type as QuoteCostType)
+            : "기타"
+        ),
+        is_lx_material:
+          i.cost_type === "자재" ? Boolean(i.is_lx_material) : false,
       })),
     );
   }
@@ -687,9 +770,14 @@ export type QuoteSharePayload = {
   id: string;
   title: string;
   quote_type: string;
+  quote_mode?: string;
   quote_number: string | null;
   version_number: number;
   status: string;
+  total_amount?: number;
+  discount_amount?: number;
+  lx_discount_rate?: number;
+  lx_discount_amount?: number;
   final_amount: number;
   valid_until: string | null;
   issued_at: string | null;
@@ -703,6 +791,8 @@ export type QuoteSharePayload = {
     quantity: number | null;
     unit: string | null;
     amount: number;
+    cost_type?: string;
+    is_lx_material?: boolean;
     sort_order: number;
   }[];
   files: {

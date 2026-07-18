@@ -427,6 +427,10 @@ export type CustomerQuoteInsert = {
 /** 신규 견적관리 (public.quotes) */
 export type ErpQuoteType = "창호" | "인테리어" | "기타";
 
+export type ErpQuoteMode = "simple" | "detailed";
+
+export type ErpQuoteCostType = "자재" | "시공" | "기타";
+
 export type ErpQuoteStatus =
   | "작성중"
   | "검토중"
@@ -446,12 +450,16 @@ export type ErpQuote = {
   quote_group_id: string;
   parent_quote_id: string | null;
   quote_type: ErpQuoteType | string;
+  /** migration 적용 전 환경 호환을 위해 optional */
+  quote_mode?: ErpQuoteMode | string;
   title: string;
   quote_number: string | null;
   version_number: number;
   status: ErpQuoteStatus | string;
   total_amount: number;
   discount_amount: number;
+  lx_discount_rate?: number;
+  lx_discount_amount?: number;
   final_amount: number;
   valid_until: string | null;
   issued_at: string | null;
@@ -502,6 +510,8 @@ export type ErpQuoteItem = {
   unit: string | null;
   unit_price: number;
   amount: number;
+  cost_type?: ErpQuoteCostType | string;
+  is_lx_material?: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;

@@ -96,6 +96,19 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
               <dd className="mt-0.5 text-lg font-semibold text-navy-900">
                 {(share.final_amount ?? 0).toLocaleString("ko-KR")}원
               </dd>
+              {(share.total_amount != null ||
+                share.discount_amount ||
+                share.lx_discount_amount) && (
+                <dd className="mt-1 text-[11px] text-gray-500">
+                  총 {(share.total_amount ?? 0).toLocaleString("ko-KR")}원
+                  {(share.discount_amount || 0) > 0
+                    ? ` · 일반할인 -${Number(share.discount_amount).toLocaleString("ko-KR")}원`
+                    : ""}
+                  {(share.lx_discount_amount || 0) > 0
+                    ? ` · LX할인(${Number(share.lx_discount_rate ?? 0)}%) -${Number(share.lx_discount_amount).toLocaleString("ko-KR")}원`
+                    : ""}
+                </dd>
+              )}
             </div>
             <div className="rounded-lg bg-gray-50 px-3 py-2">
               <dt className="text-[11px] text-gray-400">유효기간</dt>
@@ -118,24 +131,40 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
 
         {(share.items?.length ?? 0) > 0 && (
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-navy-900">공종별 금액</h2>
+            <h2 className="text-sm font-semibold text-navy-900">
+              {share.quote_mode === "simple" ? "항목별 금액" : "공종별 금액"}
+            </h2>
             <ul className="mt-3 divide-y divide-gray-100">
-              {share.items.map((item, idx) => (
-                <li
-                  key={`${item.trade_name}-${idx}`}
-                  className="flex items-center justify-between gap-3 py-2 text-sm"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{item.trade_name}</p>
-                    {item.item_name && (
-                      <p className="text-xs text-gray-500">{item.item_name}</p>
-                    )}
-                  </div>
-                  <p className="font-medium text-navy-800">
-                    {(item.amount ?? 0).toLocaleString("ko-KR")}원
-                  </p>
-                </li>
-              ))}
+              {share.items.map((item, idx) => {
+                const title =
+                  share.quote_mode === "simple"
+                    ? item.item_name || item.trade_name
+                    : item.trade_name;
+                return (
+                  <li
+                    key={`${title}-${idx}`}
+                    className="flex items-center justify-between gap-3 py-2 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">{title}</p>
+                      <p className="text-xs text-gray-500">
+                        {[
+                          item.cost_type || "기타",
+                          item.is_lx_material ? "LX 자재" : null,
+                          share.quote_mode !== "simple" && item.item_name
+                            ? item.item_name
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <p className="font-medium text-navy-800">
+                      {(item.amount ?? 0).toLocaleString("ko-KR")}원
+                    </p>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}

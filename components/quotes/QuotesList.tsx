@@ -388,8 +388,12 @@ export default function QuotesList({
                         {formatMoney(quote.total_amount)}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-500">
-                        {quote.discount_amount
-                          ? `-${formatMoney(quote.discount_amount)}`
+                        {(quote.discount_amount || 0) +
+                        (quote.lx_discount_amount || 0)
+                          ? `-${formatMoney(
+                              (quote.discount_amount || 0) +
+                                (quote.lx_discount_amount || 0),
+                            )}`
                           : "-"}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold">

@@ -22,7 +22,8 @@ export const ERP_QUOTE_STATUS_BADGE: Record<string, string> = {
   취소: "bg-slate-100 text-slate-500",
 };
 
-export const INTERIOR_TRADE_SUGGESTIONS = [
+/** 창호·인테리어·기타 공통 공종 빠른 추가 목록 */
+export const TRADE_SUGGESTIONS = [
   "철거",
   "설비",
   "창호",
@@ -40,6 +41,84 @@ export const INTERIOR_TRADE_SUGGESTIONS = [
   "조명",
   "기타",
 ] as const;
+
+/** @deprecated TRADE_SUGGESTIONS 사용 */
+export const INTERIOR_TRADE_SUGGESTIONS = TRADE_SUGGESTIONS;
+
+export const QUOTE_MODES = ["simple", "detailed"] as const;
+export type QuoteMode = (typeof QUOTE_MODES)[number];
+
+export const QUOTE_COST_TYPES = ["자재", "시공", "기타"] as const;
+export type QuoteCostType = (typeof QUOTE_COST_TYPES)[number];
+
+export const QUOTE_MODE_LABELS: Record<QuoteMode, string> = {
+  simple: "간편견적",
+  detailed: "상세견적",
+};
+
+/** 화면·서버 공통 금액 계산 (클라이언트 최종금액을 신뢰하지 않음) */
+export function computeQuoteAmounts(input: {
+  items: Array<{
+    amount: number;
+    cost_type?: string | null;
+    is_lx_material?: boolean | null;
+  }>;
+  /** 항목이 없을 때(상세·선택 공종) 사용할 총견적금액 */
+  fallbackTotal?: number;
+  discountAmount: number;
+  lxDiscountRate: number;
+}): {
+  total_amount: number;
+  discount_amount: number;
+  lx_discount_rate: number;
+  lx_discount_amount: number;
+  final_amount: number;
+  is_lx_material: boolean;
+  lx_material_sum: number;
+} {
+  const hasItems = input.items.length > 0;
+  const total = hasItems
+    ? input.items.reduce(
+        (sum, row) => sum + Math.max(0, Math.round(Number(row.amount) || 0)),
+        0,
+      )
+    : Math.max(0, Math.round(Number(input.fallbackTotal) || 0));
+
+  const rateRaw = Number(input.lxDiscountRate);
+  const lxDiscountRate = Number.isFinite(rateRaw)
+    ? Math.min(100, Math.max(0, Math.round(rateRaw * 100) / 100))
+    : 0;
+
+  const lxMaterialSum = input.items
+    .filter(
+      (row) =>
+        row.cost_type === "자재" && Boolean(row.is_lx_material),
+    )
+    .reduce(
+      (sum, row) => sum + Math.max(0, Math.round(Number(row.amount) || 0)),
+      0,
+    );
+
+  const lxDiscountAmount = Math.round((lxMaterialSum * lxDiscountRate) / 100);
+  const discountAmount = Math.max(
+    0,
+    Math.round(Number(input.discountAmount) || 0),
+  );
+  const finalAmount = Math.max(0, total - discountAmount - lxDiscountAmount);
+  const isLxMaterial = input.items.some(
+    (row) => row.cost_type === "자재" && Boolean(row.is_lx_material),
+  );
+
+  return {
+    total_amount: total,
+    discount_amount: discountAmount,
+    lx_discount_rate: lxDiscountRate,
+    lx_discount_amount: lxDiscountAmount,
+    final_amount: finalAmount,
+    is_lx_material: isLxMaterial,
+    lx_material_sum: lxMaterialSum,
+  };
+}
 
 export const QUOTE_FILES_BUCKET = "quote-files";
 export const QUOTE_FILE_MAX_BYTES = 30 * 1024 * 1024;
