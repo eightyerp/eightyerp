@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 
-const TEAM_OPTIONS = ["경영", "인테리어", "창호", "기타"] as const;
-
 export default function SignupForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,25 +14,61 @@ export default function SignupForm() {
     setError(null);
 
     const formData = new FormData(event.currentTarget);
-    const fullName = String(formData.get("full_name") ?? "").trim();
+
+    const companyName = String(
+      formData.get("company_name") ?? "",
+    ).trim();
+
+    const businessNumber = String(
+      formData.get("business_number") ?? "",
+    ).trim();
+
+    const representativeName = String(
+      formData.get("representative_name") ?? "",
+    ).trim();
+
     const email = String(formData.get("email") ?? "")
       .trim()
       .toLowerCase();
+
     const phone = String(formData.get("phone") ?? "").trim();
     const password = String(formData.get("password") ?? "");
-    const passwordConfirm = String(formData.get("password_confirm") ?? "");
-    const requestedTeam = String(formData.get("requested_team") ?? "").trim();
+    const passwordConfirm = String(
+      formData.get("password_confirm") ?? "",
+    );
 
-    if (!fullName || !email || !password) {
-      setError("이름, 이메일, 비밀번호는 필수입니다.");
+    const businessNumberDigits = businessNumber.replace(/[^0-9]/g, "");
+
+    if (companyName.length < 2) {
+      setError("회사명을 2자 이상 입력해 주세요.");
       setPending(false);
       return;
     }
+
+    if (businessNumberDigits.length !== 10) {
+      setError("사업자번호 10자리를 정확히 입력해 주세요.");
+      setPending(false);
+      return;
+    }
+
+    if (representativeName.length < 2) {
+      setError("대표자명을 2자 이상 입력해 주세요.");
+      setPending(false);
+      return;
+    }
+
+    if (!email || !password) {
+      setError("이메일과 비밀번호는 필수입니다.");
+      setPending(false);
+      return;
+    }
+
     if (password.length < 8) {
       setError("비밀번호는 8자 이상이어야 합니다.");
       setPending(false);
       return;
     }
+
     if (password !== passwordConfirm) {
       setError("비밀번호 확인이 일치하지 않습니다.");
       setPending(false);
@@ -43,16 +77,19 @@ export default function SignupForm() {
 
     try {
       const supabase = createClient();
+
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            full_name: fullName,
+            signup_type: "company_owner",
+            company_name: companyName,
+            business_number: businessNumberDigits,
+            representative_name: representativeName,
+            full_name: representativeName,
             phone,
-            requested_team: requestedTeam || null,
-            // 직급(requested_title)은 보내지 않음 — 승인 시 관리자가 지정
-            // 클라이언트가 role을 넣어도 트리거가 staff/미승인으로 강제
+            // Auth 가입 단계에서는 항상 최소 권한으로 생성
             role: "staff",
           },
         },
@@ -70,9 +107,22 @@ export default function SignupForm() {
         return;
       }
 
-      window.location.assign("/pending-approval?registered=1");
+      if (data.session) {
+        // 이메일 확인이 필요 없는 환경: 바로 회사정보 확인·개설
+        window.location.assign("/company/register");
+        return;
+      }
+
+      // 이메일 확인이 필요한 환경: 확인 후 로그인하면 회사 개설로 이동
+      window.location.assign(
+        "/pending-approval?registered=1&company=1",
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "회원가입 오류");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "회원가입 중 오류가 발생했습니다.",
+      );
       setPending(false);
     }
   }
@@ -83,22 +133,67 @@ export default function SignupForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div>
-        <label htmlFor="full_name" className="mb-1.5 block text-sm font-medium text-white/70">
-          이름 *
+        <label
+          htmlFor="company_name"
+          className="mb-1.5 block text-sm font-medium text-white/70"
+        >
+          회사명 *
         </label>
         <input
-          id="full_name"
-          name="full_name"
+          id="company_name"
+          name="company_name"
           required
-          autoComplete="name"
-          placeholder="홍길동"
+          minLength={2}
+          maxLength={100}
+          autoComplete="organization"
+          placeholder="예: 주식회사 에이비씨"
           className={inputClass}
         />
       </div>
 
       <div>
-        <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-white/70">
-          이메일 *
+        <label
+          htmlFor="business_number"
+          className="mb-1.5 block text-sm font-medium text-white/70"
+        >
+          사업자등록번호 *
+        </label>
+        <input
+          id="business_number"
+          name="business_number"
+          required
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="000-00-00000"
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <label
+          htmlFor="representative_name"
+          className="mb-1.5 block text-sm font-medium text-white/70"
+        >
+          대표자명 *
+        </label>
+        <input
+          id="representative_name"
+          name="representative_name"
+          required
+          minLength={2}
+          maxLength={50}
+          autoComplete="name"
+          placeholder="대표자 이름"
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <label
+          htmlFor="email"
+          className="mb-1.5 block text-sm font-medium text-white/70"
+        >
+          대표 계정 이메일 *
         </label>
         <input
           id="email"
@@ -106,13 +201,16 @@ export default function SignupForm() {
           type="email"
           required
           autoComplete="email"
-          placeholder="name@company.com"
+          placeholder="owner@company.com"
           className={inputClass}
         />
       </div>
 
       <div>
-        <label htmlFor="phone" className="mb-1.5 block text-sm font-medium text-white/70">
+        <label
+          htmlFor="phone"
+          className="mb-1.5 block text-sm font-medium text-white/70"
+        >
           연락처
         </label>
         <input
@@ -126,7 +224,10 @@ export default function SignupForm() {
       </div>
 
       <div>
-        <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-white/70">
+        <label
+          htmlFor="password"
+          className="mb-1.5 block text-sm font-medium text-white/70"
+        >
           비밀번호 *
         </label>
         <input
@@ -159,32 +260,15 @@ export default function SignupForm() {
         />
       </div>
 
-      <div>
-        <label
-          htmlFor="requested_team"
-          className="mb-1.5 block text-sm font-medium text-white/70"
-        >
-          희망 팀 <span className="text-white/40">(참고)</span>
-        </label>
-        <select
-          id="requested_team"
-          name="requested_team"
-          className={inputClass}
-          defaultValue=""
-        >
-          <option value="">선택 안 함</option>
-          {TEAM_OPTIONS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+      <div className="rounded-lg border border-gold-400/20 bg-gold-500/5 px-3 py-3 text-xs leading-relaxed text-white/45">
+        <p>
+          가입 후 회사정보를 확인하면 대표 계정과 독립적인 ERP 업무공간이
+          즉시 생성됩니다.
+        </p>
+        <p className="mt-1">
+          직원은 회사 개설 후 발급되는 전용 초대 링크로 가입합니다.
+        </p>
       </div>
-
-      <p className="text-xs leading-relaxed text-white/40">
-        팀·직급·역할은 관리자 승인 시 확정됩니다. 가입만으로는 ERP에 접근할 수
-        없습니다.
-      </p>
 
       {error && (
         <div className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -197,12 +281,15 @@ export default function SignupForm() {
         disabled={pending}
         className="btn-login mt-1 w-full rounded-lg py-3.5 text-sm font-semibold tracking-wide text-navy-900 disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {pending ? "가입 중..." : "회원가입 신청"}
+        {pending ? "가입 중..." : "회사 대표로 가입하기"}
       </button>
 
       <p className="text-center text-sm text-white/50">
         이미 계정이 있으신가요?{" "}
-        <Link href="/login" className="text-gold-400 hover:text-gold-500">
+        <Link
+          href="/login"
+          className="text-gold-400 hover:text-gold-500"
+        >
           로그인
         </Link>
       </p>

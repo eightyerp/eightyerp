@@ -141,10 +141,19 @@ export default function LoginForm() {
         isApproved &&
         status === "approved";
 
+        const signupType =
+        typeof data.user?.user_metadata?.signup_type === "string"
+          ? data.user.user_metadata.signup_type
+          : "";
+
+      const nextPath = canAccessErp
+        ? "/dashboard"
+        : signupType === "company_owner"
+          ? "/company/register"
+          : "/pending-approval";
+
       // Full navigation ensures middleware/proxy reads freshly set auth cookies.
-      window.location.assign(
-        canAccessErp ? "/dashboard" : "/pending-approval",
-      );
+      window.location.assign(nextPath);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "알 수 없는 로그인 오류";
@@ -233,7 +242,7 @@ export default function LoginForm() {
         href="/signup"
         className="mt-2 block w-full rounded-lg border border-gold-400/40 py-3 text-center text-sm font-medium text-gold-400 transition-colors hover:bg-gold-500/10"
       >
-        직원 회원가입
+        새 회사 시작하기
       </Link>
     </form>
   );

@@ -20,20 +20,20 @@ export default function SignupPage() {
             EIGHTY ERP
           </h1>
           <p className="mt-3 text-sm text-white/60 sm:text-base">
-            직원 회원가입
+          회사 대표 가입
           </p>
           <p className="mt-6 max-w-xs text-xs leading-relaxed text-white/40 sm:text-sm">
-            가입 후 대표이사 또는 이사의 승인이 필요합니다.
+          회사정보 등록 후 독립적인 ERP 업무공간을 바로 시작합니다.
           </p>
         </section>
 
         <section className="login-card flex flex-1 flex-col justify-center px-6 py-10 sm:px-10 lg:px-14 lg:py-16">
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-white sm:text-2xl">
-              직원 회원가입
+            회사 대표 가입
             </h2>
             <p className="mt-1 text-sm text-white/50">
-              승인 전까지 ERP 업무 메뉴에 접근할 수 없습니다
+            가입 후 회사정보를 확인하면 바로 ERP를 시작할 수 있습니다
             </p>
           </div>
 
