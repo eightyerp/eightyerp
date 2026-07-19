@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import LogoutButton from "@/components/auth/LogoutButton";
+import CompanySwitcher from "@/components/dashboard/CompanySwitcher";
 import {
   getTopBarUserAction,
   type TopBarUserDisplay,
@@ -15,6 +16,9 @@ const fallbackUser: TopBarUserDisplay = {
   name: "직원",
   roleLabel: "",
   department: "",
+  companies: [],
+  activeCompanyId: null,
+  activeCompanyName: "",
 };
 
 export default function TopBar({ onMenuToggle }: TopBarProps) {
@@ -138,6 +142,11 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+      <CompanySwitcher
+          companies={user.companies}
+          activeCompanyId={user.activeCompanyId}
+          activeCompanyName={user.activeCompanyName}
+        />
         <button
           type="button"
           className="relative inline-flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
