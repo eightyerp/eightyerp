@@ -7,6 +7,8 @@ import {
   listEmployeesInScope,
 } from "@/lib/crm/schedule-access";
 import {
+  DEFAULT_QUOTE_VAT_MODE,
+  DEFAULT_QUOTE_VAT_RATE,
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
   QUOTE_FILE_EXTENSIONS,
@@ -16,9 +18,14 @@ import {
   buildQuoteGuideMessage,
   canCostTypeHaveLx,
   computeQuoteAmounts,
+  computeQuoteVatAmounts,
+  isActiveQuoteVatMode,
   normalizeQuoteCostType,
+  normalizeQuoteVatMode,
+  normalizeQuoteVatRate,
   type QuoteCostType,
   type QuoteMode,
+  type QuoteVatMode,
 } from "@/lib/crm/quote-constants";
 import type {
   ErpQuote,
@@ -27,6 +34,62 @@ import type {
   ErpQuoteStatus,
   ErpQuoteType,
 } from "@/types/database";
+
+type CompanyQuoteVatDefaults = {
+  vat_mode: QuoteVatMode;
+  vat_rate: number;
+};
+
+function isMissingVatColumnError(message: string | undefined): boolean {
+  const text = (message ?? "").toLowerCase();
+  return (
+    text.includes("quote_vat_input_mode") ||
+    text.includes("quote_vat_rate") ||
+    (text.includes("vat_mode") && text.includes("column")) ||
+    (text.includes("vat_rate") && text.includes("column")) ||
+    text.includes("supply_amount") ||
+    text.includes("customer_total_amount") ||
+    (text.includes("vat_amount") && text.includes("column"))
+  );
+}
+
+/** 현재 회사 견적 VAT 기본값. migration 32 전이면 exclusive/10. */
+async function getCurrentCompanyQuoteVatDefaults(): Promise<CompanyQuoteVatDefaults> {
+  const fallback: CompanyQuoteVatDefaults = {
+    vat_mode: DEFAULT_QUOTE_VAT_MODE,
+    vat_rate: DEFAULT_QUOTE_VAT_RATE,
+  };
+  try {
+    const supabase = await createClient();
+    const { data: companyId, error: idError } = await supabase.rpc(
+      "current_company_id",
+    );
+    if (idError || !companyId) return fallback;
+
+    const { data, error } = await supabase
+      .from("companies")
+      .select("quote_vat_input_mode, quote_vat_rate")
+      .eq("id", companyId)
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingVatColumnError(error.message)) return fallback;
+      return fallback;
+    }
+    if (!data) return fallback;
+
+    const mode =
+      normalizeQuoteVatMode(
+        (data as { quote_vat_input_mode?: string | null }).quote_vat_input_mode,
+      ) ?? DEFAULT_QUOTE_VAT_MODE;
+    const rate = normalizeQuoteVatRate(
+      (data as { quote_vat_rate?: number | null }).quote_vat_rate,
+    );
+    return { vat_mode: mode, vat_rate: rate };
+  } catch {
+    return fallback;
+  }
+}
 
 function emptyToNull(value: string | null | undefined): string | null {
   const text = (value ?? "").trim();
@@ -734,6 +797,12 @@ export async function createQuote(input: {
 
   const items = input.items ?? [];
   const amounts = resolveQuoteAmounts(input.form, items);
+  const vatDefaults = await getCurrentCompanyQuoteVatDefaults();
+  const vat = computeQuoteVatAmounts({
+    discountedAmount: amounts.final_amount,
+    vatMode: vatDefaults.vat_mode,
+    vatRate: vatDefaults.vat_rate,
+  });
 
   const { data, error } = await supabase
     .from("quotes")
@@ -751,6 +820,11 @@ export async function createQuote(input: {
       lx_discount_rate: amounts.lx_discount_rate,
       lx_discount_amount: amounts.lx_discount_amount,
       final_amount: amounts.final_amount,
+      vat_mode: vat.vat_mode,
+      vat_rate: vat.vat_rate,
+      supply_amount: vat.supply_amount,
+      vat_amount: vat.vat_amount,
+      customer_total_amount: vat.customer_total_amount,
       valid_until: input.form.valid_until,
       issued_at: input.form.issued_at || new Date().toISOString().slice(0, 10),
       assigned_employee_id: input.form.assigned_employee_id,
@@ -764,7 +838,14 @@ export async function createQuote(input: {
     .select("id")
     .single();
 
-  if (error || !data) throw new Error("견적 등록에 실패했습니다.");
+  if (error || !data) {
+    if (error && isMissingVatColumnError(error.message)) {
+      throw new Error(
+        "부가세 설정(migration 32)이 아직 적용되지 않았습니다. DB 마이그레이션 후 다시 시도해 주세요.",
+      );
+    }
+    throw new Error("견적 등록에 실패했습니다.");
+  }
 
   await replaceQuoteItems(data.id, items);
   await uploadQuoteFiles({
@@ -824,26 +905,45 @@ export async function updateQuote(input: {
   }
 
   const supabase = await createClient();
+
+  // VAT snapshot: 앱은 계산값을 보내 검증용으로만 사용. 서버 RPC가 동일 공식으로 재계산·저장.
+  // legacy(vat_mode null)도 5키를 모두 보내 final 기준 snapshot 재계산을 검증한다.
+  // (키 0개여도 RPC가 기존 mode로 재계산하지만, 앱·서버 일치 검증을 위해 항상 전송)
+  const vat = computeQuoteVatAmounts({
+    discountedAmount: amounts.final_amount,
+    vatMode: isActiveQuoteVatMode(existing.vat_mode) ? existing.vat_mode : null,
+    vatRate: isActiveQuoteVatMode(existing.vat_mode)
+      ? (existing.vat_rate ?? DEFAULT_QUOTE_VAT_RATE)
+      : null,
+  });
+
+  const header: Record<string, unknown> = {
+    project_id: input.form.project_id,
+    quote_type: input.form.quote_type,
+    quote_mode: input.form.quote_mode,
+    title: input.form.title,
+    status: input.form.status,
+    total_amount: amounts.total_amount,
+    discount_amount: amounts.discount_amount,
+    lx_discount_rate: amounts.lx_discount_rate,
+    lx_discount_amount: amounts.lx_discount_amount,
+    final_amount: amounts.final_amount,
+    valid_until: input.form.valid_until,
+    issued_at: input.form.issued_at,
+    assigned_employee_id: input.form.assigned_employee_id,
+    is_lx_material: amounts.is_lx_material,
+    memo: input.form.memo,
+    customer_message: input.form.customer_message,
+    vat_mode: vat.vat_mode,
+    vat_rate: vat.vat_rate,
+    supply_amount: vat.supply_amount,
+    vat_amount: vat.vat_amount,
+    customer_total_amount: vat.customer_total_amount,
+  };
+
   const { error } = await supabase.rpc("update_quote_with_items", {
     p_quote_id: input.id,
-    p_header: {
-      project_id: input.form.project_id,
-      quote_type: input.form.quote_type,
-      quote_mode: input.form.quote_mode,
-      title: input.form.title,
-      status: input.form.status,
-      total_amount: amounts.total_amount,
-      discount_amount: amounts.discount_amount,
-      lx_discount_rate: amounts.lx_discount_rate,
-      lx_discount_amount: amounts.lx_discount_amount,
-      final_amount: amounts.final_amount,
-      valid_until: input.form.valid_until,
-      issued_at: input.form.issued_at,
-      assigned_employee_id: input.form.assigned_employee_id,
-      is_lx_material: amounts.is_lx_material,
-      memo: input.form.memo,
-      customer_message: input.form.customer_message,
-    },
+    p_header: header,
     p_items: buildQuoteItemsRpcPayload(items),
     p_removed_item_ids: removed,
   });
@@ -902,6 +1002,12 @@ export async function createQuoteVersion(input: {
       lx_discount_rate: source.lx_discount_rate ?? 0,
       lx_discount_amount: source.lx_discount_amount ?? 0,
       final_amount: source.final_amount,
+      vat_mode: source.vat_mode ?? null,
+      vat_rate: source.vat_rate ?? null,
+      supply_amount: source.supply_amount ?? source.final_amount,
+      vat_amount: source.vat_amount ?? 0,
+      customer_total_amount:
+        source.customer_total_amount ?? source.final_amount,
       valid_until: source.valid_until,
       issued_at: new Date().toISOString().slice(0, 10),
       assigned_employee_id: source.assigned_employee_id,
@@ -915,7 +1021,14 @@ export async function createQuoteVersion(input: {
     .select("id")
     .single();
 
-  if (error || !data) throw new Error("새 버전 생성에 실패했습니다.");
+  if (error || !data) {
+    if (error && isMissingVatColumnError(error.message)) {
+      throw new Error(
+        "부가세 설정(migration 32)이 아직 적용되지 않았습니다. DB 마이그레이션 후 다시 시도해 주세요.",
+      );
+    }
+    throw new Error("새 버전 생성에 실패했습니다.");
+  }
 
   if (input.copyItems && source.quote_items?.length) {
     await replaceQuoteItems(

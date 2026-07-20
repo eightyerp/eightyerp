@@ -329,6 +329,99 @@ export function computeQuoteAmounts(input: {
   };
 }
 
+/** 견적 VAT 입력 방식. null = legacy(부가세 미적용 snapshot) */
+export const QUOTE_VAT_MODES = ["exclusive", "inclusive"] as const;
+export type QuoteVatMode = (typeof QUOTE_VAT_MODES)[number];
+
+export const DEFAULT_QUOTE_VAT_MODE: QuoteVatMode = "exclusive";
+export const DEFAULT_QUOTE_VAT_RATE = 10;
+
+export function normalizeQuoteVatMode(
+  value: string | null | undefined,
+): QuoteVatMode | null {
+  if (value == null || value === "") return null;
+  if ((QUOTE_VAT_MODES as readonly string[]).includes(value)) {
+    return value as QuoteVatMode;
+  }
+  return null;
+}
+
+export function normalizeQuoteVatRate(value: number | null | undefined): number {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return DEFAULT_QUOTE_VAT_RATE;
+  return Math.min(100, Math.max(0, Math.round(raw * 100) / 100));
+}
+
+export function isActiveQuoteVatMode(
+  value: string | null | undefined,
+): value is QuoteVatMode {
+  return normalizeQuoteVatMode(value) != null;
+}
+
+export type QuoteVatAmounts = {
+  vat_mode: QuoteVatMode | null;
+  vat_rate: number | null;
+  supply_amount: number;
+  vat_amount: number;
+  customer_total_amount: number;
+};
+
+/**
+ * 할인 후 금액(discountedAmount = computeQuoteAmounts.final_amount) 기준 VAT snapshot.
+ * - exclusive: 공급가=할인후, 부가세=반올림(공급가×세율), 고객최종=공급가+부가세
+ * - inclusive: 고객최종=할인후, 공급가=반올림(고객최종/(1+세율)), 부가세=고객최종-공급가
+ * - legacy(null): 공급가=고객최종=할인후, 부가세=0 (기존 견적 호환)
+ * 항상 supply + vat === customer_total (원 단위).
+ */
+export function computeQuoteVatAmounts(input: {
+  discountedAmount: number;
+  vatMode: QuoteVatMode | null | undefined;
+  vatRate?: number | null;
+}): QuoteVatAmounts {
+  const discounted = Math.max(0, Math.round(Number(input.discountedAmount) || 0));
+  const mode = normalizeQuoteVatMode(input.vatMode);
+
+  if (mode == null) {
+    return {
+      vat_mode: null,
+      vat_rate: null,
+      supply_amount: discounted,
+      vat_amount: 0,
+      customer_total_amount: discounted,
+    };
+  }
+
+  const rate = normalizeQuoteVatRate(input.vatRate);
+
+  if (mode === "exclusive") {
+    const supply_amount = discounted;
+    const vat_amount =
+      rate === 0 ? 0 : Math.round((supply_amount * rate) / 100);
+    return {
+      vat_mode: mode,
+      vat_rate: rate,
+      supply_amount,
+      vat_amount,
+      customer_total_amount: supply_amount + vat_amount,
+    };
+  }
+
+  // inclusive: 할인 후 입력금액을 고객 최종으로 보고 공급가·부가세 분해
+  const customer_total_amount = discounted;
+  const supply_amount =
+    rate === 0
+      ? customer_total_amount
+      : Math.round(customer_total_amount / (1 + rate / 100));
+  const vat_amount = customer_total_amount - supply_amount;
+  return {
+    vat_mode: mode,
+    vat_rate: rate,
+    supply_amount,
+    vat_amount,
+    customer_total_amount,
+  };
+}
+
 export const QUOTE_FILES_BUCKET = "quote-files";
 export const QUOTE_FILE_MAX_BYTES = 30 * 1024 * 1024;
 export const QUOTE_FILE_EXTENSIONS = ["pdf", "xls", "xlsx"] as const;

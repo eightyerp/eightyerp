@@ -461,6 +461,19 @@ export type ErpQuote = {
   lx_discount_rate?: number;
   lx_discount_amount?: number;
   final_amount: number;
+  /**
+   * 견적 VAT snapshot. null/undefined = legacy(부가세 미적용).
+   * exclusive|inclusive 만 활성. migration 32.
+   */
+  vat_mode?: string | null;
+  /** 저장 시점 부가세율(%). legacy는 null */
+  vat_rate?: number | null;
+  /** 공급가액(할인 후, 부가세 제외). legacy backfill = final_amount */
+  supply_amount?: number;
+  /** 부가세액. legacy backfill = 0 */
+  vat_amount?: number;
+  /** 고객 최종금액(공급가+부가세). legacy backfill = final_amount */
+  customer_total_amount?: number;
   valid_until: string | null;
   issued_at: string | null;
   sent_at: string | null;
