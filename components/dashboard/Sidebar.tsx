@@ -51,7 +51,10 @@ function buildNav(isAdmin: boolean): MenuItem[] {
         label: "시스템관리",
         href: "/system/approvals",
         children: isAdmin
-          ? [{ label: "가입 승인 관리", href: "/system/approvals" }]
+          ? [
+              { label: "가입 승인 관리", href: "/system/approvals" },
+              { label: "직원 초대 관리", href: "/system/invitations" },
+            ]
           : undefined,
       };
     }
