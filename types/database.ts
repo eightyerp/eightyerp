@@ -514,6 +514,10 @@ export type ErpQuoteItem = {
   is_lx_material?: boolean;
   /** 시공+자재 + LX 시 할인 대상 자재금액. 자재 구분은 0이어도 전체 금액 적용 */
   lx_discount_base_amount?: number;
+  /** null이면 견적 단위 lx_discount_rate 적용(기존 호환). none|rate|fixed */
+  lx_discount_type?: string | null;
+  /** rate(%) 또는 정액(원) */
+  lx_discount_value?: number | null;
   sort_order: number;
   created_at: string;
   updated_at: string;

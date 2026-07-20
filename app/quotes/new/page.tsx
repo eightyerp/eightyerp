@@ -7,6 +7,8 @@ import {
 } from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
 import { getCustomerById, getCustomers, getEmployees } from "@/lib/crm/customers";
+import { getCurrentCompanyQuoteBrand } from "@/lib/crm/quote-brand";
+import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
 import { createClient } from "@/lib/supabase-server";
 import type { Employee } from "@/types/database";
 
@@ -46,13 +48,15 @@ export default async function NewQuotePage({
 
   let customers: WizardCustomer[] = [];
   let employees: Employee[] = [];
+  let brand: QuoteBrandProfile | null = null;
   let loadError: string | null = null;
   const tablesMissing = await isQuotesSchemaMissing();
 
   try {
-    const [customerList, employeeList] = await Promise.all([
+    const [customerList, employeeList, companyBrand] = await Promise.all([
       getCustomers({ pageSize: 100 }),
       getEmployees(),
+      getCurrentCompanyQuoteBrand(),
     ]);
     customers = customerList.customers.map((c) => ({
       id: c.id,
@@ -62,6 +66,7 @@ export default async function NewQuotePage({
       assigned_employee_id: c.assigned_employee_id ?? null,
     }));
     employees = employeeList;
+    brand = companyBrand;
 
     if (customerId && !customers.some((c) => c.id === customerId)) {
       const found = await getCustomerById(customerId);
@@ -113,6 +118,7 @@ export default async function NewQuotePage({
             employees={employees}
             customers={customers}
             initialCustomerId={customerId}
+            brand={brand}
           />
         )}
       </div>

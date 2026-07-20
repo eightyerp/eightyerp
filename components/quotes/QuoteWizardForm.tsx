@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useMemo, useState } from "react";
@@ -12,17 +13,30 @@ import { formatEmployeeLabel } from "@/lib/crm/constants";
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
-  QUOTE_COST_TYPES,
   QUOTE_DOCUMENT_TITLES,
   QUOTE_MODE_LABELS,
-  TRADE_SUGGESTIONS,
   canCostTypeHaveLx,
   computeQuoteAmounts,
+  normalizeQuoteCostType,
   quoteDocumentTitle,
   type QuoteCostType,
   type QuoteMode,
 } from "@/lib/crm/quote-constants";
+import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
+import type { QuoteDocumentModel } from "@/lib/crm/quote-document";
+import {
+  flattenItemsByTradeOrder,
+} from "@/lib/crm/quote-trade-groups";
+import QuoteTradeItemsPanel, {
+  initialTradeOrderFromItems,
+  type QuoteLineRow,
+} from "@/components/quotes/QuoteTradeItemsPanel";
 import type { Employee, ErpQuote, ErpQuoteType } from "@/types/database";
+
+const QuotePreviewModal = dynamic(
+  () => import("@/components/quotes/QuotePreviewModal"),
+  { ssr: false },
+);
 
 type WizardCustomer = {
   id: string;
@@ -38,21 +52,11 @@ type QuoteWizardFormProps = {
   customers: WizardCustomer[];
   initialCustomerId?: string | null;
   initialQuote?: ErpQuote | null;
+  /** 페이지 로더에서 1회 조회한 회사 표지 브랜드 */
+  brand?: QuoteBrandProfile | null;
 };
 
-type TradeItemRow = {
-  key: string;
-  trade_name: string;
-  item_name: string;
-  description: string;
-  quantity: string;
-  unit: string;
-  unit_price: string;
-  amount: string;
-  cost_type: QuoteCostType;
-  is_lx_material: boolean;
-  lx_discount_base_amount: string;
-};
+type TradeItemRow = QuoteLineRow;
 
 const STEPS = [
   { key: 1, label: "고객선택" },
@@ -71,15 +75,17 @@ function rowKey(): string {
 
 function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
   const costType = (
-    source?.cost_type &&
-    (QUOTE_COST_TYPES as readonly string[]).includes(source.cost_type)
-      ? source.cost_type
+    source?.cost_type
+      ? normalizeQuoteCostType(source.cost_type)
       : "기타"
   ) as QuoteCostType;
   const isLx =
     canCostTypeHaveLx(costType) && Boolean(source?.is_lx_material);
+  const dbId =
+    typeof source?.id === "string" && source.id.trim() ? source.id.trim() : null;
   return {
-    key: rowKey(),
+    key: source?.key ?? dbId ?? rowKey(),
+    id: dbId,
     trade_name: source?.trade_name ?? "",
     item_name: source?.item_name ?? "",
     description: source?.description ?? "",
@@ -89,7 +95,10 @@ function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
     amount: source?.amount ?? "0",
     cost_type: costType,
     is_lx_material: isLx,
-    lx_discount_base_amount: source?.lx_discount_base_amount ?? "0",
+    lx_discount_base_amount: source?.lx_discount_base_amount ?? "",
+    lx_discount_type: source?.lx_discount_type ?? "",
+    lx_discount_value: source?.lx_discount_value ?? "0",
+    isPlaceholder: source?.isPlaceholder,
   };
 }
 
@@ -105,11 +114,60 @@ function formatMoney(value: number): string {
 function resolveInitialMode(quote?: ErpQuote | null): QuoteMode {
   if (quote?.quote_mode === "detailed") return "detailed";
   if (quote?.quote_mode === "simple") return "simple";
-  // 기존 데이터: 공종(수량/단가)이 있으면 상세로 추정
-  if (quote?.quote_items?.some((i) => i.quantity != null || (i.unit_price ?? 0) > 0)) {
+  // quote_mode 미적용/누락 시에만 보조 추정 (저장값 임의 변경 금지)
+  if (
+    quote?.quote_items?.some(
+      (i) =>
+        (i.quantity != null && Number(i.quantity) !== 0) ||
+        (i.unit_price ?? 0) > 0 ||
+        Boolean(i.description?.trim()),
+    )
+  ) {
     return "detailed";
   }
   return "simple";
+}
+
+function mapQuoteItemsToRows(
+  quote: ErpQuote | null | undefined,
+  mode: QuoteMode,
+): TradeItemRow[] {
+  return (quote?.quote_items ?? []).map((item) => {
+    const itemName = item.item_name ?? "";
+    const tradeName = item.trade_name ?? "";
+    // 간편 레거시: trade===item 이면 표시용 공종만 비움(데이터 삭제가 아님)
+    const legacySynced =
+      mode === "simple" && Boolean(tradeName) && tradeName === itemName;
+    const typeRaw = String(item.lx_discount_type ?? "").trim();
+    const lxType =
+      typeRaw === "none" || typeRaw === "rate" || typeRaw === "fixed"
+        ? typeRaw
+        : ("" as const);
+    const costType = normalizeQuoteCostType(item.cost_type);
+    const baseRaw = item.lx_discount_base_amount;
+    // 시공+자재: 0/미저장은 빈 입력으로 복원(전체금액을 자재로 추정하지 않음)
+    const baseAmount =
+      costType === "시공+자재" &&
+      (baseRaw == null || Number(baseRaw) === 0)
+        ? ""
+        : String(baseRaw ?? 0);
+    return toRow({
+      key: item.id,
+      id: item.id,
+      trade_name: legacySynced ? "" : tradeName,
+      item_name: itemName || (legacySynced ? tradeName : ""),
+      description: item.description ?? "",
+      quantity: item.quantity != null ? String(item.quantity) : "",
+      unit: item.unit ?? "",
+      unit_price: String(item.unit_price ?? 0),
+      amount: String(item.amount ?? 0),
+      cost_type: costType,
+      is_lx_material: Boolean(item.is_lx_material),
+      lx_discount_base_amount: baseAmount,
+      lx_discount_type: lxType,
+      lx_discount_value: String(item.lx_discount_value ?? 0),
+    });
+  });
 }
 
 export default function QuoteWizardForm({
@@ -118,12 +176,13 @@ export default function QuoteWizardForm({
   customers,
   initialCustomerId,
   initialQuote,
+  brand = null,
 }: QuoteWizardFormProps) {
   const router = useRouter();
   const action = mode === "create" ? createQuoteAction : updateQuoteAction;
   const [state, formAction, pending] = useActionState(action, initialState);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(mode === "edit" ? 4 : 1);
   const [stepError, setStepError] = useState<string | null>(null);
 
   const [customerId, setCustomerId] = useState(
@@ -139,9 +198,7 @@ export default function QuoteWizardForm({
   );
 
   const [title, setTitle] = useState(initialQuote?.title ?? "");
-  const [quoteNumber, setQuoteNumber] = useState(
-    initialQuote?.quote_number ?? "",
-  );
+  const [quoteNumber] = useState(initialQuote?.quote_number ?? "");
   const [status, setStatus] = useState(initialQuote?.status ?? "작성중");
   const [validUntil, setValidUntil] = useState(
     initialQuote?.valid_until ?? "",
@@ -175,46 +232,80 @@ export default function QuoteWizardForm({
   );
 
   const [items, setItems] = useState<TradeItemRow[]>(() => {
-    const mapped = (initialQuote?.quote_items ?? []).map((item) =>
-      toRow({
-        trade_name: item.trade_name,
-        item_name: item.item_name || item.trade_name || "",
-        description: item.description ?? "",
-        quantity: item.quantity != null ? String(item.quantity) : "",
-        unit: item.unit ?? "",
-        unit_price: String(item.unit_price ?? 0),
-        amount: String(item.amount),
-        cost_type: (item.cost_type as QuoteCostType) || "기타",
-        is_lx_material: Boolean(item.is_lx_material),
-        lx_discount_base_amount: String(item.lx_discount_base_amount ?? 0),
-      }),
-    );
-    if (mapped.length === 0 && resolveInitialMode(initialQuote) === "simple") {
+    const initialMode = resolveInitialMode(initialQuote);
+    const mapped = mapQuoteItemsToRows(initialQuote, initialMode);
+    // 신규 생성 + 간편 + 항목 없음일 때만 기본 빈 행 1개
+    if (
+      mode === "create" &&
+      mapped.length === 0 &&
+      initialMode === "simple"
+    ) {
       return [toRow({ cost_type: "자재" })];
     }
     return mapped;
   });
-  const [customTrade, setCustomTrade] = useState("");
+  const [tradeOrder, setTradeOrder] = useState<string[]>(() => {
+    const initialMode = resolveInitialMode(initialQuote);
+    const mapped = mapQuoteItemsToRows(initialQuote, initialMode);
+    return initialTradeOrderFromItems(mapped, initialMode);
+  });
+  /** 화면에서 삭제한 기존 DB 항목 ID (저장 시 soft-delete) */
+  const [removedExistingItemIds, setRemovedExistingItemIds] = useState<
+    string[]
+  >([]);
+  /** 편집 시작 시 활성 item ID (변경되지 않음, 저장 사전 가드용) */
+  const [originalExistingItemIds] = useState<string[]>(() =>
+    mapQuoteItemsToRows(
+      initialQuote,
+      resolveInitialMode(initialQuote),
+    )
+      .map((row) => row.id)
+      .filter((id): id is string => Boolean(id)),
+  );
   const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [includeCover, setIncludeCover] = useState(true);
 
   const isInterior = quoteType === "인테리어";
   const isSimple = quoteMode === "simple";
-  const hasItems = items.length > 0;
+  const isEdit = mode === "edit";
+  const savableItems = useMemo(
+    () =>
+      flattenItemsByTradeOrder(items, tradeOrder, quoteMode).filter(
+        (row) =>
+          !row.isPlaceholder &&
+          Boolean((row.item_name || row.trade_name).trim() || toNumber(row.amount) > 0),
+      ),
+    [items, tradeOrder, quoteMode],
+  );
+  const hasItems = savableItems.length > 0;
 
   const amounts = useMemo(() => {
-    const parsedItems = items.map((row) => ({
-      amount: toNumber(row.amount),
-      cost_type: row.cost_type,
-      is_lx_material: canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
-      lx_discount_base_amount: toNumber(row.lx_discount_base_amount),
-    }));
+    const parsedItems = savableItems.map((row) => {
+      const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
+      const amount =
+        qty > 0
+          ? Math.round(qty * toNumber(row.unit_price))
+          : toNumber(row.amount);
+      return {
+        trade_name: row.trade_name,
+        item_name: row.item_name,
+        amount,
+        cost_type: row.cost_type,
+        is_lx_material: canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
+        lx_discount_base_amount: toNumber(row.lx_discount_base_amount),
+        lx_discount_type: row.lx_discount_type || null,
+        lx_discount_value:
+          row.lx_discount_type === "" ? null : toNumber(row.lx_discount_value),
+      };
+    });
     return computeQuoteAmounts({
       items: isSimple || hasItems ? parsedItems : [],
       fallbackTotal: toNumber(totalAmount),
       discountAmount: toNumber(discountAmount),
       lxDiscountRate: toNumber(lxDiscountRate),
     });
-  }, [items, isSimple, hasItems, totalAmount, discountAmount, lxDiscountRate]);
+  }, [savableItems, isSimple, hasItems, totalAmount, discountAmount, lxDiscountRate]);
 
   const total = amounts.total_amount;
   const discount = amounts.discount_amount;
@@ -227,16 +318,19 @@ export default function QuoteWizardForm({
     }
   }, [state, mode, router]);
 
-  useEffect(() => {
+  /** 신규 작성: 고객 선택/해제 시 담당자를 고객 담당자로 맞춘다 (수동 변경 가능) */
+  function applyCustomerSelection(nextCustomerId: string) {
+    setCustomerId(nextCustomerId);
     if (mode !== "create") return;
-    if (!customerId) {
+    if (!nextCustomerId) {
       setAssignedEmployeeId("");
       return;
     }
-    const next =
-      customers.find((c) => c.id === customerId)?.assigned_employee_id ?? "";
-    setAssignedEmployeeId(next);
-  }, [mode, customerId, customers]);
+    setAssignedEmployeeId(
+      customers.find((c) => c.id === nextCustomerId)?.assigned_employee_id ??
+        "",
+    );
+  }
 
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -255,50 +349,6 @@ export default function QuoteWizardForm({
   const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
   const assignedEmployee = employees.find((e) => e.id === assignedEmployeeId);
 
-  function updateRow(key: string, patch: Partial<TradeItemRow>) {
-    setItems((prev) =>
-      prev.map((row) => {
-        if (row.key !== key) return row;
-        const next = { ...row, ...patch };
-        if (patch.cost_type !== undefined && !canCostTypeHaveLx(next.cost_type)) {
-          next.is_lx_material = false;
-          next.lx_discount_base_amount = "0";
-        }
-        if (patch.is_lx_material === false) {
-          next.lx_discount_base_amount = "0";
-        }
-        if (
-          quoteMode === "detailed" &&
-          (patch.quantity !== undefined || patch.unit_price !== undefined)
-        ) {
-          const qty = toNumber(next.quantity);
-          const price = toNumber(next.unit_price);
-          if (qty > 0) {
-            next.amount = String(Math.round(qty * price));
-          }
-        }
-        return next;
-      }),
-    );
-  }
-
-  function addTradeRow(tradeName: string) {
-    const name = tradeName.trim();
-    if (!name) return;
-    setItems((prev) => [
-      ...prev,
-      toRow({ trade_name: name, item_name: name }),
-    ]);
-  }
-
-  function addSimpleRow() {
-    setItems((prev) => [...prev, toRow({ cost_type: "자재" })]);
-  }
-
-  function removeRow(key: string) {
-    setItems((prev) => prev.filter((row) => row.key !== key));
-  }
-
   function goNext() {
     if (step === 1 && !customerId) {
       setStepError("고객을 선택해 주세요.");
@@ -314,29 +364,32 @@ export default function QuoteWizardForm({
     }
     if (step === 4) {
       if (isSimple) {
-        const valid = items.filter(
-          (row) => (row.item_name || row.trade_name).trim() && toNumber(row.amount) >= 0,
-        );
-        if (valid.length === 0) {
+        if (savableItems.length === 0) {
           setStepError("간편견적은 항목을 1개 이상 입력해 주세요.");
           return;
         }
-        if (items.some((row) => !(row.item_name || row.trade_name).trim())) {
-          setStepError("항목명을 입력해 주세요.");
-          return;
-        }
-      } else if (isInterior && items.length === 0) {
+      } else if (isInterior && savableItems.length === 0) {
         setStepError("공종 내역을 1개 이상 추가해 주세요.");
         return;
       }
-      for (const row of items) {
-        if (
-          row.cost_type === "시공+자재" &&
-          row.is_lx_material &&
-          toNumber(row.lx_discount_base_amount) > toNumber(row.amount)
-        ) {
+      for (const row of savableItems) {
+        if (!(row.cost_type === "시공+자재" && row.is_lx_material)) continue;
+        const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
+        const amount =
+          qty > 0
+            ? Math.round(qty * toNumber(row.unit_price))
+            : toNumber(row.amount);
+        const base = toNumber(row.lx_discount_base_amount);
+        const raw = row.lx_discount_base_amount.trim();
+        if (raw === "" || base <= 0) {
           setStepError(
-            "LX 할인 대상 자재금액은 항목금액을 초과할 수 없습니다.",
+            "자재+시공 항목의 LX 할인 대상 자재금액을 입력해주세요.",
+          );
+          return;
+        }
+        if (base > amount) {
+          setStepError(
+            "LX 자재금액은 항목 총금액 이하로 입력해주세요.",
           );
           return;
         }
@@ -356,30 +409,135 @@ export default function QuoteWizardForm({
     setStep((s) => Math.max(1, s - 1));
   }
 
+  function validateLxBaseBeforeSave(): string | null {
+    for (const row of savableItems) {
+      if (!(row.cost_type === "시공+자재" && row.is_lx_material)) continue;
+      const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
+      const amount =
+        qty > 0
+          ? Math.round(qty * toNumber(row.unit_price))
+          : toNumber(row.amount);
+      const base = toNumber(row.lx_discount_base_amount);
+      const raw = row.lx_discount_base_amount.trim();
+      if (raw === "" || base <= 0) {
+        return "자재+시공 항목의 LX 할인 대상 자재금액을 입력해주세요.";
+      }
+      if (base > amount) {
+        return "LX 자재금액은 항목 총금액 이하로 입력해주세요.";
+      }
+    }
+    return null;
+  }
+
   const itemsJson = JSON.stringify(
-    items.map((row) => ({
-      trade_name: row.trade_name || row.item_name,
-      item_name: row.item_name || row.trade_name || null,
-      description: row.description || null,
-      quantity:
-        quoteMode === "detailed" && row.quantity
-          ? toNumber(row.quantity)
-          : null,
-      unit: quoteMode === "detailed" ? row.unit || null : null,
-      unit_price:
-        quoteMode === "detailed" ? toNumber(row.unit_price) : 0,
-      amount: toNumber(row.amount),
-      cost_type: row.cost_type,
-      is_lx_material: canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
-      lx_discount_base_amount:
-        row.cost_type === "시공+자재" && row.is_lx_material
-          ? toNumber(row.lx_discount_base_amount)
-          : 0,
-    })),
+    savableItems.map((row) => {
+      const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
+      const unitPrice = toNumber(row.unit_price);
+      const amount =
+        qty > 0 ? Math.round(qty * unitPrice) : toNumber(row.amount);
+      return {
+        id: row.id || null,
+        client_key: row.key,
+        trade_name: row.trade_name || "미분류",
+        item_name: row.item_name || row.trade_name || null,
+        description: row.description || null,
+        quantity: row.quantity !== "" ? qty : null,
+        unit: row.unit || null,
+        unit_price: unitPrice,
+        amount,
+        cost_type: row.cost_type,
+        is_lx_material: canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
+        lx_discount_base_amount:
+          row.cost_type === "시공+자재" && row.is_lx_material
+            ? toNumber(row.lx_discount_base_amount)
+            : 0,
+        lx_discount_type: row.lx_discount_type || null,
+        lx_discount_value:
+          row.lx_discount_type === "" ? null : toNumber(row.lx_discount_value),
+      };
+    }),
+  );
+
+  const removedItemIdsJson = JSON.stringify(removedExistingItemIds);
+  const originalItemIdsJson = JSON.stringify(originalExistingItemIds);
+
+  const previewModel: QuoteDocumentModel = useMemo(
+    () => ({
+      customerName: selectedCustomer?.name ?? "",
+      title,
+      quoteType: quoteType || null,
+      quoteMode,
+      quoteNumber: quoteNumber || null,
+      versionNumber: initialQuote?.version_number ?? 1,
+      status,
+      validUntil: validUntil || null,
+      issuedAt: issuedAt || null,
+      customerMessage: customerMessage || null,
+      discountAmount: discount,
+      lxDiscountRate: toNumber(lxDiscountRate),
+      brand,
+      showCover: includeCover,
+      items: savableItems.map((row, index) => {
+        const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
+        const amount =
+          qty > 0
+            ? Math.round(qty * toNumber(row.unit_price))
+            : toNumber(row.amount);
+        return {
+          trade_name: row.trade_name || "미분류",
+          item_name: row.item_name || null,
+          description: row.description || null,
+          quantity: row.quantity !== "" ? qty : null,
+          unit: row.unit || null,
+          unit_price: toNumber(row.unit_price),
+          amount,
+          cost_type: row.cost_type,
+          is_lx_material:
+            canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
+          lx_discount_base_amount:
+            row.cost_type === "시공+자재" && row.is_lx_material
+              ? toNumber(row.lx_discount_base_amount)
+              : 0,
+          lx_discount_type: row.lx_discount_type || null,
+          lx_discount_value:
+            row.lx_discount_type === ""
+              ? null
+              : toNumber(row.lx_discount_value),
+          sort_order: index,
+        };
+      }),
+    }),
+    [
+      selectedCustomer?.name,
+      title,
+      quoteType,
+      quoteMode,
+      quoteNumber,
+      initialQuote?.version_number,
+      status,
+      validUntil,
+      issuedAt,
+      customerMessage,
+      discount,
+      lxDiscountRate,
+      savableItems,
+      brand,
+      includeCover,
+    ],
   );
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form
+      action={formAction}
+      className="space-y-5"
+      onSubmit={(e) => {
+        const err = validateLxBaseBeforeSave();
+        if (err) {
+          e.preventDefault();
+          setStepError(err);
+        }
+      }}
+    >
       <input type="hidden" name="customer_id" value={customerId} />
       <input type="hidden" name="quote_type" value={quoteType} />
       <input type="hidden" name="quote_mode" value={quoteMode} />
@@ -400,48 +558,98 @@ export default function QuoteWizardForm({
       <input type="hidden" name="lx_discount_rate" value={lxDiscountRate} />
       <input type="hidden" name="final_amount" value={String(finalAmount)} />
       <input type="hidden" name="items_json" value={itemsJson} />
+      <input
+        type="hidden"
+        name="removed_item_ids_json"
+        value={removedItemIdsJson}
+      />
+      <input
+        type="hidden"
+        name="original_item_ids_json"
+        value={originalItemIdsJson}
+      />
       {mode === "edit" && initialQuote && (
         <input type="hidden" name="quote_id" value={initialQuote.id} />
       )}
 
-      <div className="dashboard-card flex flex-wrap items-center gap-1 p-3">
-        {STEPS.map((s, idx) => (
-          <button
-            key={s.key}
-            type="button"
-            onClick={() => {
-              setStepError(null);
-              setStep(s.key);
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${
-              step === s.key
-                ? "bg-navy-800 text-white"
-                : step > s.key
-                  ? "text-navy-800 hover:bg-navy-800/5"
-                  : "text-gray-400"
-            }`}
-          >
-            <span
-              className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+      {mode === "edit" && initialQuote ? (
+        <div className="dashboard-card space-y-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-navy-900">견적 내용 수정</h2>
+              <p className="mt-1 text-sm text-slate-600 break-keep">
+                {selectedCustomer?.name ?? "-"}
+                {title ? ` · ${title}` : ""}
+              </p>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-4">
+              <div>
+                <dt className="text-slate-400">견적번호</dt>
+                <dd className="font-medium text-slate-800">
+                  {quoteNumber || "-"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-400">형식</dt>
+                <dd className="font-medium text-slate-800">
+                  {quoteDocumentTitle(quoteMode)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-400">유형</dt>
+                <dd className="font-medium text-slate-800">{quoteType || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-400">상태</dt>
+                <dd className="font-medium text-slate-800">{status}</dd>
+              </div>
+            </dl>
+          </div>
+          <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            저장된 견적 형식({QUOTE_MODE_LABELS[quoteMode]})으로 수정합니다. 형식
+            변경은 별도 기능이며 이 화면에서는 데이터를 초기화하지 않습니다.
+          </p>
+        </div>
+      ) : (
+        <div className="dashboard-card flex flex-wrap items-center gap-1 p-3">
+          {STEPS.map((s, idx) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => {
+                setStepError(null);
+                setStep(s.key);
+              }}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${
                 step === s.key
-                  ? "bg-gold-500 text-navy-900"
+                  ? "bg-navy-800 text-white"
                   : step > s.key
-                    ? "bg-navy-800/10 text-navy-800"
-                    : "bg-gray-100 text-gray-400"
+                    ? "text-navy-800 hover:bg-navy-800/5"
+                    : "text-gray-400"
               }`}
             >
-              {s.key}
-            </span>
-            {s.label}
-            {idx < STEPS.length - 1 && (
-              <span className="mx-1 hidden text-gray-300 sm:inline">›</span>
-            )}
-          </button>
-        ))}
-      </div>
+              <span
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+                  step === s.key
+                    ? "bg-gold-500 text-navy-900"
+                    : step > s.key
+                      ? "bg-navy-800/10 text-navy-800"
+                      : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                {s.key}
+              </span>
+              {s.label}
+              {idx < STEPS.length - 1 && (
+                <span className="mx-1 hidden text-gray-300 sm:inline">›</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="dashboard-card p-5">
-        {step === 1 && (
+        {(mode === "create" ? step === 1 : false) && (
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-gray-900">
               1. 고객선택
@@ -461,8 +669,9 @@ export default function QuoteWizardForm({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setCustomerId("")}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                  onClick={() => applyCustomerSelection("")}
+                  disabled={mode === "edit"}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   변경
                 </button>
@@ -486,7 +695,7 @@ export default function QuoteWizardForm({
                         <li key={c.id}>
                           <button
                             type="button"
-                            onClick={() => setCustomerId(c.id)}
+                            onClick={() => applyCustomerSelection(c.id)}
                             className="flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left hover:bg-gray-50"
                           >
                             <span className="text-sm font-medium text-gray-900">
@@ -507,7 +716,7 @@ export default function QuoteWizardForm({
           </div>
         )}
 
-        {step === 2 && (
+        {mode === "create" && step === 2 && (
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-gray-900">
               2. 견적유형
@@ -538,10 +747,10 @@ export default function QuoteWizardForm({
           </div>
         )}
 
-        {step === 3 && (
+        {(isEdit || step === 3) && (
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-gray-900">
-              3. 기본정보
+              {isEdit ? "기본정보" : "3. 기본정보"}
             </h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="견적명" required className="md:col-span-2">
@@ -638,376 +847,78 @@ export default function QuoteWizardForm({
           </div>
         )}
 
-        {step === 4 && (
+        {(isEdit || step === 4) && (
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-gray-900">
-              4. 금액/공종
+              {isEdit ? "금액/공종" : "4. 금액/공종"}
             </h2>
 
-            <div className="flex flex-wrap gap-2">
-              {(["simple", "detailed"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => {
-                    setQuoteMode(m);
-                    if (m === "simple" && items.length === 0) {
-                      setItems([toRow({ cost_type: "자재" })]);
-                    }
-                  }}
-                  className={`rounded-lg border-2 px-4 py-2.5 text-sm font-semibold transition ${
-                    quoteMode === m
-                      ? "border-navy-800 bg-navy-800 text-white"
-                      : "border-gray-200 text-gray-600 hover:border-gold-400"
-                  }`}
-                >
-                  {QUOTE_MODE_LABELS[m]}
-                </button>
-              ))}
-            </div>
-
-            <p className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-              {isSimple
-                ? "간편견적: 항목명·구분·금액만 입력합니다. 항목 합계가 총견적금액이 됩니다."
-                : "공종 내역을 추가하면 공종 합계가 총견적금액으로 적용됩니다."}
-              {isInterior && !isSimple
-                ? " 인테리어 상세견적은 공종을 1개 이상 입력해야 합니다."
-                : ""}
-            </p>
-
-            <h3 className="text-sm font-semibold text-gray-900">
-              {QUOTE_DOCUMENT_TITLES[quoteMode]}
-            </h3>
-
-            {isSimple ? (
-              <div className="space-y-3">
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full min-w-[720px] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-600">
-                        <th className="px-3 py-2 font-medium">항목명</th>
-                        <th className="px-3 py-2 font-medium">구분</th>
-                        <th className="px-3 py-2 font-medium text-right">금액</th>
-                        <th className="px-3 py-2 font-medium text-center">
-                          LX 자재
-                        </th>
-                        <th className="px-3 py-2 font-medium text-right">
-                          LX 할인 대상 자재금액
-                        </th>
-                        <th className="px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((row) => (
-                        <tr key={row.key} className="border-b border-gray-100">
-                          <td className="px-3 py-2">
-                            <input
-                              value={row.item_name}
-                              onChange={(e) =>
-                                updateRow(row.key, {
-                                  item_name: e.target.value,
-                                  trade_name: e.target.value,
-                                })
-                              }
-                              placeholder="항목명"
-                              className={`${cellInputClass} text-gray-900`}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <select
-                              value={row.cost_type}
-                              onChange={(e) =>
-                                updateRow(row.key, {
-                                  cost_type: e.target.value as QuoteCostType,
-                                })
-                              }
-                              className={`${cellInputClass} text-gray-900`}
-                            >
-                              {QUOTE_COST_TYPES.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <input
-                              value={row.amount}
-                              onChange={(e) =>
-                                updateRow(row.key, { amount: e.target.value })
-                              }
-                              inputMode="numeric"
-                              className={`${cellInputClass} text-right font-medium text-gray-900`}
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={row.is_lx_material}
-                              disabled={!canCostTypeHaveLx(row.cost_type)}
-                              onChange={(e) =>
-                                updateRow(row.key, {
-                                  is_lx_material: e.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 rounded border-gray-300 text-gold-600 focus:ring-gold-500 disabled:opacity-40"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {row.cost_type === "시공+자재" &&
-                            row.is_lx_material ? (
-                              <input
-                                value={row.lx_discount_base_amount}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    lx_discount_base_amount: e.target.value,
-                                  })
-                                }
-                                inputMode="numeric"
-                                placeholder="자재금액"
-                                className={`${cellInputClass} text-right font-medium text-gray-900`}
-                              />
-                            ) : (
-                              <span className="text-xs text-gray-700">-</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <button
-                              type="button"
-                              onClick={() => removeRow(row.key)}
-                              className="text-xs font-medium text-red-600 hover:text-red-700"
-                            >
-                              삭제
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button
-                  type="button"
-                  onClick={addSimpleRow}
-                  className="rounded-lg border border-gold-300 bg-gold-50 px-4 py-2 text-sm font-medium text-navy-800 hover:bg-gold-100"
-                >
-                  + 항목 추가
-                </button>
-              </div>
+                        {isEdit ? (
+              <p className="text-sm font-semibold text-gray-900">
+                {QUOTE_DOCUMENT_TITLES[quoteMode]}
+              </p>
             ) : (
-              <>
-                <div>
-                  <p className="mb-2 text-xs font-medium text-gray-500">
-                    공종 빠른 추가
-                    {!isInterior && (
-                      <span className="ml-1 font-normal text-gray-400">
-                        (선택)
-                      </span>
-                    )}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {TRADE_SUGGESTIONS.map((trade) => (
-                      <button
-                        key={trade}
-                        type="button"
-                        onClick={() => addTradeRow(trade)}
-                        className="rounded-full border border-gold-300 bg-gold-50 px-3 py-1.5 text-xs font-medium text-navy-800 hover:bg-gold-100"
-                      >
-                        + {trade}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      value={customTrade}
-                      onChange={(e) => setCustomTrade(e.target.value)}
-                      placeholder="공종명 직접 입력"
-                      className={inputClass}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        addTradeRow(customTrade);
-                        setCustomTrade("");
-                      }}
-                      className="shrink-0 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      추가
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full min-w-[980px] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-600">
-                        <th className="px-3 py-2 font-medium">공종</th>
-                        <th className="px-3 py-2 font-medium">품목</th>
-                        <th className="px-3 py-2 font-medium">구분</th>
-                        <th className="px-3 py-2 font-medium">수량</th>
-                        <th className="px-3 py-2 font-medium">단위</th>
-                        <th className="px-3 py-2 font-medium text-right">단가</th>
-                        <th className="px-3 py-2 font-medium text-right">금액</th>
-                        <th className="px-3 py-2 font-medium text-center">
-                          LX 자재
-                        </th>
-                        <th className="px-3 py-2 font-medium text-right">
-                          LX 할인 대상 자재금액
-                        </th>
-                        <th className="px-3 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={10}
-                            className="px-3 py-8 text-center text-sm text-gray-700"
-                          >
-                            {isInterior
-                              ? "공종을 추가해 주세요."
-                              : "공종이 없으면 아래 총견적금액을 사용합니다."}
-                          </td>
-                        </tr>
-                      ) : (
-                        items.map((row) => (
-                          <tr key={row.key} className="border-b border-gray-100">
-                            <td className="px-3 py-2">
-                              <input
-                                value={row.trade_name}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    trade_name: e.target.value,
-                                  })
-                                }
-                                className={`${cellInputClass} text-gray-900`}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                value={row.item_name}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    item_name: e.target.value,
-                                  })
-                                }
-                                placeholder="선택"
-                                className={`${cellInputClass} text-gray-900`}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <select
-                                value={row.cost_type}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    cost_type: e.target
-                                      .value as QuoteCostType,
-                                  })
-                                }
-                                className={`${cellInputClass} text-gray-900`}
-                              >
-                                {QUOTE_COST_TYPES.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                value={row.quantity}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    quantity: e.target.value,
-                                  })
-                                }
-                                inputMode="decimal"
-                                className={`${cellInputClass} w-20 text-gray-900`}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                value={row.unit}
-                                onChange={(e) =>
-                                  updateRow(row.key, { unit: e.target.value })
-                                }
-                                placeholder="㎡, 개"
-                                className={`${cellInputClass} w-16 text-gray-900`}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <input
-                                value={row.unit_price}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    unit_price: e.target.value,
-                                  })
-                                }
-                                inputMode="numeric"
-                                className={`${cellInputClass} text-right text-gray-900`}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <input
-                                value={row.amount}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    amount: e.target.value,
-                                  })
-                                }
-                                inputMode="numeric"
-                                className={`${cellInputClass} text-right font-medium text-gray-900`}
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <input
-                                type="checkbox"
-                                checked={row.is_lx_material}
-                                disabled={!canCostTypeHaveLx(row.cost_type)}
-                                onChange={(e) =>
-                                  updateRow(row.key, {
-                                    is_lx_material: e.target.checked,
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-gray-300 text-gold-600 focus:ring-gold-500 disabled:opacity-40"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              {row.cost_type === "시공+자재" &&
-                              row.is_lx_material ? (
-                                <input
-                                  value={row.lx_discount_base_amount}
-                                  onChange={(e) =>
-                                    updateRow(row.key, {
-                                      lx_discount_base_amount: e.target.value,
-                                    })
-                                  }
-                                  inputMode="numeric"
-                                  placeholder="자재금액"
-                                  className={`${cellInputClass} text-right font-medium text-gray-900`}
-                                />
-                              ) : (
-                                <span className="text-xs text-gray-700">-</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <button
-                                type="button"
-                                onClick={() => removeRow(row.key)}
-                                className="text-xs font-medium text-red-600 hover:text-red-700"
-                              >
-                                삭제
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+              <div className="flex flex-wrap gap-2">
+                {(["simple", "detailed"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setQuoteMode(m);
+                      if (m === "simple" && items.length === 0) {
+                        setItems([toRow({ cost_type: "자재" })]);
+                        setTradeOrder(["미분류"]);
+                      }
+                    }}
+                    className={`rounded-lg border-2 px-4 py-2.5 text-sm font-semibold transition ${
+                      quoteMode === m
+                        ? "border-navy-800 bg-navy-800 text-white"
+                        : "border-gray-200 text-gray-600 hover:border-gold-400"
+                    }`}
+                  >
+                    {QUOTE_MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
             )}
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {!isEdit && (
+              <p className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                {isSimple
+                  ? "간편견적: 공종·항목내역·금액을 한 표에서 빠르게 입력합니다."
+                  : "상세견적: 한 표에서 공종·품목·규격·수량·단가를 입력합니다."}
+                {isInterior && !isSimple
+                  ? " 인테리어 상세견적은 공종을 1개 이상 입력해야 합니다."
+                  : ""}
+              </p>
+            )}
+
+            <QuoteTradeItemsPanel
+              quoteMode={quoteMode}
+              items={items}
+              tradeOrder={tradeOrder}
+              onTradeOrderChange={setTradeOrder}
+              onItemsChange={(updater) => setItems(updater)}
+              onRemoveExistingItem={(itemId) => {
+                setRemovedExistingItemIds((prev) =>
+                  prev.includes(itemId) ? prev : [...prev, itemId],
+                );
+              }}
+              createRow={(partial) => toRow({ ...partial, id: null })}
+              isInterior={isInterior}
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="rounded-lg border border-navy-800/20 bg-white px-4 py-2 text-sm font-medium text-navy-800 hover:bg-navy-800/5"
+              >
+                미리보기
+              </button>
+            </div>
+
+<div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Field label="총견적금액(원)">
                 {isSimple || hasItems ? (
                   <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
@@ -1035,7 +946,7 @@ export default function QuoteWizardForm({
                   className={inputClass}
                 />
               </Field>
-              <Field label="LX 자재 할인율(%)">
+              <Field label="LX 자재 할인율(%) · 견적단위(기존)">
                 <input
                   inputMode="decimal"
                   value={lxDiscountRate}
@@ -1044,7 +955,8 @@ export default function QuoteWizardForm({
                   className={inputClass}
                 />
                 <p className="mt-1 text-[11px] text-gray-500">
-                  LX 자재 합계 {formatMoney(amounts.lx_material_sum)} · 할인{" "}
+                  항목 할인이 비어 있는 LX 항목에 적용 · 합계{" "}
+                  {formatMoney(amounts.lx_material_sum)} · 할인{" "}
                   {formatMoney(lxDiscount)}
                 </p>
               </Field>
@@ -1061,8 +973,10 @@ export default function QuoteWizardForm({
           </div>
         )}
 
-        <div className={step === 5 ? "space-y-4" : "hidden"}>
-          <h2 className="text-base font-semibold text-gray-900">5. 파일</h2>
+        <div className={isEdit || step === 5 ? "space-y-4" : "hidden"}>
+          <h2 className="text-base font-semibold text-gray-900">
+            {isEdit ? "첨부파일" : "5. 파일"}
+          </h2>
           <p className="text-sm text-gray-500">
             견적서 PDF/Excel 파일을 첨부해 주세요. (pdf, xls, xlsx · 최대
             30MB)
@@ -1104,7 +1018,7 @@ export default function QuoteWizardForm({
           )}
         </div>
 
-        {step === 6 && (
+        {mode === "create" && step === 6 && (
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-gray-900">
               6. 확인·저장
@@ -1156,7 +1070,7 @@ export default function QuoteWizardForm({
               />
               <SummaryItem
                 label="항목 수"
-                value={`${items.length}건`}
+                value={`${savableItems.length}건`}
               />
               <SummaryItem
                 label="첨부파일"
@@ -1174,54 +1088,110 @@ export default function QuoteWizardForm({
             {state.message && (
               <p className="text-sm text-green-700">{state.message}</p>
             )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="rounded-lg border border-navy-800/20 bg-white px-4 py-2 text-sm font-medium text-navy-800 hover:bg-navy-800/5"
+              >
+                견적서 미리보기
+              </button>
+              <label className="flex items-center gap-1.5 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={includeCover}
+                  onChange={(e) => setIncludeCover(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300"
+                />
+                표지 포함
+              </label>
+            </div>
           </div>
         )}
       </div>
 
       {stepError && <p className="text-sm text-red-600">{stepError}</p>}
+      {state.error && isEdit && (
+        <p className="text-sm text-red-600">{state.error}</p>
+      )}
+      {state.message && isEdit && (
+        <p className="text-sm text-green-700">{state.message}</p>
+      )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link
-            href="/quotes"
+            href={
+              isEdit && initialQuote
+                ? `/quotes/${initialQuote.id}`
+                : "/quotes"
+            }
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
           >
             취소
           </Link>
         </div>
-        <div className="flex gap-2">
-          {step > 1 && (
-            <button
-              type="button"
-              onClick={goPrev}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-            >
-              이전
-            </button>
-          )}
-          {step < 6 ? (
-            <button
-              type="button"
-              onClick={goNext}
-              className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700"
-            >
-              다음
-            </button>
+        <div className="flex flex-wrap gap-2">
+          {isEdit ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="rounded-lg border border-navy-800/20 bg-white px-4 py-2 text-sm font-medium text-navy-800 hover:bg-navy-800/5"
+              >
+                미리보기
+              </button>
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+              >
+                {pending ? "저장 중..." : "변경사항 저장"}
+              </button>
+            </>
           ) : (
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
-            >
-              {pending
-                ? "저장 중..."
-                : mode === "create"
-                  ? "견적 등록"
-                  : "견적 수정 저장"}
-            </button>
+            <>
+              {step > 1 && (
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  이전
+                </button>
+              )}
+              {step < 6 ? (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700"
+                >
+                  다음
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+                >
+                  {pending ? "저장 중..." : "견적 등록"}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {previewOpen ? (
+        <QuotePreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          model={previewModel}
+          includeCover={includeCover}
+          onIncludeCoverChange={setIncludeCover}
+        />
+      ) : null}
     </form>
   );
 }
@@ -1275,6 +1245,3 @@ function SummaryItem({
 
 const inputClass =
   "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
-
-const cellInputClass =
-  "w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";

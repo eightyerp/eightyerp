@@ -9,6 +9,8 @@ import {
   schemaMissingStaffMessage,
 } from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
+import { getCurrentCompanyQuoteBrand } from "@/lib/crm/quote-brand";
+import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
 import {
   createSignedUrlsForQuoteFiles,
   getQuoteById,
@@ -48,28 +50,38 @@ export default async function QuoteDetailPage({
   let sendLogs: ErpQuoteSendLog[] = [];
   let signedUrls: Record<string, string> = {};
   let employees: Employee[] = [];
+  let brand: QuoteBrandProfile | null = null;
   let loadError: string | null = null;
   let tablesMissing = false;
 
   try {
     quote = await getQuoteById(id);
     if (quote) {
-      const [versionList, logList, urls, employeeList] = await Promise.all([
-        listQuoteVersions(quote.quote_group_id),
-        listQuoteSendLogs(quote.id),
-        createSignedUrlsForQuoteFiles(quote.quote_files ?? []),
-        getEmployees().catch(() => [] as Employee[]),
-      ]);
+      const [versionList, logList, urls, employeeList, companyBrand] =
+        await Promise.all([
+          listQuoteVersions(quote.quote_group_id),
+          listQuoteSendLogs(quote.id),
+          createSignedUrlsForQuoteFiles(quote.quote_files ?? []),
+          getEmployees().catch(() => [] as Employee[]),
+          getCurrentCompanyQuoteBrand(),
+        ]);
       versions = versionList;
       sendLogs = logList;
       signedUrls = urls;
       employees = employeeList;
+      brand = companyBrand;
     }
-  } catch {
+  } catch (error) {
     tablesMissing = await isQuotesSchemaMissing();
-    loadError = tablesMissing
-      ? null
-      : "견적을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    if (tablesMissing) {
+      loadError = null;
+    } else {
+      const message =
+        error instanceof Error ? error.message : "견적을 불러오지 못했습니다.";
+      loadError = message.includes("브랜드") || message.includes("회사")
+        ? message
+        : "견적을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    }
   }
 
   if (!loadError && !tablesMissing && !quote) {
@@ -116,6 +128,7 @@ export default async function QuoteDetailPage({
             sendLogs={sendLogs}
             signedUrls={signedUrls}
             employees={employees}
+            brand={brand}
           />
         )}
       </div>

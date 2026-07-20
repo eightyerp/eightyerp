@@ -115,3 +115,117 @@ body {
   border-bottom: 2px solid var(--gold-500);
   display: inline-block;
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  /* 견적 PDF 인쇄 중에만: portal 외 body 자식 완전 제외 */
+  html[data-quote-printing="1"],
+  body[data-quote-printing="1"] {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body[data-quote-printing="1"] > *:not([data-quote-print-portal]) {
+    display: none !important;
+  }
+
+  body[data-quote-printing="1"] [data-quote-preview-ui] {
+    display: none !important;
+  }
+
+  body[data-quote-printing="1"] [data-quote-print-portal] {
+    display: block !important;
+    position: static !important;
+    width: 210mm;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #0f172a;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .quote-print-document,
+  .quote-print-root {
+    width: 210mm;
+    color: #0f172a;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .quote-print-has-cover .quote-cover-page {
+    box-sizing: border-box;
+    width: 210mm;
+    height: 297mm;
+    max-height: 297mm;
+    min-height: 297mm;
+    margin: 0;
+    overflow: hidden !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .quote-print-has-cover .quote-cover-page * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .quote-print-has-cover .quote-body-page {
+    box-sizing: border-box;
+    width: 210mm;
+    padding: 12mm;
+    margin: 0;
+    overflow: visible !important;
+  }
+
+  .quote-print-root:not(.quote-print-has-cover) .quote-body-page {
+    box-sizing: border-box;
+    width: 210mm;
+    padding: 12mm;
+    margin: 0;
+    overflow: visible !important;
+  }
+
+  .quote-print-group,
+  .quote-print-line,
+  .quote-print-totals {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .quote-print-root .quote-body-page,
+  .quote-print-root .quote-body-page * {
+    overflow: visible !important;
+  }
+
+  .quote-print-root table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: 9pt !important;
+  }
+
+  .quote-print-root thead {
+    display: table-header-group;
+  }
+
+  .quote-print-root tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .quote-print-root .quote-body-section,
+  .quote-print-root .quote-body-page {
+    font-size: 9.5pt;
+    color: #0f172a !important;
+  }
+}

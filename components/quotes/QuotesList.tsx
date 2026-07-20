@@ -189,9 +189,7 @@ export default function QuotesList({
 
       <div className="dashboard-card grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="md:col-span-2 xl:col-span-2">
-          <label className="mb-1 block text-xs font-medium text-gray-500">
-            검색
-          </label>
+          <label className={filterLabelClass}>검색</label>
           <input
             value={filters.q}
             onChange={(e) => setField("q", e.target.value)}
@@ -200,9 +198,7 @@ export default function QuotesList({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
-            견적유형
-          </label>
+          <label className={filterLabelClass}>견적유형</label>
           <select
             value={filters.quoteType}
             onChange={(e) => setField("quoteType", e.target.value)}
@@ -217,9 +213,7 @@ export default function QuotesList({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
-            상태
-          </label>
+          <label className={filterLabelClass}>상태</label>
           <select
             value={filters.status}
             onChange={(e) => setField("status", e.target.value)}
@@ -235,9 +229,7 @@ export default function QuotesList({
         </div>
         {!lockEmployeeId && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">
-              담당자
-            </label>
+            <label className={filterLabelClass}>담당자</label>
             <select
               value={filters.employeeId}
               onChange={(e) => setField("employeeId", e.target.value)}
@@ -253,9 +245,7 @@ export default function QuotesList({
           </div>
         )}
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
-            작성일 시작
-          </label>
+          <label className={filterLabelClass}>작성일 시작</label>
           <input
             type="date"
             value={filters.createdFrom}
@@ -264,9 +254,7 @@ export default function QuotesList({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
-            작성일 종료
-          </label>
+          <label className={filterLabelClass}>작성일 종료</label>
           <input
             type="date"
             value={filters.createdTo}
@@ -275,7 +263,7 @@ export default function QuotesList({
           />
         </div>
         <div className="flex items-end gap-4">
-          <label className="flex items-center gap-1.5 text-sm text-gray-700">
+          <label className="flex items-center gap-1.5 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={filters.lxOnly}
@@ -284,7 +272,7 @@ export default function QuotesList({
             />
             LX만
           </label>
-          <label className="flex items-center gap-1.5 text-sm text-gray-700">
+          <label className="flex items-center gap-1.5 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={filters.contractOnly}
@@ -303,7 +291,7 @@ export default function QuotesList({
                 employeeId: lockEmployeeId ?? "",
               })
             }
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-slate-700 hover:bg-gray-50"
           >
             필터 초기화
           </button>
@@ -311,7 +299,7 @@ export default function QuotesList({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="dashboard-card px-5 py-12 text-center text-sm text-gray-500">
+        <div className="dashboard-card px-5 py-12 text-center text-sm text-slate-600">
           {quotes.length === 0
             ? emptyMessage
             : "검색 조건에 맞는 견적이 없습니다."}
@@ -319,75 +307,147 @@ export default function QuotesList({
       ) : (
         <div className="dashboard-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] text-left text-sm">
+            <table className="w-full min-w-[2220px] table-fixed text-left text-sm text-slate-800">
               <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
-                  <th className="px-4 py-3 font-medium">작성일</th>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-medium text-slate-600">
+                  <th className="w-[108px] whitespace-nowrap px-3 py-3 break-keep">
+                    작성일
+                  </th>
                   {!hideCustomerColumn && (
-                    <th className="px-4 py-3 font-medium">고객명</th>
+                    <th className="w-[168px] whitespace-nowrap px-3 py-3 break-keep">
+                      고객명
+                    </th>
                   )}
-                  <th className="px-4 py-3 font-medium">연락처</th>
-                  <th className="px-4 py-3 font-medium">공사주소</th>
-                  <th className="px-4 py-3 font-medium">견적유형</th>
-                  <th className="px-4 py-3 font-medium">견적명</th>
-                  <th className="px-4 py-3 font-medium">버전</th>
-                  <th className="px-4 py-3 font-medium text-right">총금액</th>
-                  <th className="px-4 py-3 font-medium text-right">할인</th>
-                  <th className="px-4 py-3 font-medium text-right">최종금액</th>
-                  <th className="px-4 py-3 font-medium">상태</th>
-                  <th className="px-4 py-3 font-medium">담당자</th>
-                  <th className="px-4 py-3 font-medium">발송일</th>
-                  <th className="px-4 py-3 font-medium">유효기간</th>
-                  <th className="px-4 py-3 font-medium">LX</th>
-                  <th className="px-4 py-3 font-medium">계약견적</th>
+                  <th className="w-[128px] whitespace-nowrap px-3 py-3 break-keep">
+                    연락처
+                  </th>
+                  <th className="w-[200px] whitespace-nowrap px-3 py-3 break-keep">
+                    공사주소
+                  </th>
+                  <th className="w-[96px] whitespace-nowrap px-3 py-3 break-keep">
+                    견적유형
+                  </th>
+                  <th className="w-[220px] whitespace-nowrap px-3 py-3 break-keep">
+                    견적명
+                  </th>
+                  <th className="w-[72px] whitespace-nowrap px-3 py-3 break-keep">
+                    버전
+                  </th>
+                  <th className="min-w-[180px] w-[180px] whitespace-nowrap px-4 py-3 text-right break-keep">
+                    총금액
+                  </th>
+                  <th className="min-w-[180px] w-[180px] whitespace-nowrap px-4 py-3 text-right break-keep">
+                    할인
+                  </th>
+                  <th className="min-w-[200px] w-[200px] whitespace-nowrap px-4 py-3 pr-5 text-right break-keep">
+                    최종금액
+                  </th>
+                  <th className="min-w-[100px] w-[112px] whitespace-nowrap px-4 py-3 pl-5 break-keep">
+                    상태
+                  </th>
+                  <th className="w-[128px] whitespace-nowrap px-3 py-3 break-keep">
+                    담당자
+                  </th>
+                  <th className="w-[108px] whitespace-nowrap px-3 py-3 break-keep">
+                    발송일
+                  </th>
+                  <th className="w-[120px] whitespace-nowrap px-3 py-3 break-keep">
+                    유효기간
+                  </th>
+                  <th className="w-[64px] whitespace-nowrap px-3 py-3 break-keep">
+                    LX
+                  </th>
+                  <th className="w-[96px] whitespace-nowrap px-3 py-3 break-keep">
+                    계약견적
+                  </th>
+                  <th className="w-[120px] whitespace-nowrap px-3 py-3 break-keep">
+                    작업
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="text-sm">
                 {filtered.map((quote) => {
                   const expired = isQuoteExpired(quote);
+                  const isContract = Boolean(quote.is_contract_quote);
+                  const customerName = quote.customers?.name ?? "-";
+                  const address = quote.customers?.address ?? "-";
+                  const title = quote.title || "-";
+                  const assignee = quote.employees
+                    ? formatEmployeeLabel(
+                        quote.employees.name,
+                        quote.employees.title,
+                      )
+                    : "-";
+
                   return (
                     <tr
                       key={quote.id}
-                      className={`border-b border-gray-50 hover:bg-gray-50/80 ${expired ? "bg-red-50/40" : ""}`}
+                      className={`border-b border-slate-100 ${
+                        isContract
+                          ? "border-l-4 border-l-emerald-500 bg-emerald-50/50 hover:bg-emerald-50/80"
+                          : expired
+                            ? "bg-red-50/40 hover:bg-red-50/60"
+                            : "hover:bg-slate-50/80"
+                      }`}
                     >
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-[13px] text-slate-600 break-keep">
                         {formatDate(quote.created_at)}
                       </td>
                       {!hideCustomerColumn && (
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          <Link
-                            href={`/quotes/${quote.id}`}
-                            className="hover:text-navy-800 hover:underline"
-                          >
-                            {quote.customers?.name ?? "-"}
-                          </Link>
+                        <td className="px-3 py-2.5">
+                          <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap break-keep">
+                            <Link
+                              href={`/quotes/${quote.id}`}
+                              prefetch={false}
+                              title={customerName}
+                              className="truncate text-[15px] font-semibold text-navy-900 hover:underline"
+                            >
+                              {customerName}
+                            </Link>
+                            {isContract ? (
+                              <span className="inline-flex shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[12px] font-semibold text-emerald-800 ring-1 ring-emerald-300">
+                                계약 고객
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                       )}
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-700 break-keep">
                         {quote.customers?.phone ?? "-"}
                       </td>
-                      <td className="max-w-[180px] truncate px-4 py-3 text-gray-600">
-                        {quote.customers?.address ?? "-"}
+                      <td className="max-w-0 truncate px-3 py-2.5 text-sm text-slate-700">
+                        <span title={address} className="block truncate">
+                          {address}
+                        </span>
                       </td>
-                      <td className="px-4 py-3">{quote.quote_type}</td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-slate-800 break-keep">
+                        {quote.quote_type}
+                      </td>
+                      <td className="max-w-0 px-3 py-2.5">
                         <Link
                           href={`/quotes/${quote.id}`}
-                          className="font-medium hover:underline"
+                          prefetch={false}
+                          title={title}
+                          className="block truncate text-[15px] font-semibold text-navy-900 hover:underline"
                         >
-                          {quote.title}
+                          {title}
                         </Link>
-                        {quote.quote_number && (
-                          <p className="text-xs text-gray-400">
+                        {quote.quote_number ? (
+                          <p
+                            className="truncate text-[13px] text-slate-500"
+                            title={quote.quote_number}
+                          >
                             {quote.quote_number}
                           </p>
-                        )}
+                        ) : null}
                       </td>
-                      <td className="px-4 py-3">v{quote.version_number}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-800 break-keep">
+                        v{quote.version_number}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right text-sm font-semibold tabular-nums text-navy-900 break-keep">
                         {formatMoney(quote.total_amount)}
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-500">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right text-sm tabular-nums text-slate-600 break-keep">
                         {(quote.discount_amount || 0) +
                         (quote.lx_discount_amount || 0)
                           ? `-${formatMoney(
@@ -396,53 +456,77 @@ export default function QuotesList({
                             )}`
                           : "-"}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold">
+                      <td className="whitespace-nowrap px-4 py-2.5 pr-5 text-right text-[15px] font-bold tabular-nums text-navy-900 break-keep">
                         {formatMoney(quote.final_amount)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-2.5 pl-5 break-keep">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-semibold break-keep ${
                             ERP_QUOTE_STATUS_BADGE[quote.status] ??
-                            "bg-gray-100 text-gray-600"
+                            "bg-slate-100 text-slate-700"
                           }`}
                         >
                           {quote.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        {quote.employees
-                          ? formatEmployeeLabel(
-                              quote.employees.name,
-                              quote.employees.title,
-                            )
-                          : "-"}
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-2.5 text-sm text-slate-800 break-keep"
+                        title={assignee}
+                      >
+                        {assignee}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-[13px] text-slate-600 break-keep">
                         {formatDate(quote.sent_at)}
                       </td>
                       <td
-                        className={`px-4 py-3 ${expired ? "font-semibold text-red-600" : "text-gray-500"}`}
+                        className={`whitespace-nowrap px-3 py-2.5 text-[13px] break-keep ${
+                          expired
+                            ? "font-semibold text-red-700"
+                            : "text-slate-600"
+                        }`}
                       >
                         {formatDate(quote.valid_until)}
                         {expired ? " · 만료" : ""}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-3 py-2.5 break-keep">
                         {quote.is_lx_material ? (
-                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300">
+                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[13px] font-semibold text-amber-900 ring-1 ring-amber-300">
                             LX
                           </span>
                         ) : (
-                          "-"
+                          <span className="text-slate-500">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        {quote.is_contract_quote ? (
-                          <span className="rounded-full bg-navy-800 px-2 py-0.5 text-xs font-semibold text-gold-400">
+                      <td className="whitespace-nowrap px-3 py-2.5 break-keep">
+                        {isContract ? (
+                          <span className="inline-flex rounded-full bg-emerald-700 px-2 py-0.5 text-[13px] font-semibold text-white">
                             계약견적
                           </span>
                         ) : (
-                          "-"
+                          <span className="text-slate-500">-</span>
                         )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 break-keep">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Link
+                            href={`/quotes/${quote.id}/edit`}
+                            prefetch={false}
+                            aria-label={`${title} 견적 수정`}
+                            className="inline-flex rounded-md bg-navy-800 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-navy-700"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            수정
+                          </Link>
+                          <Link
+                            href={`/quotes/${quote.id}`}
+                            prefetch={false}
+                            aria-label={`${title} 견적 상세`}
+                            className="inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            상세
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -469,11 +553,14 @@ function SummaryCard({
     <div
       className={`rounded-xl border px-4 py-3 ${highlight ? "border-gold-300 bg-gold-50" : "border-gray-200 bg-white"}`}
     >
-      <p className="text-[11px] text-gray-500">{label}</p>
+      <p className="text-[13px] text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-navy-900">{value}</p>
     </div>
   );
 }
 
+const filterLabelClass =
+  "mb-1 block text-sm font-medium text-slate-600";
+
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] text-slate-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";

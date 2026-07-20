@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import QuoteWizardForm from "@/components/quotes/QuoteWizardForm";
 import { getCustomerById, getCustomers, getEmployees } from "@/lib/crm/customers";
+import { getCurrentCompanyQuoteBrand } from "@/lib/crm/quote-brand";
+import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
 import { getQuoteById } from "@/lib/crm/quote-mgmt";
 import type { Employee, ErpQuote } from "@/types/database";
 
@@ -24,14 +26,16 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
   let quote: ErpQuote | null = null;
   let customers: WizardCustomer[] = [];
   let employees: Employee[] = [];
+  let brand: QuoteBrandProfile | null = null;
   let loadError: string | null = null;
 
   try {
     quote = await getQuoteById(id);
     if (quote) {
-      const [customerList, employeeList] = await Promise.all([
+      const [customerList, employeeList, companyBrand] = await Promise.all([
         getCustomers({ pageSize: 100 }),
         getEmployees(),
+        getCurrentCompanyQuoteBrand(),
       ]);
       customers = customerList.customers.map((c) => ({
         id: c.id,
@@ -41,6 +45,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
         assigned_employee_id: c.assigned_employee_id ?? null,
       }));
       employees = employeeList;
+      brand = companyBrand;
 
       if (!customers.some((c) => c.id === quote!.customer_id)) {
         const found = await getCustomerById(quote.customer_id);
@@ -98,6 +103,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
             employees={employees}
             customers={customers}
             initialQuote={quote}
+            brand={brand}
           />
         )}
       </div>

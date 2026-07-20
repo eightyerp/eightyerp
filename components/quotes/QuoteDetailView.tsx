@@ -1,8 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   createQuoteVersionAction,
   deleteQuoteAction,
@@ -17,8 +18,15 @@ import { formatEmployeeLabel } from "@/lib/crm/constants";
 import {
   buildQuoteGuideMessage,
   ERP_QUOTE_STATUS_BADGE,
+  formatQuoteUnit,
+  quoteCostTypeLabel,
   quoteDocumentTitle,
 } from "@/lib/crm/quote-constants";
+import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
+import {
+  withQuoteCoverQuery,
+  type QuoteDocumentModel,
+} from "@/lib/crm/quote-document";
 import type {
   Employee,
   ErpQuote,
@@ -26,12 +34,19 @@ import type {
   ErpQuoteSendLog,
 } from "@/types/database";
 
+const QuotePreviewModal = dynamic(
+  () => import("@/components/quotes/QuotePreviewModal"),
+  { ssr: false },
+);
+
 type QuoteDetailViewProps = {
   quote: ErpQuote;
   versions: ErpQuote[];
   sendLogs: ErpQuoteSendLog[];
   signedUrls: Record<string, string>;
   employees?: Employee[];
+  /** 서버에서 1회 조회한 표지 브랜드 (미리보기 재조회 없음) */
+  brand?: QuoteBrandProfile | null;
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -60,6 +75,7 @@ export default function QuoteDetailView({
   sendLogs,
   signedUrls,
   employees = [],
+  brand = null,
 }: QuoteDetailViewProps) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
@@ -79,6 +95,8 @@ export default function QuoteDetailView({
   const [sendError, setSendError] = useState<string | null>(null);
   const [guideMessage, setGuideMessage] = useState<string | null>(null);
   const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [includeCover, setIncludeCover] = useState(true);
+  const [baseViewUrl, setBaseViewUrl] = useState<string | null>(null);
 
   const [contractPending, startContractTransition] = useTransition();
   const [showContractConfirm, setShowContractConfirm] = useState(false);
@@ -87,11 +105,48 @@ export default function QuoteDetailView({
   const [deletePending, startDeleteTransition] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  /** 이미 로드된 quote / quote_items만 사용 — 미리보기용 추가 조회 없음 */
+  const previewModel: QuoteDocumentModel = useMemo(
+    () => ({
+      customerName: quote.customers?.name ?? "",
+      title: quote.title,
+      quoteType: quote.quote_type,
+      quoteMode: quote.quote_mode ?? null,
+      quoteNumber: quote.quote_number,
+      versionNumber: quote.version_number,
+      status: quote.status,
+      validUntil: quote.valid_until,
+      issuedAt: quote.issued_at,
+      customerMessage: quote.customer_message,
+      discountAmount: Number(quote.discount_amount ?? 0),
+      lxDiscountRate: Number(quote.lx_discount_rate ?? 0),
+      brand,
+      showCover: includeCover,
+      items: (quote.quote_items ?? []).map((item, index) => ({
+        trade_name: item.trade_name,
+        item_name: item.item_name,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        amount: item.amount,
+        cost_type: item.cost_type,
+        is_lx_material: item.is_lx_material,
+        lx_discount_base_amount: item.lx_discount_base_amount,
+        lx_discount_type: item.lx_discount_type,
+        lx_discount_value: item.lx_discount_value,
+        sort_order: item.sort_order ?? index,
+      })),
+    }),
+    [quote, includeCover, brand],
+  );
 
   const previewGuideMessage = buildQuoteGuideMessage({
     customerName: quote.customers?.name || "고객",
@@ -101,6 +156,26 @@ export default function QuoteDetailView({
     customerMessage: quote.customer_message,
     viewUrl,
   });
+
+  function applyCoverToUrl(url: string | null, cover: boolean) {
+    if (!url) return null;
+    return withQuoteCoverQuery(url, cover);
+  }
+
+  function rebuildGuideForCover(url: string | null, cover: boolean) {
+    const nextUrl = applyCoverToUrl(url, cover);
+    setViewUrl(nextUrl);
+    setGuideMessage(
+      buildQuoteGuideMessage({
+        customerName: quote.customers?.name || "고객",
+        title: quote.title,
+        validUntil: quote.valid_until,
+        finalAmount: quote.final_amount,
+        customerMessage: quote.customer_message,
+        viewUrl: nextUrl,
+      }),
+    );
+  }
 
   function openSendModal() {
     setSendError(null);
@@ -114,8 +189,22 @@ export default function QuoteDetailView({
         setSendError(result.error || "발송 안내 준비에 실패했습니다.");
         return;
       }
-      setGuideMessage(result.guideMessage || null);
-      setViewUrl(result.viewUrl || null);
+      const rawUrl = result.viewUrl || null;
+      setBaseViewUrl(rawUrl);
+      const nextUrl = applyCoverToUrl(rawUrl, includeCover);
+      setViewUrl(nextUrl);
+      setGuideMessage(
+        result.guideMessage
+          ? result.guideMessage.replace(rawUrl ?? "", nextUrl ?? "")
+          : buildQuoteGuideMessage({
+              customerName: quote.customers?.name || "고객",
+              title: quote.title,
+              validUntil: quote.valid_until,
+              finalAmount: quote.final_amount,
+              customerMessage: quote.customer_message,
+              viewUrl: nextUrl,
+            }),
+      );
     });
   }
 
@@ -157,14 +246,22 @@ export default function QuoteDetailView({
   function handleMarkSent(formData: FormData) {
     setSendError(null);
     formData.set("origin", window.location.origin);
+    if (viewUrl) formData.set("view_url", viewUrl);
     startSendTransition(async () => {
       const result = await markQuoteSentAction(formData);
       if (!result.success) {
         setSendError(result.error || "발송 처리에 실패했습니다.");
         return;
       }
-      setGuideMessage(result.guideMessage || previewGuideMessage);
-      setViewUrl(result.viewUrl || null);
+      const rawUrl = result.viewUrl || baseViewUrl;
+      if (rawUrl) setBaseViewUrl(rawUrl);
+      const nextUrl = applyCoverToUrl(rawUrl, includeCover);
+      setViewUrl(nextUrl);
+      setGuideMessage(
+        result.guideMessage
+          ? result.guideMessage.replace(rawUrl ?? "", nextUrl ?? "")
+          : previewGuideMessage,
+      );
       setToast(result.message || "발송완료로 처리되었습니다.");
       router.refresh();
     });
@@ -305,10 +402,19 @@ export default function QuoteDetailView({
           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
             <Link
               href={`/quotes/${quote.id}/edit`}
+              prefetch={false}
+              aria-label="견적 수정"
               className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700"
             >
               수정
             </Link>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="rounded-lg border border-navy-800/25 bg-white px-3 py-2 text-xs font-medium text-navy-900 hover:bg-navy-800/5"
+            >
+              견적서 미리보기
+            </button>
             <button
               type="button"
               onClick={() => setVersionModal(true)}
@@ -319,7 +425,7 @@ export default function QuoteDetailView({
             <button
               type="button"
               onClick={openSendModal}
-              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 hover:bg-sky-100"
+              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800 hover:bg-sky-100"
             >
               고객 발송
             </button>
@@ -508,7 +614,7 @@ export default function QuoteDetailView({
                       </td>
                     )}
                     <td className="py-2 text-gray-700">
-                      {item.cost_type ?? "기타"}
+                      {quoteCostTypeLabel(item.cost_type)}
                     </td>
                     {quote.quote_mode !== "simple" && (
                       <>
@@ -516,7 +622,7 @@ export default function QuoteDetailView({
                           {item.quantity ?? "-"}
                         </td>
                         <td className="py-2 text-gray-700">
-                          {item.unit ?? "-"}
+                          {formatQuoteUnit(item.unit) || "-"}
                         </td>
                         <td className="py-2 text-right font-medium text-gray-900">
                           {formatMoney(item.unit_price)}
@@ -798,6 +904,20 @@ export default function QuoteDetailView({
               전달하고 발송완료로 표시해 주세요.
             </p>
 
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                checked={includeCover}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setIncludeCover(next);
+                  rebuildGuideForCover(baseViewUrl ?? viewUrl, next);
+                }}
+                className="h-3.5 w-3.5 rounded border-slate-300"
+              />
+              고객 링크에 회사소개 표지 포함
+            </label>
+
             <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium text-gray-500">안내 문구</p>
@@ -979,6 +1099,15 @@ export default function QuoteDetailView({
           </div>
         </div>
       )}
+      {previewOpen ? (
+        <QuotePreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          model={previewModel}
+          includeCover={includeCover}
+          onIncludeCoverChange={setIncludeCover}
+        />
+      ) : null}
     </div>
   );
 }
@@ -992,8 +1121,8 @@ function InfoItem({
 }) {
   return (
     <div>
-      <dt className="text-xs text-gray-400">{label}</dt>
-      <dd className="mt-0.5 font-medium text-gray-800">{value}</dd>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className="mt-0.5 font-medium text-navy-900">{value}</dd>
     </div>
   );
 }

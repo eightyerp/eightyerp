@@ -83,10 +83,34 @@ export async function updateQuoteAction(
     const items = parseQuoteItemsJson(
       String(formData.get("items_json") ?? ""),
     );
+    let removedItemIds: string[] = [];
+    try {
+      const raw = String(formData.get("removed_item_ids_json") ?? "[]");
+      const parsed = JSON.parse(raw || "[]") as unknown;
+      if (Array.isArray(parsed)) {
+        removedItemIds = parsed.map((x) => String(x ?? "").trim()).filter(Boolean);
+      }
+    } catch {
+      throw new Error("삭제 항목 형식이 올바르지 않습니다.");
+    }
+    let originalExistingItemIds: string[] = [];
+    try {
+      const raw = String(formData.get("original_item_ids_json") ?? "[]");
+      const parsed = JSON.parse(raw || "[]") as unknown;
+      if (Array.isArray(parsed)) {
+        originalExistingItemIds = parsed
+          .map((x) => String(x ?? "").trim())
+          .filter(Boolean);
+      }
+    } catch {
+      throw new Error("기존 항목 ID 형식이 올바르지 않습니다.");
+    }
     const quote = await updateQuote({
       id,
       form,
       items,
+      removedItemIds,
+      originalExistingItemIds,
       files: collectFiles(formData, "files"),
     });
     revalidateQuotes(form.customer_id, quote.id);
@@ -177,7 +201,9 @@ export async function markQuoteSentAction(
     const note = String(formData.get("note") ?? "").trim();
     const origin = String(formData.get("origin") ?? "").trim().replace(/\/$/, "");
     const token = await ensureQuoteShareToken(id);
-    const viewUrl = origin ? `${origin}/customer/quotes/${token}` : null;
+    const fromForm = String(formData.get("view_url") ?? "").trim();
+    const viewUrl =
+      fromForm || (origin ? `${origin}/customer/quotes/${token}` : null);
     const { quote, guideMessage, viewUrl: resolved } = await markQuoteSent({
       id,
       note: note || null,

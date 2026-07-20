@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { cache } from "react";
 import { createClient } from "@/lib/supabase-server";
 import { requireAuthenticatedAccess } from "@/lib/crm/access";
 import {
@@ -8,7 +9,6 @@ import {
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
-  QUOTE_COST_TYPES,
   QUOTE_FILE_EXTENSIONS,
   QUOTE_FILE_MAX_BYTES,
   QUOTE_FILES_BUCKET,
@@ -16,6 +16,7 @@ import {
   buildQuoteGuideMessage,
   canCostTypeHaveLx,
   computeQuoteAmounts,
+  normalizeQuoteCostType,
   type QuoteCostType,
   type QuoteMode,
 } from "@/lib/crm/quote-constants";
@@ -87,6 +88,10 @@ export type QuoteFormInput = {
 };
 
 export type QuoteItemInput = {
+  /** 기존 DB 항목 ID. 없으면 신규 INSERT */
+  id: string | null;
+  /** 신규 행 클라이언트 키 (RPC id_map 매칭용) */
+  client_key: string | null;
   trade_name: string;
   item_name: string | null;
   description: string | null;
@@ -97,6 +102,9 @@ export type QuoteItemInput = {
   cost_type: QuoteCostType;
   is_lx_material: boolean;
   lx_discount_base_amount: number;
+  /** null = 기존 견적 단위 할인율 적용 */
+  lx_discount_type: string | null;
+  lx_discount_value: number | null;
 };
 
 function parseLxDiscountRate(value: FormDataEntryValue | null): number {
@@ -174,15 +182,12 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
     .map((row) => {
       const r = row as Record<string, unknown>;
       const itemName = String(r.item_name ?? "").trim();
-      const trade = String(r.trade_name ?? "").trim() || itemName;
-      if (!trade && !itemName) return null;
+      const tradeRaw = String(r.trade_name ?? "").trim();
+      if (!tradeRaw && !itemName) return null;
 
-      const costRaw = String(r.cost_type ?? "기타").trim();
-      const cost_type = (
-        (QUOTE_COST_TYPES as readonly string[]).includes(costRaw)
-          ? costRaw
-          : "기타"
-      ) as QuoteCostType;
+      const cost_type = normalizeQuoteCostType(
+        r.cost_type == null ? null : String(r.cost_type),
+      );
 
       const unitPrice = Math.max(0, Math.round(Number(r.unit_price ?? 0) || 0));
       const qtyRaw = r.quantity;
@@ -215,15 +220,67 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
         // 자재는 항목 전체가 대상 — 저장값은 0이어도 계산 시 amount 사용
         lx_discount_base_amount = 0;
       } else if (cost_type === "시공+자재") {
+        if (lx_discount_base_amount <= 0) {
+          throw new Error(
+            "자재+시공 항목의 LX 할인 대상 자재금액을 입력해주세요.",
+          );
+        }
         if (lx_discount_base_amount > amount) {
           throw new Error(
-            "LX 할인 대상 자재금액은 항목금액을 초과할 수 없습니다.",
+            "LX 자재금액은 항목 총금액 이하로 입력해주세요.",
           );
         }
       }
 
+      const typeRaw = String(r.lx_discount_type ?? "").trim();
+      let lx_discount_type: string | null = null;
+      if (typeRaw === "none" || typeRaw === "rate" || typeRaw === "fixed") {
+        lx_discount_type = typeRaw;
+      }
+      if (!is_lx_material) {
+        lx_discount_type = lx_discount_type ? "none" : null;
+      }
+
+      let lx_discount_value: number | null = null;
+      if (lx_discount_type === "rate" || lx_discount_type === "fixed") {
+        const valueRaw = Number(r.lx_discount_value ?? 0);
+        if (!Number.isFinite(valueRaw) || valueRaw < 0) {
+          throw new Error("LX 할인값이 올바르지 않습니다.");
+        }
+        if (lx_discount_type === "rate") {
+          if (valueRaw > 100) {
+            throw new Error("LX 할인율은 0~100 사이여야 합니다.");
+          }
+          lx_discount_value = Math.round(valueRaw * 100) / 100;
+        } else {
+          lx_discount_value = Math.round(valueRaw);
+          const base =
+            cost_type === "자재"
+              ? amount
+              : Math.min(lx_discount_base_amount || amount, amount);
+          if (lx_discount_value > base) {
+            throw new Error("정액 할인은 항목 할인 대상 금액을 초과할 수 없습니다.");
+          }
+        }
+      } else if (lx_discount_type === "none") {
+        lx_discount_value = 0;
+      }
+
       return {
-        trade_name: trade || itemName,
+        // 공종 미선택 허용(기존 호환). 빈 값은 빈 문자열로 저장 후 화면에서 미분류 표시
+        id: (() => {
+          const raw = String(r.id ?? "").trim();
+          if (
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              raw,
+            )
+          ) {
+            return raw;
+          }
+          return null;
+        })(),
+        client_key: emptyToNull(String(r.client_key ?? "")) ?? null,
+        trade_name: tradeRaw,
         item_name: emptyToNull(itemName),
         description: emptyToNull(String(r.description ?? "")),
         quantity:
@@ -234,9 +291,11 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
         cost_type,
         is_lx_material,
         lx_discount_base_amount,
+        lx_discount_type,
+        lx_discount_value,
       } satisfies QuoteItemInput;
     })
-    .filter((x): x is QuoteItemInput => Boolean(x));
+    .filter((x): x is QuoteItemInput => x != null);
 }
 
 function resolveQuoteAmounts(
@@ -443,34 +502,185 @@ export async function listQuoteSendLogs(
   return (data ?? []) as ErpQuoteSendLog[];
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeUuidList(ids: string[]): string[] {
+  return [
+    ...new Set(
+      ids
+        .map((id) => id.trim())
+        .filter((id) => UUID_RE.test(id)),
+    ),
+  ];
+}
+
+type QuoteRpcFailure = {
+  code?: string;
+  message: string;
+  details?: string;
+  hint?: string;
+};
+
+function logQuoteRpcFailure(
+  rpcName: string,
+  error: { code?: string; message?: string; details?: string; hint?: string },
+) {
+  console.error("[quote-rpc]", {
+    rpc: rpcName,
+    code: error.code ?? null,
+    message: error.message ?? null,
+    details: error.details ?? null,
+    hint: error.hint ?? null,
+  });
+}
+
+function quoteRpcUserMessage(failure: QuoteRpcFailure, fallback: string): string {
+  const code = (failure.code || "").trim();
+  const msg = (failure.message || "").trim();
+  const lower = msg.toLowerCase();
+
+  if (
+    lower.includes("update_quote_with_items") ||
+    lower.includes("sync_quote_items")
+  ) {
+    if (
+      lower.includes("schema cache") ||
+      lower.includes("could not find") ||
+      lower.includes("does not exist")
+    ) {
+      return "견적 안전 저장 기능이 아직 적용되지 않았습니다. migration 적용 후 다시 시도해 주세요.";
+    }
+  }
+
+  if (msg.includes("누락")) {
+    return "기존 견적 항목 정보가 누락되어 저장을 중단했습니다. 화면을 새로고침한 뒤 다시 시도해주세요.";
+  }
+
+  if (/[가-힣]/.test(msg) && msg.length < 180) {
+    if (code && !msg.includes(code)) {
+      return `${msg} (오류 ${code})`;
+    }
+    return msg;
+  }
+
+  if (code === "23514") {
+    return `견적 항목을 저장하지 못했습니다. 입력값을 확인한 후 다시 시도해 주세요. (오류 ${code})`;
+  }
+
+  if (code) {
+    return `${fallback} (오류 ${code})`;
+  }
+
+  return fallback;
+}
+
+function throwQuoteRpcError(
+  rpcName: string,
+  error: { code?: string; message?: string; details?: string; hint?: string },
+  fallback: string,
+): never {
+  logQuoteRpcFailure(rpcName, error);
+  const failure: QuoteRpcFailure = {
+    code: error.code,
+    message: error.message || fallback,
+    details: error.details,
+    hint: error.hint,
+  };
+  const err = new Error(quoteRpcUserMessage(failure, fallback)) as Error &
+    QuoteRpcFailure;
+  err.code = failure.code;
+  err.details = failure.details;
+  err.hint = failure.hint;
+  throw err;
+}
+
+function buildQuoteItemsRpcPayload(items: QuoteItemInput[]) {
+  return items.map((item, index) => ({
+    id: item.id ?? null,
+    client_key: item.client_key ?? null,
+    trade_name: item.trade_name || "미분류",
+    item_name: item.item_name,
+    description: item.description,
+    quantity: item.quantity,
+    unit: item.unit,
+    unit_price: item.unit_price,
+    amount: item.amount,
+    cost_type: normalizeQuoteCostType(item.cost_type),
+    is_lx_material:
+      canCostTypeHaveLx(item.cost_type) && Boolean(item.is_lx_material),
+    lx_discount_base_amount: item.lx_discount_base_amount,
+    lx_discount_type: item.lx_discount_type,
+    lx_discount_value: item.lx_discount_value,
+    sort_order: index,
+  }));
+}
+
+/**
+ * 견적 항목 안전 동기화 (RPC sync_quote_items).
+ * originalExistingItemIds: 편집 시작 시 활성 ID (추가 DB 조회 없이 사전 가드).
+ * 신규 생성·버전 복사에서 사용. 수정 저장은 update_quote_with_items.
+ */
+async function syncQuoteItems(
+  quoteId: string,
+  items: QuoteItemInput[],
+  removedItemIds: string[] = [],
+  originalExistingItemIds: string[] = [],
+) {
+  const removed = normalizeUuidList(removedItemIds);
+  const originalIds = normalizeUuidList(originalExistingItemIds);
+  const incomingExistingIds = normalizeUuidList(
+    items.map((item) => item.id ?? "").filter(Boolean),
+  );
+
+  // 앱 사전 가드: 추가 네트워크 요청 없음. 최종 안전은 RPC 집합 검증.
+  if (originalIds.length > 0) {
+    const covered = new Set([...incomingExistingIds, ...removed]);
+    const missing = originalIds.filter((id) => !covered.has(id));
+    if (missing.length > 0) {
+      throw new Error(
+        "기존 견적 항목 정보가 누락되어 저장을 중단했습니다. 화면을 새로고침한 뒤 다시 시도해주세요.",
+      );
+    }
+  }
+
+  if (items.length === 0) {
+    throw new Error("견적 항목은 1개 이상 필요합니다.");
+  }
+
+  const supabase = await createClient();
+  const payload = buildQuoteItemsRpcPayload(items);
+
+  const { data, error } = await supabase.rpc("sync_quote_items", {
+    p_quote_id: quoteId,
+    p_items: payload,
+    p_removed_item_ids: removed,
+  });
+
+  if (error) {
+    throwQuoteRpcError(
+      "sync_quote_items",
+      error,
+      "견적 항목을 저장하지 못했습니다. 입력값을 확인한 후 다시 시도해 주세요.",
+    );
+  }
+
+  return data;
+}
+
+/** @deprecated 이름 호환 — 내부는 syncQuoteItems */
 async function replaceQuoteItems(
   quoteId: string,
   items: QuoteItemInput[],
+  removedItemIds: string[] = [],
+  originalExistingItemIds: string[] = [],
 ) {
-  const supabase = await createClient();
-  await supabase
-    .from("quote_items")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("quote_id", quoteId)
-    .is("deleted_at", null);
-  if (!items.length) return;
-  const { error } = await supabase.from("quote_items").insert(
-    items.map((item, index) => ({
-      quote_id: quoteId,
-      trade_name: item.trade_name,
-      item_name: item.item_name,
-      description: item.description,
-      quantity: item.quantity,
-      unit: item.unit,
-      unit_price: item.unit_price,
-      amount: item.amount,
-      cost_type: item.cost_type,
-      is_lx_material: item.is_lx_material,
-      lx_discount_base_amount: item.lx_discount_base_amount,
-      sort_order: index,
-    })),
+  return syncQuoteItems(
+    quoteId,
+    items,
+    removedItemIds,
+    originalExistingItemIds,
   );
-  if (error) throw new Error("견적 항목 저장에 실패했습니다.");
 }
 
 async function uploadQuoteFiles(input: {
@@ -576,6 +786,9 @@ export async function updateQuote(input: {
   id: string;
   form: QuoteFormInput;
   items?: QuoteItemInput[];
+  removedItemIds?: string[];
+  /** 편집 시작 시 활성 item ID (앱 사전 가드, 추가 조회 없음) */
+  originalExistingItemIds?: string[];
   files?: File[];
 }): Promise<ErpQuote> {
   const access = await requireAuthenticatedAccess();
@@ -585,16 +798,39 @@ export async function updateQuote(input: {
   const items = input.items ?? [];
   const amounts = resolveQuoteAmounts(input.form, items);
 
+  const removed = normalizeUuidList(input.removedItemIds ?? []);
+  const originalIds = normalizeUuidList(
+    input.originalExistingItemIds ??
+      (existing.quote_items ?? [])
+        .filter((i) => !i.deleted_at)
+        .map((i) => i.id),
+  );
+  const incomingExistingIds = normalizeUuidList(
+    items.map((item) => item.id ?? "").filter(Boolean),
+  );
+
+  if (originalIds.length > 0) {
+    const covered = new Set([...incomingExistingIds, ...removed]);
+    const missing = originalIds.filter((id) => !covered.has(id));
+    if (missing.length > 0) {
+      throw new Error(
+        "기존 견적 항목 정보가 누락되어 저장을 중단했습니다. 화면을 새로고침한 뒤 다시 시도해주세요.",
+      );
+    }
+  }
+
+  if (items.length === 0) {
+    throw new Error("견적 항목은 1개 이상 필요합니다.");
+  }
+
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("quotes")
-    .update({
+  const { error } = await supabase.rpc("update_quote_with_items", {
+    p_quote_id: input.id,
+    p_header: {
       project_id: input.form.project_id,
       quote_type: input.form.quote_type,
       quote_mode: input.form.quote_mode,
       title: input.form.title,
-      // 수정 시 견적번호는 변경하지 않음
-      quote_number: existing.quote_number,
       status: input.form.status,
       total_amount: amounts.total_amount,
       discount_amount: amounts.discount_amount,
@@ -607,14 +843,19 @@ export async function updateQuote(input: {
       is_lx_material: amounts.is_lx_material,
       memo: input.form.memo,
       customer_message: input.form.customer_message,
-      updated_by: access.userId,
-    })
-    .eq("id", input.id)
-    .is("deleted_at", null);
+    },
+    p_items: buildQuoteItemsRpcPayload(items),
+    p_removed_item_ids: removed,
+  });
 
-  if (error) throw new Error("견적 수정에 실패했습니다.");
+  if (error) {
+    throwQuoteRpcError(
+      "update_quote_with_items",
+      error,
+      "견적 항목을 저장하지 못했습니다. 입력값을 확인한 후 다시 시도해 주세요.",
+    );
+  }
 
-  await replaceQuoteItems(input.id, items);
   await uploadQuoteFiles({
     customerId: existing.customer_id,
     quoteId: input.id,
@@ -680,6 +921,8 @@ export async function createQuoteVersion(input: {
     await replaceQuoteItems(
       data.id,
       source.quote_items.map((i) => ({
+        id: null,
+        client_key: null,
         trade_name: i.trade_name,
         item_name: i.item_name,
         description: i.description,
@@ -687,17 +930,18 @@ export async function createQuoteVersion(input: {
         unit: i.unit,
         unit_price: i.unit_price,
         amount: i.amount,
-        cost_type: (
-          (QUOTE_COST_TYPES as readonly string[]).includes(i.cost_type ?? "")
-            ? (i.cost_type as QuoteCostType)
-            : "기타"
-        ),
+        cost_type: normalizeQuoteCostType(i.cost_type),
         is_lx_material:
           canCostTypeHaveLx(i.cost_type) && Boolean(i.is_lx_material),
         lx_discount_base_amount: Math.max(
           0,
           Math.round(Number(i.lx_discount_base_amount ?? 0) || 0),
         ),
+        lx_discount_type: i.lx_discount_type ?? null,
+        lx_discount_value:
+          i.lx_discount_value == null
+            ? null
+            : Number(i.lx_discount_value),
       })),
     );
   }
@@ -809,6 +1053,17 @@ export type QuoteSharePayload = {
   customer_message: string | null;
   is_lx_material: boolean;
   customer_name: string;
+  company_name?: string | null;
+  company_business_number?: string | null;
+  brand_preset?: string | null;
+  brand_slogan?: string | null;
+  brand_intro?: string | null;
+  brand_advantages?: unknown;
+  brand_phone?: string | null;
+  brand_trust_line?: string | null;
+  brand_logo_path?: string | null;
+  brand_cert_image_paths?: unknown;
+  brand_site_image_paths?: unknown;
   items: {
     trade_name: string;
     item_name: string | null;
@@ -819,6 +1074,8 @@ export type QuoteSharePayload = {
     cost_type?: string;
     is_lx_material?: boolean;
     lx_discount_base_amount?: number;
+    lx_discount_type?: string | null;
+    lx_discount_value?: number | null;
     sort_order: number;
   }[];
   files: {
@@ -830,17 +1087,18 @@ export type QuoteSharePayload = {
   }[];
 };
 
-export async function getQuoteShareByToken(
-  token: string,
-): Promise<QuoteSharePayload | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_quote_share_by_token", {
-    p_token: token,
-  });
-  if (error) throw new Error("견적 공유 정보를 불러오지 못했습니다.");
-  if (!data) return null;
-  return data as QuoteSharePayload;
-}
+/** 동일 요청 내 generateMetadata + page 중복 RPC 방지 */
+export const getQuoteShareByToken = cache(
+  async (token: string): Promise<QuoteSharePayload | null> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("get_quote_share_by_token", {
+      p_token: token,
+    });
+    if (error) throw new Error("견적 공유 정보를 불러오지 못했습니다.");
+    if (!data) return null;
+    return data as QuoteSharePayload;
+  },
+);
 
 export async function markQuoteSent(input: {
   id: string;
@@ -997,14 +1255,21 @@ export function toQuoteSafeError(
   fallback = "처리 중 오류가 발생했습니다.",
 ): string {
   if (error instanceof Error) {
-    const msg = error.message || "";
-    if (
-      /[가-힣]/.test(msg) &&
-      msg.length < 180 &&
-      !/PGRST|postgres|permission|JWT|schema cache/i.test(msg)
-    ) {
+    const e = error as Error & QuoteRpcFailure;
+    const msg = e.message || "";
+    // throwQuoteRpcError 등에서 이미 안전한 한국어 메시지를 만든 경우 그대로 사용
+    if (/[가-힣]/.test(msg) && msg.length < 220) {
       return msg;
     }
+    return quoteRpcUserMessage(
+      {
+        code: typeof e.code === "string" ? e.code : undefined,
+        message: msg || fallback,
+        details: typeof e.details === "string" ? e.details : undefined,
+        hint: typeof e.hint === "string" ? e.hint : undefined,
+      },
+      fallback,
+    );
   }
   return fallback;
 }

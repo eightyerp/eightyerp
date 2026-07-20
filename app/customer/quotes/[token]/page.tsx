@@ -1,25 +1,57 @@
-import { createSignedQuoteFileUrl, getQuoteShareByToken } from "@/lib/crm/quote-mgmt";
+import type { Metadata } from "next";
+import QuoteDocumentView from "@/components/quotes/QuoteDocumentView";
+import QuoteShareDownloadLink from "@/components/quotes/QuoteShareDownloadLink";
 import {
-  ERP_QUOTE_STATUS_BADGE,
-  quoteDocumentTitle,
-} from "@/lib/crm/quote-constants";
+  resolveQuoteBrandFromShare,
+} from "@/lib/crm/quote-brand-shared";
+import {
+  createSignedQuoteFileUrl,
+  getQuoteShareByToken,
+} from "@/lib/crm/quote-mgmt";
+import {
+  buildQuoteSharePageTitle,
+  parseQuoteCoverParam,
+  type QuoteDocumentModel,
+} from "@/lib/crm/quote-document";
 
 type Props = {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ cover?: string }>;
 };
 
-export default async function CustomerQuoteSharePage({ params }: Props) {
+export async function generateMetadata({
+  params,
+}: Props): Promise<Metadata> {
   const { token } = await params;
+  try {
+    const share = await getQuoteShareByToken(token);
+    const title = buildQuoteSharePageTitle(share?.customer_name);
+    return {
+      title,
+      openGraph: { title },
+    };
+  } catch {
+    return {
+      title: buildQuoteSharePageTitle(null),
+    };
+  }
+}
+
+export default async function CustomerQuoteSharePage({
+  params,
+  searchParams,
+}: Props) {
+  const { token } = await params;
+  const query = await searchParams;
+  const showCover = parseQuoteCoverParam(query.cover);
 
   let share = null;
   let loadError: string | null = null;
   try {
     share = await getQuoteShareByToken(token);
-  } catch (error) {
+  } catch {
     loadError =
-      error instanceof Error
-        ? "견적을 불러오지 못했습니다. 링크가 유효한지 확인해 주세요."
-        : "견적을 불러오지 못했습니다.";
+      "견적을 불러오지 못했습니다. 링크가 유효한지 확인해 주세요.";
   }
 
   if (!share) {
@@ -50,138 +82,45 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
   const primaryPdf = (share.files ?? []).find(
     (f) => f.file_type === "pdf" && signedUrls[f.id],
   );
-  const badge =
-    ERP_QUOTE_STATUS_BADGE[share.status] || "bg-gray-100 text-gray-600";
+
+  const brand = resolveQuoteBrandFromShare(share);
+
+  const documentModel: QuoteDocumentModel = {
+    customerName: share.customer_name,
+    title: share.title,
+    quoteType: share.quote_type,
+    quoteMode: share.quote_mode,
+    quoteNumber: share.quote_number,
+    versionNumber: share.version_number,
+    status: share.status,
+    validUntil: share.valid_until,
+    issuedAt: share.issued_at,
+    customerMessage: share.customer_message,
+    discountAmount: Number(share.discount_amount ?? 0),
+    lxDiscountRate: Number(share.lx_discount_rate ?? 0),
+    brand,
+    showCover,
+    items: (share.items ?? []).map((item) => ({
+      trade_name: item.trade_name,
+      item_name: item.item_name,
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+      amount: item.amount,
+      cost_type: item.cost_type,
+      is_lx_material: item.is_lx_material,
+      lx_discount_base_amount: item.lx_discount_base_amount,
+      lx_discount_type: item.lx_discount_type,
+      lx_discount_value: item.lx_discount_value,
+      sort_order: item.sort_order,
+    })),
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <div className="border-b border-navy-900/10 bg-navy-900 text-white">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-5">
-          <span className="text-2xl font-bold text-gold-400">80</span>
-          <div>
-            <p className="text-sm font-semibold tracking-wide">EIGHTY</p>
-            <p className="text-xs text-white/60">주식회사 에잇티 견적 확인</p>
-          </div>
-        </div>
-      </div>
+      <QuoteDocumentView model={documentModel} variant="mobile" />
 
-      <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs text-gray-400">고객</p>
-              <h1 className="mt-1 text-xl font-bold text-navy-900">
-                {share.customer_name}
-              </h1>
-              <p className="mt-2 text-base font-semibold text-gray-900">
-                {share.title}
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
-                {[
-                  share.quote_type,
-                  share.quote_number ? `번호 ${share.quote_number}` : null,
-                  `V${share.version_number}`,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-medium ${badge}`}
-            >
-              {share.status}
-            </span>
-          </div>
-
-          <dl className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg bg-gray-50 px-3 py-2">
-              <dt className="text-[11px] text-gray-400">최종금액</dt>
-              <dd className="mt-0.5 text-lg font-semibold text-navy-900">
-                {(share.final_amount ?? 0).toLocaleString("ko-KR")}원
-              </dd>
-              {(share.total_amount != null ||
-                share.discount_amount ||
-                share.lx_discount_amount) && (
-                <dd className="mt-1 text-[11px] text-gray-500">
-                  총 {(share.total_amount ?? 0).toLocaleString("ko-KR")}원
-                  {(share.discount_amount || 0) > 0
-                    ? ` · 일반할인 -${Number(share.discount_amount).toLocaleString("ko-KR")}원`
-                    : ""}
-                  {(share.lx_discount_amount || 0) > 0
-                    ? ` · LX할인(${Number(share.lx_discount_rate ?? 0)}%) -${Number(share.lx_discount_amount).toLocaleString("ko-KR")}원`
-                    : ""}
-                </dd>
-              )}
-            </div>
-            <div className="rounded-lg bg-gray-50 px-3 py-2">
-              <dt className="text-[11px] text-gray-400">유효기간</dt>
-              <dd className="mt-0.5 text-sm font-medium text-gray-800">
-                {share.valid_until || "-"}
-              </dd>
-            </div>
-          </dl>
-
-          {share.customer_message && (
-            <div className="mt-4 rounded-lg border border-gold-200 bg-gold-50/60 px-3 py-3 text-sm text-navy-900 whitespace-pre-wrap">
-              {share.customer_message}
-            </div>
-          )}
-
-          <p className="mt-4 text-xs text-gray-700">
-            ※ 내부 메모·단가 등 원가 정보는 표시되지 않습니다.
-          </p>
-        </section>
-
-        {(share.items?.length ?? 0) > 0 && (
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-gray-900">
-              {quoteDocumentTitle(share.quote_mode)}
-            </h2>
-            <ul className="mt-3 divide-y divide-gray-200">
-              {share.items.map((item, idx) => {
-                const title =
-                  share.quote_mode === "simple"
-                    ? item.item_name || item.trade_name
-                    : item.trade_name;
-                return (
-                  <li
-                    key={`${title}-${idx}`}
-                    className="flex items-start justify-between gap-3 py-3 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-900">{title}</p>
-                      <p className="mt-0.5 text-xs text-gray-700">
-                        {[
-                          item.cost_type || "기타",
-                          share.quote_mode !== "simple" && item.item_name
-                            ? item.item_name
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      {item.is_lx_material && (
-                        <p className="mt-1">
-                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-300">
-                            LX 자재
-                            {item.cost_type === "시공+자재" &&
-                            (item.lx_discount_base_amount ?? 0) > 0
-                              ? ` · 할인대상 ${(item.lx_discount_base_amount ?? 0).toLocaleString("ko-KR")}원`
-                              : ""}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                    <p className="shrink-0 font-semibold text-gray-900">
-                      {(item.amount ?? 0).toLocaleString("ko-KR")}원
-                    </p>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        )}
-
+      <div className="mx-auto max-w-3xl space-y-6 px-4 pb-10">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-navy-900">첨부파일</h2>
           {(share.files?.length ?? 0) === 0 ? (
@@ -200,14 +139,26 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
                     </span>
                   </span>
                   {signedUrls[f.id] ? (
-                    <a
-                      href={signedUrls[f.id]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-md bg-navy-800 px-3 py-1.5 text-xs font-medium text-white"
-                    >
-                      {f.file_type === "pdf" ? "미리보기 / 다운로드" : "다운로드"}
-                    </a>
+                    <div className="flex flex-wrap gap-2">
+                      {f.file_type === "pdf" ? (
+                        <a
+                          href={signedUrls[f.id]}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-navy-800 px-3 py-1.5 text-xs font-medium text-navy-800"
+                        >
+                          미리보기
+                        </a>
+                      ) : null}
+                      <QuoteShareDownloadLink
+                        href={signedUrls[f.id]}
+                        customerName={share.customer_name}
+                        fileType={f.file_type}
+                        className="rounded-md bg-navy-800 px-3 py-1.5 text-xs font-medium text-white"
+                      >
+                        다운로드
+                      </QuoteShareDownloadLink>
+                    </div>
                   ) : (
                     <span className="text-xs text-red-500">링크 생성 실패</span>
                   )}
@@ -226,6 +177,10 @@ export default async function CustomerQuoteSharePage({ params }: Props) {
             </div>
           )}
         </section>
+
+        <p className="text-center text-xs text-slate-500">
+          ※ 내부 메모·단가 등 원가 정보는 표시되지 않습니다.
+        </p>
       </div>
     </main>
   );
