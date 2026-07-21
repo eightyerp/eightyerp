@@ -1,6 +1,5 @@
 import type {
   ConsultationType,
-  CustomerStatus,
   InquirySourceType,
   ParsedInquiryData,
 } from "@/types/database";
@@ -59,8 +58,18 @@ function extractPhone(text: string): string {
   return match ? normalizePhone(match[0]) : "";
 }
 
+export function phoneDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+/** 10~11자리일 때만 중복 비교에 사용 (불완전 번호 오탐 방지) */
+export function isComparablePhone(value: string): boolean {
+  const digits = phoneDigits(value);
+  return digits.length === 10 || digits.length === 11;
+}
+
 export function normalizePhone(value: string): string {
-  const digits = value.replace(/\D/g, "");
+  const digits = phoneDigits(value);
   if (digits.length === 11) {
     return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   }

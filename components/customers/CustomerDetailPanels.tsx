@@ -23,9 +23,12 @@ import {
   buildSmsLink,
   contactBucketClass,
   contactBucketLabel,
+  formatFriendlyDate,
+  formatFriendlyDateTime,
   formatPhoneForTel,
 } from "@/lib/crm/contact";
 import type {
+  CustomerActivity,
   CustomerConsultLog,
   CustomerQuote,
   CustomerQuoteSend,
@@ -56,6 +59,8 @@ type CustomerDetailPanelsProps = {
   schedules?: CustomerSchedule[];
   employees: Employee[];
   projects: Project[];
+  /** 담당자변경 활동만, 최신순 */
+  assigneeChangeHistory?: CustomerActivity[];
   canDelete: boolean;
   isAdmin: boolean;
   currentEmployeeId: string | null;
@@ -92,6 +97,7 @@ export default function CustomerDetailPanels({
   schedules = [],
   employees,
   projects,
+  assigneeChangeHistory = [],
   canDelete,
   isAdmin,
   currentEmployeeId,
@@ -139,8 +145,22 @@ export default function CustomerDetailPanels({
     showConsultForm && !(consultState.success && Boolean(consultState.message));
 
   const bucket = customer.contact_bucket ?? "none";
+  const isContactOverdue = bucket === "overdue";
+  const lastContactLabel =
+    formatFriendlyDateTime(customer.last_contact_at) ??
+    "아직 연락 기록 없음";
+  const nextContactLabel =
+    formatFriendlyDate(customer.next_contact_at) ?? "미정";
   const latestLog = consultLogs[0] ?? null;
   const pending = consultPending || quickPending || channelPending;
+
+  function employeeNameById(id: string | null | undefined): string {
+    if (!id) return "미배정";
+    const found = employees.find((e) => e.id === id);
+    return found
+      ? formatEmployeeLabel(found.name, found.title)
+      : "알 수 없음";
+  }
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -194,7 +214,23 @@ export default function CustomerDetailPanels({
               >
                 {contactBucketLabel(bucket)}
               </span>
+              {isContactOverdue && (
+                <span className="inline-flex items-center rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
+                  연락 지연
+                </span>
+              )}
             </div>
+
+            {isContactOverdue && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                다음 연락 예정일이 지났습니다. 빠른 연락이 필요합니다.
+                {customer.next_contact_at && (
+                  <span className="mt-0.5 block text-xs text-red-700/90">
+                    예정일: {nextContactLabel}
+                  </span>
+                )}
+              </div>
+            )}
 
             <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
               <InfoItem label="연락처" value={customer.phone} />
@@ -218,8 +254,22 @@ export default function CustomerDetailPanels({
                 value={customer.desired_timing ?? "-"}
               />
               <InfoItem
+                label="최근 연락"
+                value={lastContactLabel}
+                valueClassName={
+                  customer.last_contact_at
+                    ? undefined
+                    : "font-medium text-gray-500"
+                }
+              />
+              <InfoItem
                 label="다음 연락일"
-                value={formatDate(customer.next_contact_at)}
+                value={nextContactLabel}
+                valueClassName={
+                  isContactOverdue
+                    ? "font-semibold text-red-700"
+                    : undefined
+                }
               />
               <InfoItem
                 label="공사주소"
@@ -227,6 +277,41 @@ export default function CustomerDetailPanels({
                 className="sm:col-span-2 xl:col-span-3"
               />
             </dl>
+
+            {assigneeChangeHistory.length > 0 && (
+              <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-3">
+                <p className="text-xs font-semibold text-gray-600">
+                  담당자 변경이력
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {assigneeChangeHistory.map((row) => {
+                    const changedBy = row.employees
+                      ? formatEmployeeLabel(
+                          row.employees.name,
+                          row.employees.title,
+                        )
+                      : "알 수 없음";
+                    return (
+                      <li
+                        key={row.id}
+                        className="border-t border-gray-100 pt-2 text-sm first:border-t-0 first:pt-0"
+                      >
+                        <p className="font-medium text-gray-800">
+                          {employeeNameById(row.previous_assignee_id)}
+                          <span className="mx-1.5 text-gray-400">→</span>
+                          {employeeNameById(row.new_assignee_id)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          변경한 사람 {changedBy}
+                          <span className="mx-1.5 text-gray-300">·</span>
+                          {formatDateTime(row.created_at)}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
@@ -317,16 +402,41 @@ export default function CustomerDetailPanels({
         </div>
 
         <div className="dashboard-card p-5">
-          <h3 className="dashboard-section-title">다음 연락일</h3>
-          <p className="mt-3 text-2xl font-bold text-gray-900">
-            {formatDate(customer.next_contact_at)}
-          </p>
-          <p className="mt-1 text-sm text-gray-500">
-            {contactBucketLabel(bucket)}
-            {customer.next_contact_at
-              ? " · 대시보드 오늘 연락 목록과 연동됩니다."
-              : " · 상담 등록 시 다음 연락일을 함께 지정할 수 있습니다."}
-          </p>
+          <h3 className="dashboard-section-title">연락 현황</h3>
+          <div className="mt-3 space-y-3">
+            <div>
+              <p className="text-xs text-gray-400">최근 연락</p>
+              <p
+                className={`mt-1 text-base font-semibold ${
+                  customer.last_contact_at ? "text-gray-900" : "text-gray-500"
+                }`}
+              >
+                {lastContactLabel}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">다음 연락일</p>
+              <p
+                className={`mt-1 text-2xl font-bold ${
+                  isContactOverdue ? "text-red-700" : "text-gray-900"
+                }`}
+              >
+                {nextContactLabel}
+              </p>
+              <p
+                className={`mt-1 text-sm ${
+                  isContactOverdue
+                    ? "font-semibold text-red-700"
+                    : "text-gray-500"
+                }`}
+              >
+                {contactBucketLabel(bucket)}
+                {customer.next_contact_at
+                  ? " · 대시보드 오늘 연락 목록과 연동됩니다."
+                  : " · 상담 등록 시 다음 연락일을 함께 지정할 수 있습니다."}
+              </p>
+            </div>
+          </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <a
               href={`tel:${formatPhoneForTel(customer.phone)}`}
@@ -924,15 +1034,17 @@ function InfoItem({
   label,
   value,
   className = "",
+  valueClassName = "font-medium text-gray-800",
 }: {
   label: string;
   value: string;
   className?: string;
+  valueClassName?: string;
 }) {
   return (
     <div className={className}>
       <dt className="text-xs text-gray-400">{label}</dt>
-      <dd className="mt-0.5 font-medium text-gray-800">{value}</dd>
+      <dd className={`mt-0.5 ${valueClassName}`}>{value}</dd>
     </div>
   );
 }

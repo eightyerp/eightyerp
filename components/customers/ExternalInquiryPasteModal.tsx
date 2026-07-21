@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   analyzeInquiryAction,
   registerInquiryCustomerAction,
@@ -24,6 +24,7 @@ import type {
 type Props = {
   employees: Employee[];
   leadSources: LeadSource[];
+  defaultAssignedEmployeeId?: string | null;
 };
 
 type PreviewState = {
@@ -96,74 +97,81 @@ function fieldClass(missing: boolean) {
 export default function ExternalInquiryPasteModal({
   employees,
   leadSources,
+  defaultAssignedEmployeeId = null,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"paste" | "preview">("paste");
   const [rawText, setRawText] = useState("");
-  const [preview, setPreview] = useState<PreviewState>(emptyPreview);
+  const [preview, setPreview] = useState<PreviewState>({
+    ...emptyPreview,
+    assigned_employee_id: defaultAssignedEmployeeId ?? "",
+  });
   const [missing, setMissing] = useState<InquiryMissingField[]>([]);
   const [duplicates, setDuplicates] = useState<ActionResult["duplicates"]>([]);
   const [dupMode, setDupMode] = useState<"create" | "append" | "view">("create");
   const [selectedExisting, setSelectedExisting] = useState("");
 
   const [analyzeState, analyzeAction, analyzing] = useActionState(
-    analyzeInquiryAction,
+    async (prev: ActionResult, formData: FormData) => {
+      const result = await analyzeInquiryAction(prev, formData);
+      if (!result.success || !result.parsed) return result;
+
+      const parsed = result.parsed as ParsedInquiryData;
+      const text = String(formData.get("raw_text") ?? rawText);
+      const matched =
+        leadSources.find((s) => s.name === parsed.lead_source_name) ||
+        leadSources.find((s) => s.name === "LX하우시스 본사") ||
+        leadSources.find((s) => s.name === "LX하우시스 고객상담실");
+
+      setPreview({
+        raw_text: text,
+        source_type: result.sourceType ?? "other",
+        name: parsed.name ?? "",
+        phone: parsed.phone ?? "",
+        address: parsed.address ?? "",
+        lead_source_id: matched?.id ?? "",
+        lead_source_name: parsed.lead_source_name ?? matched?.name ?? "",
+        source_channel: parsed.source_channel ?? "",
+        source_round: parsed.source_round ?? "",
+        source_order_no: parsed.source_order_no ?? "",
+        interest_items: parsed.interest_items ?? [],
+        desired_timing: parsed.desired_timing ?? "",
+        special_notes: parsed.special_notes ?? "",
+        event_memo: parsed.event_memo ?? "",
+        consultation_notes: parsed.consultation_notes ?? "",
+        assigned_employee_id:
+          parsed.assigned_employee_id || defaultAssignedEmployeeId || "",
+        status: parsed.status ?? "신규",
+        happy_call_required: parsed.happy_call_required ?? true,
+      });
+      setMissing(result.missingFields ?? []);
+      setDuplicates(result.duplicates ?? []);
+      setDupMode(result.duplicates?.length ? "view" : "create");
+      setSelectedExisting(result.duplicates?.[0]?.id ?? "");
+      setStep("preview");
+      return result;
+    },
     initial,
   );
   const [registerState, registerAction, registering] = useActionState(
-    registerInquiryCustomerAction,
+    async (prev: ActionResult, formData: FormData) => {
+      const result = await registerInquiryCustomerAction(prev, formData);
+      if (result.duplicates?.length) {
+        setDuplicates(result.duplicates);
+      }
+      return result;
+    },
     initial,
   );
-
-  useEffect(() => {
-    if (!analyzeState.success || !analyzeState.parsed) return;
-    const parsed = analyzeState.parsed as ParsedInquiryData;
-    const matched =
-      leadSources.find((s) => s.name === parsed.lead_source_name) ||
-      leadSources.find((s) => s.name === "LX하우시스 본사") ||
-      leadSources.find((s) => s.name === "LX하우시스 고객상담실");
-
-    setPreview({
-      raw_text: rawText,
-      source_type: analyzeState.sourceType ?? "other",
-      name: parsed.name ?? "",
-      phone: parsed.phone ?? "",
-      address: parsed.address ?? "",
-      lead_source_id: matched?.id ?? "",
-      lead_source_name: parsed.lead_source_name ?? matched?.name ?? "",
-      source_channel: parsed.source_channel ?? "",
-      source_round: parsed.source_round ?? "",
-      source_order_no: parsed.source_order_no ?? "",
-      interest_items: parsed.interest_items ?? [],
-      desired_timing: parsed.desired_timing ?? "",
-      special_notes: parsed.special_notes ?? "",
-      event_memo: parsed.event_memo ?? "",
-      consultation_notes: parsed.consultation_notes ?? "",
-      assigned_employee_id: parsed.assigned_employee_id ?? "",
-      status: parsed.status ?? "신규",
-      happy_call_required: parsed.happy_call_required ?? true,
-    });
-    setMissing(analyzeState.missingFields ?? []);
-    setDuplicates(analyzeState.duplicates ?? []);
-    setDupMode(analyzeState.duplicates?.length ? "view" : "create");
-    setSelectedExisting(analyzeState.duplicates?.[0]?.id ?? "");
-    setStep("preview");
-  }, [analyzeState, leadSources, rawText]);
-
-  useEffect(() => {
-    if (registerState.duplicates?.length) {
-      setDuplicates(registerState.duplicates);
-      if (registerState.parsed) {
-        // keep preview, just surface duplicates
-      }
-    }
-  }, [registerState]);
 
   function close() {
     setOpen(false);
     setStep("paste");
     setRawText("");
-    setPreview(emptyPreview);
+    setPreview({
+      ...emptyPreview,
+      assigned_employee_id: defaultAssignedEmployeeId ?? "",
+    });
     setMissing([]);
     setDuplicates([]);
     setDupMode("create");
@@ -286,6 +294,10 @@ export default function ExternalInquiryPasteModal({
                               />
                               <span>
                                 {d.name} · {d.phone}
+                                {d.assignee_name
+                                  ? ` · 담당 ${d.assignee_name}`
+                                  : ""}
+                                {d.status ? ` · ${d.status}` : ""}
                                 {d.address ? ` · ${d.address}` : ""}
                                 <span className="ml-1 text-xs text-amber-800">
                                   ({REASON_LABEL[d.reason]})
@@ -406,6 +418,7 @@ export default function ExternalInquiryPasteModal({
                       담당자 *
                       <select
                         name="assigned_employee_id"
+                        required
                         value={preview.assigned_employee_id}
                         onChange={(e) =>
                           setPreview((p) => ({
@@ -415,7 +428,7 @@ export default function ExternalInquiryPasteModal({
                         }
                         className="mt-1 min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
                       >
-                        <option value="">선택</option>
+                        <option value="">담당자 선택</option>
                         {employees.map((e) => (
                           <option key={e.id} value={e.id}>
                             {formatEmployeeLabel(e.name, e.title)}

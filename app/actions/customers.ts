@@ -24,7 +24,7 @@ import {
   updateCustomerQuickFields,
 } from "@/lib/crm/customers";
 import { canShowDevDiagnostics } from "@/lib/crm/dev-diagnostics";
-import { findInquiryDuplicates } from "@/lib/crm/inquiry-duplicates";
+import { findInquiryDuplicates, findPhoneDuplicates } from "@/lib/crm/inquiry-duplicates";
 import type { DuplicateCandidate } from "@/lib/crm/inquiry-duplicates";
 import type { InquiryMissingField } from "@/lib/crm/parse-inquiry";
 import {
@@ -114,6 +114,19 @@ export async function createCustomerAction(
     if (!input.name || !input.phone) {
       return { success: false, error: "고객명과 연락처는 필수입니다." };
     }
+    if (!input.assigned_employee_id) {
+      return { success: false, error: "담당자를 선택해 주세요." };
+    }
+
+    const phoneDuplicates = await findPhoneDuplicates({ phone: input.phone });
+    if (phoneDuplicates.length > 0) {
+      return {
+        success: false,
+        error:
+          "같은 연락처의 고객이 이미 있습니다. 기존 고객을 확인하거나 열어 주세요.",
+        duplicates: phoneDuplicates,
+      };
+    }
 
     await createCustomer(input);
     revalidatePath("/customers");
@@ -137,6 +150,22 @@ export async function updateCustomerAction(
     if (!input.name || !input.phone) {
       return { success: false, error: "고객명과 연락처는 필수입니다." };
     }
+    if (!input.assigned_employee_id) {
+      return { success: false, error: "담당자를 선택해 주세요." };
+    }
+
+    const phoneDuplicates = await findPhoneDuplicates({
+      phone: input.phone,
+      excludeId: id,
+    });
+    if (phoneDuplicates.length > 0) {
+      return {
+        success: false,
+        error:
+          "같은 연락처의 고객이 이미 있습니다. 기존 고객을 확인하거나 열어 주세요.",
+        duplicates: phoneDuplicates,
+      };
+    }
 
     await updateCustomer(id, input);
     revalidatePath("/customers");
@@ -148,6 +177,18 @@ export async function updateCustomerAction(
     if (isRedirectError(error)) throw error;
     return customerWriteFailureResult(error, "고객 수정에 실패했습니다.");
   }
+}
+
+/** 수동 등록/수정 폼 — 연락처 soft 중복 확인 */
+export async function checkCustomerPhoneDuplicateAction(
+  phone: string,
+  excludeId?: string | null,
+): Promise<{ duplicates: DuplicateCandidate[] }> {
+  const duplicates = await findPhoneDuplicates({
+    phone,
+    excludeId: excludeId || undefined,
+  });
+  return { duplicates };
 }
 
 export async function softDeleteCustomerAction(

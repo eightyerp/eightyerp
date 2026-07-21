@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import {
+  checkCustomerPhoneDuplicateAction,
   createCustomerAction,
   updateCustomerAction,
   type ActionResult,
 } from "@/app/actions/customers";
+import type { DuplicateCandidate } from "@/lib/crm/inquiry-duplicates";
 import {
   CONSULTATION_TYPES,
   CUSTOMER_FORM_STATUSES,
@@ -19,6 +21,9 @@ type CustomerFormProps = {
   employees: Employee[];
   leadSources: LeadSource[];
   customer?: Customer;
+  /** 신규 등록 시 기본 담당자 (수정 시에는 사용하지 않음) */
+  defaultAssignedEmployeeId?: string | null;
+  isAdmin?: boolean;
 };
 
 const initialState: ActionResult = { success: false };
@@ -30,6 +35,8 @@ export default function CustomerForm({
   employees,
   leadSources,
   customer,
+  defaultAssignedEmployeeId = null,
+  isAdmin = false,
 }: CustomerFormProps) {
   const isEdit = Boolean(customer);
   const action = isEdit ? updateCustomerAction : createCustomerAction;
@@ -37,11 +44,29 @@ export default function CustomerForm({
   const [interestItems, setInterestItems] = useState<string[]>(
     customer?.interest_items ?? [],
   );
+  const [phoneDuplicates, setPhoneDuplicates] = useState<DuplicateCandidate[]>(
+    [],
+  );
+  const [checkingPhone, startPhoneCheck] = useTransition();
+
+  const defaultAssignee = isEdit
+    ? (customer?.assigned_employee_id ?? "")
+    : (defaultAssignedEmployeeId ?? "");
 
   function toggleInterest(item: string) {
     setInterestItems((prev) =>
       prev.includes(item) ? prev.filter((v) => v !== item) : [...prev, item],
     );
+  }
+
+  function checkPhone(raw: string) {
+    startPhoneCheck(async () => {
+      const { duplicates } = await checkCustomerPhoneDuplicateAction(
+        raw,
+        customer?.id,
+      );
+      setPhoneDuplicates(duplicates);
+    });
   }
 
   const submitLabel = pending
@@ -51,6 +76,11 @@ export default function CustomerForm({
     : isEdit
       ? "변경 저장"
       : "고객 등록";
+
+  const visibleDuplicates =
+    phoneDuplicates.length > 0
+      ? phoneDuplicates
+      : (state.duplicates ?? []);
 
   return (
     <form
@@ -81,6 +111,41 @@ export default function CustomerForm({
         </div>
       )}
 
+      {visibleDuplicates.length > 0 && (
+        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">
+            같은 연락처의 고객이 이미 있습니다
+          </p>
+          <ul className="space-y-2">
+            {visibleDuplicates.map((dup) => (
+              <li
+                key={dup.id}
+                className="flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <p className="font-medium text-navy-900">{dup.name}</p>
+                  <p className="text-xs text-amber-900/80">
+                    담당자 {dup.assignee_name ?? "미배정"}
+                    {dup.status ? ` · ${dup.status}` : ""}
+                    {dup.phone ? ` · ${dup.phone}` : ""}
+                  </p>
+                </div>
+                <Link
+                  href={`/customers/${dup.id}`}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-navy-800/20 bg-navy-800 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-700 sm:min-h-9"
+                >
+                  기존 고객 열기
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-amber-800">
+            등록을 이어가려면 연락처를 바꾸거나, 위 버튼을 눌러 기존 고객을
+            확인하세요.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label="고객명" required>
           <input
@@ -98,7 +163,14 @@ export default function CustomerForm({
             placeholder="010-0000-0000"
             defaultValue={customer?.phone ?? ""}
             className={inputClass}
+            onBlur={(e) => checkPhone(e.target.value)}
+            onChange={() => {
+              if (phoneDuplicates.length > 0) setPhoneDuplicates([]);
+            }}
           />
+          {checkingPhone && (
+            <p className="mt-1 text-xs text-gray-400">연락처 확인 중…</p>
+          )}
         </Field>
 
         <Field label="공사주소" className="md:col-span-2">
@@ -176,19 +248,27 @@ export default function CustomerForm({
           )}
         </Field>
 
-        <Field label="담당자">
+        <Field label="담당자" required>
           <select
             name="assigned_employee_id"
-            defaultValue={customer?.assigned_employee_id ?? ""}
+            required
+            defaultValue={defaultAssignee}
             className={inputClass}
           >
-            <option value="">미배정</option>
+            <option value="">담당자 선택</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {formatEmployeeLabel(employee.name, employee.title)}
               </option>
             ))}
           </select>
+          {!isEdit && defaultAssignedEmployeeId && (
+            <p className="mt-1 text-xs text-gray-400">
+              {isAdmin
+                ? "로그인 직원으로 기본 선택되었습니다. 관리자는 다른 담당자로 변경할 수 있습니다."
+                : "로그인 직원이 기본 담당자로 선택되었습니다."}
+            </p>
+          )}
         </Field>
 
         <Field label="고객 상담상태">

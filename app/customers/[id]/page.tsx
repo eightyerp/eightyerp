@@ -5,6 +5,7 @@ import CustomerDetailPanels from "@/components/customers/CustomerDetailPanels";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
+  getCustomerActivities,
   getCustomerById,
   getCustomerConsultLogs,
   getEmployees,
@@ -23,6 +24,7 @@ import {
   toCrmErrorMessage,
 } from "@/lib/crm/errors";
 import type {
+  CustomerActivity,
   CustomerConsultLog,
   CustomerQuote,
   CustomerQuoteSend,
@@ -89,6 +91,7 @@ export default async function CustomerDetailPage({
   let projects: Project[] = [];
   let projectsWarning: string | null = null;
   let projectsDevHint: string | null = null;
+  let assigneeChangeHistory: CustomerActivity[] = [];
 
   try {
     const [found, empList] = await Promise.all([
@@ -123,6 +126,15 @@ export default async function CustomerDetailPage({
         );
         consultWarning = w.message;
         consultDevHint = w.devHint;
+      }
+
+      try {
+        const activities = await getCustomerActivities(id);
+        assigneeChangeHistory = activities.filter(
+          (row) => row.activity_type === "담당자변경",
+        );
+      } catch {
+        assigneeChangeHistory = [];
       }
 
       try {
@@ -240,6 +252,7 @@ export default async function CustomerDetailPage({
             schedules={schedules}
             employees={employees}
             projects={projects}
+            assigneeChangeHistory={assigneeChangeHistory}
             canDelete={access.isAdmin}
             isAdmin={access.isAdmin}
             currentEmployeeId={access.profile?.employee_id ?? null}

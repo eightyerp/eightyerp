@@ -49,7 +49,7 @@ export function contactBucketClass(bucket: ContactBucket): string {
 export function contactBucketLabel(bucket: ContactBucket): string {
   switch (bucket) {
     case "overdue":
-      return "기한 경과";
+      return "연락 지연";
     case "today":
       return "오늘 연락";
     case "soon":
@@ -61,6 +61,68 @@ export function contactBucketLabel(bucket: ContactBucket): string {
     default:
       return "예정";
   }
+}
+
+/** 절대 시각 + 상대 표현 (최근 연락 등) */
+export function formatFriendlyDateTime(
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const absolute = date.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTarget = new Date(date);
+  startOfTarget.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (startOfToday.getTime() - startOfTarget.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (diffDays === 0) return `오늘 · ${absolute}`;
+  if (diffDays === 1) return `어제 · ${absolute}`;
+  if (diffDays > 1 && diffDays < 7) return `${diffDays}일 전 · ${absolute}`;
+  if (diffDays < 0 && diffDays > -7) {
+    return `${Math.abs(diffDays)}일 후 · ${absolute}`;
+  }
+  return absolute;
+}
+
+export function formatFriendlyDate(
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const absolute = date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTarget = new Date(date);
+  startOfTarget.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (startOfTarget.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (diffDays === 0) return `오늘 (${absolute})`;
+  if (diffDays === 1) return `내일 (${absolute})`;
+  if (diffDays === -1) return `어제 (${absolute})`;
+  if (diffDays < 0) return `${Math.abs(diffDays)}일 지남 (${absolute})`;
+  if (diffDays > 1 && diffDays <= 7) return `${diffDays}일 후 (${absolute})`;
+  return absolute;
 }
 
 export function formatPhoneForTel(phone: string): string {

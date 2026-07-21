@@ -24,6 +24,7 @@ import type {
 type InquiryImportFormProps = {
   employees: Employee[];
   leadSources: LeadSource[];
+  defaultAssignedEmployeeId?: string | null;
 };
 
 type FormState = {
@@ -77,8 +78,12 @@ const initialAction: ActionResult = { success: false };
 export default function InquiryImportForm({
   employees,
   leadSources,
+  defaultAssignedEmployeeId = null,
 }: InquiryImportFormProps) {
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [form, setForm] = useState<FormState>({
+    ...emptyForm,
+    assigned_employee_id: defaultAssignedEmployeeId ?? "",
+  });
   const [analyzeState, analyzeAction, analyzing] = useActionState(
     analyzeInquiryAction,
     initialAction,
@@ -114,7 +119,11 @@ export default function InquiryImportForm({
         source_order_no: parsed.source_order_no ?? "",
         source_channel: parsed.source_channel ?? "",
         source_round: parsed.source_round ?? "",
-        assigned_employee_id: parsed.assigned_employee_id ?? "",
+        assigned_employee_id:
+          parsed.assigned_employee_id ||
+          prev.assigned_employee_id ||
+          defaultAssignedEmployeeId ||
+          "",
         status: parsed.status ?? "신규",
         next_contact_at: parsed.next_contact_at ?? "",
         happy_call_required:
@@ -124,14 +133,17 @@ export default function InquiryImportForm({
       }));
     }, 0);
     return () => window.clearTimeout(id);
-  }, [analyzeState, leadSources]);
+  }, [analyzeState, leadSources, defaultAssignedEmployeeId]);
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function handleReset() {
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      assigned_employee_id: defaultAssignedEmployeeId ?? "",
+    });
   }
 
   function assignFirstEmployee() {
@@ -324,16 +336,17 @@ export default function InquiryImportForm({
                 className={textareaClass}
               />
             </Field>
-            <Field label="담당자">
+            <Field label="담당자" required>
               <select
                 name="assigned_employee_id"
+                required
                 value={form.assigned_employee_id}
                 onChange={(e) =>
                   updateField("assigned_employee_id", e.target.value)
                 }
                 className={inputClass}
               >
-                <option value="">미배정</option>
+                <option value="">담당자 선택</option>
                 {employees.map((employee) => (
                   <option key={employee.id} value={employee.id}>
                     {formatEmployeeLabel(employee.name, employee.title)}
@@ -433,10 +446,12 @@ const textareaClass = `${inputClass} resize-y`;
 
 function Field({
   label,
+  required,
   className = "",
   children,
 }: {
   label: string;
+  required?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -444,6 +459,7 @@ function Field({
     <div className={className}>
       <label className="mb-1 block text-xs font-medium text-gray-500">
         {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       {children}
     </div>

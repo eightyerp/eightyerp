@@ -415,21 +415,17 @@ export async function findCustomerByPhone(
   phone: string,
   excludeId?: string,
 ) {
-  const supabase = await createClient();
-  const normalized = normalizePhone(phone);
-  let query = supabase
-    .from("customers")
-    .select("id, name, phone")
-    .eq("phone", normalized)
-    .is("deleted_at", null);
-
-  if (excludeId) {
-    query = query.neq("id", excludeId);
-  }
-
-  const { data, error } = await query.maybeSingle();
-  if (error) throw new Error(error.message);
-  return data;
+  const { findPhoneDuplicates } = await import("@/lib/crm/inquiry-duplicates");
+  const matches = await findPhoneDuplicates({ phone, excludeId });
+  return matches[0]
+    ? {
+        id: matches[0].id,
+        name: matches[0].name,
+        phone: matches[0].phone,
+        status: matches[0].status,
+        assignee_name: matches[0].assignee_name,
+      }
+    : null;
 }
 
 export async function createCustomer(input: CustomerInsert) {
@@ -437,13 +433,12 @@ export async function createCustomer(input: CustomerInsert) {
   const phone = normalizePhone(input.phone);
 
   if (!phone) throw new Error("연락처를 입력해 주세요.");
-
-  const existing = await findCustomerByPhone(phone);
-  if (existing) {
-    throw new Error(
-      `이미 등록된 연락처입니다. (${existing.name} / ${existing.phone})`,
-    );
+  if (!input.assigned_employee_id) {
+    throw new Error("담당자를 선택해 주세요.");
   }
+
+  // 전화번호 중복은 soft 경고(UI/action)로 처리. 여기서는 hard block 하지 않음.
+  // DB unique가 있으면 23505로 안내.
 
   const { data, error } = await supabase
     .from("customers")
@@ -452,7 +447,11 @@ export async function createCustomer(input: CustomerInsert) {
     .single();
 
   if (error) {
-    if (error.code === "23505") throw new Error("이미 등록된 연락처입니다.");
+    if (error.code === "23505") {
+      throw new Error(
+        "같은 연락처의 고객이 이미 있을 수 있습니다. 기존 고객을 확인해 주세요.",
+      );
+    }
     throw new Error(toCustomerWriteError(error));
   }
 
@@ -471,12 +470,8 @@ export async function updateCustomer(id: string, input: CustomerInsert) {
   const supabase = await createClient();
   const phone = normalizePhone(input.phone);
   if (!phone) throw new Error("연락처를 입력해 주세요.");
-
-  const existing = await findCustomerByPhone(phone, id);
-  if (existing) {
-    throw new Error(
-      `이미 등록된 연락처입니다. (${existing.name} / ${existing.phone})`,
-    );
+  if (!input.assigned_employee_id) {
+    throw new Error("담당자를 선택해 주세요.");
   }
 
   const previous = await getCustomerById(id);
@@ -493,7 +488,11 @@ export async function updateCustomer(id: string, input: CustomerInsert) {
     .single();
 
   if (error) {
-    if (error.code === "23505") throw new Error("이미 등록된 연락처입니다.");
+    if (error.code === "23505") {
+      throw new Error(
+        "같은 연락처의 고객이 이미 있을 수 있습니다. 기존 고객을 확인해 주세요.",
+      );
+    }
     throw new Error(toCustomerWriteError(error));
   }
 

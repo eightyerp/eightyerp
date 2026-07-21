@@ -118,6 +118,7 @@ export default async function CustomersPage({
             <ExternalInquiryPasteModal
               employees={employees}
               leadSources={leadSources}
+              defaultAssignedEmployeeId={access.profile?.employee_id ?? null}
             />
             <Link
               href="/customers/import"

@@ -71,6 +71,7 @@ export default async function CustomerImportPage() {
           <InquiryImportForm
             employees={employees}
             leadSources={leadSources}
+            defaultAssignedEmployeeId={access.profile?.employee_id ?? null}
           />
         )}
       </div>

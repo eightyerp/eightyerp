@@ -91,7 +91,12 @@ export default async function NewCustomerPage() {
         )}
 
         {!loadError && (
-          <CustomerForm employees={employees} leadSources={leadSources} />
+          <CustomerForm
+            employees={employees}
+            leadSources={leadSources}
+            defaultAssignedEmployeeId={access.profile?.employee_id ?? null}
+            isAdmin={access.isAdmin}
+          />
         )}
       </div>
     </DashboardLayout>

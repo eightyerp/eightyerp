@@ -92,6 +92,7 @@ export default async function EditCustomerPage({
             customer={customer}
             employees={employees}
             leadSources={leadSources}
+            isAdmin={access.isAdmin}
           />
         )}
       </div>
