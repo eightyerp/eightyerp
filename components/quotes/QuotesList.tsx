@@ -340,7 +340,7 @@ export default function QuotesList({
                     할인
                   </th>
                   <th className="min-w-[200px] w-[200px] whitespace-nowrap px-4 py-3 pr-5 text-right break-keep">
-                    최종금액
+                    고객 최종금액
                   </th>
                   <th className="min-w-[100px] w-[112px] whitespace-nowrap px-4 py-3 pl-5 break-keep">
                     상태
@@ -457,7 +457,9 @@ export default function QuotesList({
                           : "-"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 pr-5 text-right text-[15px] font-bold tabular-nums text-navy-900 break-keep">
-                        {formatMoney(quote.final_amount)}
+                        {formatMoney(
+                          quote.customer_total_amount ?? quote.final_amount,
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 pl-5 break-keep">
                         <span

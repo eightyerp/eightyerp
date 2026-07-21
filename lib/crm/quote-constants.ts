@@ -422,6 +422,101 @@ export function computeQuoteVatAmounts(input: {
   };
 }
 
+/**
+ * 저장된 VAT snapshot이 있으면 우선 사용, 없으면 discountedAmount 기준 재계산.
+ * UI는 final_amount(할인후)를 고객 최종금액으로 오인하지 않도록 이 결과를 사용한다.
+ */
+export function resolveQuoteVatDisplayAmounts(input: {
+  discountedAmount: number;
+  vatMode?: string | null;
+  vatRate?: number | null;
+  supplyAmount?: number | null;
+  vatAmount?: number | null;
+  customerTotalAmount?: number | null;
+}): QuoteVatAmounts {
+  const mode = normalizeQuoteVatMode(input.vatMode);
+  if (
+    mode != null &&
+    input.supplyAmount != null &&
+    input.vatAmount != null &&
+    input.customerTotalAmount != null
+  ) {
+    return {
+      vat_mode: mode,
+      vat_rate: normalizeQuoteVatRate(input.vatRate),
+      supply_amount: Math.max(0, Math.round(Number(input.supplyAmount) || 0)),
+      vat_amount: Math.max(0, Math.round(Number(input.vatAmount) || 0)),
+      customer_total_amount: Math.max(
+        0,
+        Math.round(Number(input.customerTotalAmount) || 0),
+      ),
+    };
+  }
+  return computeQuoteVatAmounts({
+    discountedAmount: input.discountedAmount,
+    vatMode: mode,
+    vatRate: input.vatRate,
+  });
+}
+
+/**
+ * LX 할인 요약 라벨.
+ * - 적용 항목 할인율이 모두 동일하면 `N% · 금액`
+ * - 서로 다르거나 fixed 혼합이면 `항목별 · 금액`
+ * - 할인금액이 있는데 0%로 표시하지 않음
+ */
+export function formatLxDiscountSummaryLabel(input: {
+  items: Array<{
+    is_lx_material?: boolean | null;
+    cost_type?: string | null;
+    lx_discount_type?: string | null;
+    lx_discount_value?: number | null;
+  }>;
+  quoteLevelRate: number;
+  lxDiscountAmount: number;
+}): string {
+  const amount = Math.max(0, Math.round(Number(input.lxDiscountAmount) || 0));
+  const money = `${amount.toLocaleString("ko-KR")}원`;
+  if (amount <= 0) return `0% · ${money}`;
+
+  const rates: number[] = [];
+  let hasFixed = false;
+
+  for (const row of input.items) {
+    if (!row.is_lx_material || !canCostTypeHaveLx(row.cost_type)) continue;
+    const type = normalizeLxDiscountType(row.lx_discount_type);
+    if (type === "none") continue;
+    if (type === "fixed") {
+      hasFixed = true;
+      continue;
+    }
+    if (type === "rate") {
+      const rateRaw = Number(row.lx_discount_value ?? 0);
+      const rate = Number.isFinite(rateRaw)
+        ? Math.min(100, Math.max(0, Math.round(rateRaw * 100) / 100))
+        : 0;
+      rates.push(rate);
+      continue;
+    }
+    const quoteRate = Number(input.quoteLevelRate);
+    rates.push(
+      Number.isFinite(quoteRate)
+        ? Math.min(100, Math.max(0, Math.round(quoteRate * 100) / 100))
+        : 0,
+    );
+  }
+
+  if (hasFixed || rates.length === 0) {
+    return `항목별 · ${money}`;
+  }
+  const first = rates[0]!;
+  const allSame = rates.every((r) => r === first);
+  if (allSame && first > 0) {
+    return `${first}% · ${money}`;
+  }
+  return `항목별 · ${money}`;
+}
+
 export const QUOTE_FILES_BUCKET = "quote-files";
 export const QUOTE_FILE_MAX_BYTES = 30 * 1024 * 1024;
 export const QUOTE_FILE_EXTENSIONS = ["pdf", "xls", "xlsx"] as const;

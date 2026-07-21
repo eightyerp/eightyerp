@@ -44,9 +44,22 @@ export default function QuoteDocumentView({
             brand={brand}
             customerName={model.customerName}
             title={model.title}
-            quoteNumber={model.quoteNumber}
+            quoteNumber={model.isDraft ? null : model.quoteNumber}
+            quoteNumberLabel={
+              model.isDraft ? "저장 전 (미발급)" : null
+            }
             issuedAt={model.issuedAt}
             variant={variant}
+            amountSummary={{
+              totalAmount: view.totals.total_amount,
+              discountAmount: view.totals.discount_amount,
+              lxDiscountAmount: view.totals.lx_discount_amount,
+              supplyAmount: view.totals.supply_amount,
+              vatAmount: view.totals.vat_amount,
+              vatRate: view.totals.vat_rate,
+              vatMode: view.totals.vat_mode,
+              customerTotalAmount: view.totals.customer_total_amount,
+            }}
           />
         </div>
       ) : null}
@@ -101,7 +114,11 @@ export default function QuoteDocumentView({
               >
                 {[
                   model.quoteType,
-                  model.quoteNumber ? `번호 ${model.quoteNumber}` : null,
+                  model.isDraft
+                    ? "번호 저장 전"
+                    : model.quoteNumber
+                      ? `번호 ${model.quoteNumber}`
+                      : null,
                   model.versionNumber != null
                     ? `V${model.versionNumber}`
                     : null,
@@ -121,18 +138,25 @@ export default function QuoteDocumentView({
 
           <dl className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg bg-slate-50 px-3 py-2">
-              <dt className="text-[11px] text-slate-500">최종금액</dt>
+              <dt className="text-[11px] text-slate-500">고객 최종금액</dt>
               <dd className="mt-0.5 text-lg font-semibold text-navy-900">
-                {formatMoney(view.totals.final_amount)}
+                {formatMoney(view.totals.customer_total_amount)}
               </dd>
               <dd className="mt-1 text-[11px] text-slate-600">
                 총 {formatMoney(view.totals.total_amount)}
                 {view.totals.discount_amount > 0
-                  ? ` · 일반할인 -${formatMoney(view.totals.discount_amount)}`
+                  ? ` · 특별할인 -${formatMoney(view.totals.discount_amount)}`
                   : ""}
                 {view.totals.lx_discount_amount > 0
                   ? ` · LX할인 -${formatMoney(view.totals.lx_discount_amount)}`
                   : ""}
+              </dd>
+              <dd className="mt-1 text-[11px] text-slate-600">
+                공급가액 {formatMoney(view.totals.supply_amount)} · 부가세
+                {view.totals.vat_rate != null
+                  ? ` ${view.totals.vat_rate}%`
+                  : ""}{" "}
+                {formatMoney(view.totals.vat_amount)}
               </dd>
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2">
@@ -338,18 +362,35 @@ export default function QuoteDocumentView({
               </div>
               {view.totals.discount_amount > 0 ? (
                 <div className="flex justify-between text-slate-700">
-                  <span>일반 할인</span>
+                  <span>특별할인</span>
                   <span>-{formatMoney(view.totals.discount_amount)}</span>
                 </div>
               ) : null}
+              <div className="flex justify-between text-slate-700">
+                <span>공급가액</span>
+                <span className="tabular-nums">
+                  {formatMoney(view.totals.supply_amount)}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-700">
+                <span>
+                  부가세
+                  {view.totals.vat_rate != null
+                    ? ` (${view.totals.vat_rate}%)`
+                    : ""}
+                </span>
+                <span className="tabular-nums">
+                  {formatMoney(view.totals.vat_amount)}
+                </span>
+              </div>
               <div
                 className={`flex justify-between pt-2 font-bold text-navy-900 ${
                   isPrint ? "text-[13px]" : "text-base"
                 }`}
               >
-                <span>최종 견적금액</span>
+                <span>고객 최종금액</span>
                 <span className="tabular-nums">
-                  {formatMoney(view.totals.final_amount)}
+                  {formatMoney(view.totals.customer_total_amount)}
                 </span>
               </div>
             </div>

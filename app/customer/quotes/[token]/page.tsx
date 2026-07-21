@@ -8,6 +8,7 @@ import {
   createSignedQuoteFileUrl,
   getQuoteShareByToken,
 } from "@/lib/crm/quote-mgmt";
+import { normalizeQuoteVatMode, normalizeQuoteVatRate } from "@/lib/crm/quote-constants";
 import {
   buildQuoteSharePageTitle,
   parseQuoteCoverParam,
@@ -98,6 +99,16 @@ export default async function CustomerQuoteSharePage({
     customerMessage: share.customer_message,
     discountAmount: Number(share.discount_amount ?? 0),
     lxDiscountRate: Number(share.lx_discount_rate ?? 0),
+    vatMode: normalizeQuoteVatMode(share.vat_mode),
+    vatRate:
+      share.vat_rate == null ? null : normalizeQuoteVatRate(share.vat_rate),
+    supplyAmount:
+      share.supply_amount == null ? null : Number(share.supply_amount),
+    vatAmount: share.vat_amount == null ? null : Number(share.vat_amount),
+    customerTotalAmount:
+      share.customer_total_amount == null
+        ? null
+        : Number(share.customer_total_amount),
     brand,
     showCover,
     items: (share.items ?? []).map((item) => ({

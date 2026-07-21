@@ -7,7 +7,6 @@ import {
   listEmployeesInScope,
 } from "@/lib/crm/schedule-access";
 import {
-  DEFAULT_QUOTE_VAT_MODE,
   DEFAULT_QUOTE_VAT_RATE,
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
@@ -21,11 +20,8 @@ import {
   computeQuoteVatAmounts,
   isActiveQuoteVatMode,
   normalizeQuoteCostType,
-  normalizeQuoteVatMode,
-  normalizeQuoteVatRate,
   type QuoteCostType,
   type QuoteMode,
-  type QuoteVatMode,
 } from "@/lib/crm/quote-constants";
 import type {
   ErpQuote,
@@ -35,10 +31,30 @@ import type {
   ErpQuoteType,
 } from "@/types/database";
 
-type CompanyQuoteVatDefaults = {
-  vat_mode: QuoteVatMode;
-  vat_rate: number;
+/** createQuote 성공 시 최소 반환 (FULL getQuoteById / SELECT_FULL 없음) */
+export type CreatedQuoteResult = {
+  id: string;
+  quote_id: string;
+  company_id: string;
+  customer_id: string;
+  outcome: "created" | "replayed";
+  total_amount: number;
+  discount_amount: number;
+  lx_discount_amount: number;
+  final_amount: number;
+  vat_mode: string | null;
+  vat_rate: number | null;
+  supply_amount: number;
+  vat_amount: number;
+  customer_total_amount: number;
 };
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isRequestIdUuid(value: string): boolean {
+  return UUID_RE.test(value.trim());
+}
 
 function isMissingVatColumnError(message: string | undefined): boolean {
   const text = (message ?? "").toLowerCase();
@@ -49,46 +65,10 @@ function isMissingVatColumnError(message: string | undefined): boolean {
     (text.includes("vat_rate") && text.includes("column")) ||
     text.includes("supply_amount") ||
     text.includes("customer_total_amount") ||
-    (text.includes("vat_amount") && text.includes("column"))
+    (text.includes("vat_amount") && text.includes("column")) ||
+    text.includes("create_quote_with_items") ||
+    text.includes("could not find the function")
   );
-}
-
-/** 현재 회사 견적 VAT 기본값. migration 32 전이면 exclusive/10. */
-async function getCurrentCompanyQuoteVatDefaults(): Promise<CompanyQuoteVatDefaults> {
-  const fallback: CompanyQuoteVatDefaults = {
-    vat_mode: DEFAULT_QUOTE_VAT_MODE,
-    vat_rate: DEFAULT_QUOTE_VAT_RATE,
-  };
-  try {
-    const supabase = await createClient();
-    const { data: companyId, error: idError } = await supabase.rpc(
-      "current_company_id",
-    );
-    if (idError || !companyId) return fallback;
-
-    const { data, error } = await supabase
-      .from("companies")
-      .select("quote_vat_input_mode, quote_vat_rate")
-      .eq("id", companyId)
-      .maybeSingle();
-
-    if (error) {
-      if (isMissingVatColumnError(error.message)) return fallback;
-      return fallback;
-    }
-    if (!data) return fallback;
-
-    const mode =
-      normalizeQuoteVatMode(
-        (data as { quote_vat_input_mode?: string | null }).quote_vat_input_mode,
-      ) ?? DEFAULT_QUOTE_VAT_MODE;
-    const rate = normalizeQuoteVatRate(
-      (data as { quote_vat_rate?: number | null }).quote_vat_rate,
-    );
-    return { vat_mode: mode, vat_rate: rate };
-  } catch {
-    return fallback;
-  }
 }
 
 function emptyToNull(value: string | null | undefined): string | null {
@@ -202,7 +182,7 @@ export function parseQuoteForm(formData: FormData): QuoteFormInput {
   }
 
   const total = parseMoney(formData.get("total_amount"), "총견적금액");
-  const discount = parseMoney(formData.get("discount_amount"), "일반 할인금액");
+  const discount = parseMoney(formData.get("discount_amount"), "특별할인금액");
   const lxDiscountRate = parseLxDiscountRate(formData.get("lx_discount_rate"));
 
   return {
@@ -386,7 +366,7 @@ function resolveQuoteAmounts(
   if (amounts.discount_amount + amounts.lx_discount_amount > amounts.total_amount) {
     // 최종금액은 0으로 클램프되며, 일반할인만 총액 초과는 막음
     if (amounts.discount_amount > amounts.total_amount) {
-      throw new Error("일반 할인금액이 총견적금액을 초과할 수 없습니다.");
+      throw new Error("특별할인금액이 총견적금액을 초과할 수 없습니다.");
     }
   }
 
@@ -565,9 +545,6 @@ export async function listQuoteSendLogs(
   return (data ?? []) as ErpQuoteSendLog[];
 }
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 function normalizeUuidList(ids: string[]): string[] {
   return [
     ...new Set(
@@ -613,6 +590,16 @@ function quoteRpcUserMessage(failure: QuoteRpcFailure, fallback: string): string
       lower.includes("does not exist")
     ) {
       return "견적 안전 저장 기능이 아직 적용되지 않았습니다. migration 적용 후 다시 시도해 주세요.";
+    }
+  }
+
+  if (lower.includes("soft_delete_quote")) {
+    if (
+      lower.includes("schema cache") ||
+      lower.includes("could not find") ||
+      lower.includes("does not exist")
+    ) {
+      return "견적 삭제 기능이 아직 적용되지 않았습니다. migration 적용 후 다시 시도해 주세요.";
     }
   }
 
@@ -791,76 +778,121 @@ export async function createQuote(input: {
   form: QuoteFormInput;
   items?: QuoteItemInput[];
   files?: File[];
-}): Promise<ErpQuote> {
+  /** 폼 마운트 시 1회 생성된 요청 ID (서버에서 재생성 금지) */
+  requestId: string;
+}): Promise<CreatedQuoteResult> {
   const access = await requireAuthenticatedAccess();
   const supabase = await createClient();
 
-  const items = input.items ?? [];
-  const amounts = resolveQuoteAmounts(input.form, items);
-  const vatDefaults = await getCurrentCompanyQuoteVatDefaults();
-  const vat = computeQuoteVatAmounts({
-    discountedAmount: amounts.final_amount,
-    vatMode: vatDefaults.vat_mode,
-    vatRate: vatDefaults.vat_rate,
-  });
+  const requestId = String(input.requestId ?? "").trim();
+  if (!isRequestIdUuid(requestId)) {
+    throw new Error(
+      "생성 요청 ID가 올바르지 않습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.",
+    );
+  }
 
-  const { data, error } = await supabase
-    .from("quotes")
-    .insert({
+  const items = input.items ?? [];
+  if (items.length === 0) {
+    throw new Error("견적 항목은 1개 이상 필요합니다.");
+  }
+
+  const amounts = resolveQuoteAmounts(input.form, items);
+
+  // VAT 키 0개 → RPC가 회사 기본값 상속·계산. 계약 지정은 RPC 내 원자 처리.
+  const { data, error } = await supabase.rpc("create_quote_with_items", {
+    p_header: {
+      request_id: requestId,
       customer_id: input.form.customer_id,
       project_id: input.form.project_id,
       quote_type: input.form.quote_type,
       quote_mode: input.form.quote_mode,
       title: input.form.title,
       quote_number: input.form.quote_number,
-      version_number: 1,
       status: input.form.status,
       total_amount: amounts.total_amount,
       discount_amount: amounts.discount_amount,
       lx_discount_rate: amounts.lx_discount_rate,
       lx_discount_amount: amounts.lx_discount_amount,
       final_amount: amounts.final_amount,
-      vat_mode: vat.vat_mode,
-      vat_rate: vat.vat_rate,
-      supply_amount: vat.supply_amount,
-      vat_amount: vat.vat_amount,
-      customer_total_amount: vat.customer_total_amount,
       valid_until: input.form.valid_until,
       issued_at: input.form.issued_at || new Date().toISOString().slice(0, 10),
       assigned_employee_id: input.form.assigned_employee_id,
       is_lx_material: amounts.is_lx_material,
-      is_contract_quote: false,
-      customer_message: input.form.customer_message,
+      is_contract_quote: input.form.is_contract_quote,
       memo: input.form.memo,
-      created_by: access.userId,
-      updated_by: access.userId,
-    })
-    .select("id")
-    .single();
+      customer_message: input.form.customer_message,
+    },
+    p_items: buildQuoteItemsRpcPayload(items),
+  });
 
-  if (error || !data) {
-    if (error && isMissingVatColumnError(error.message)) {
+  if (error) {
+    if (isMissingVatColumnError(error.message)) {
       throw new Error(
-        "부가세 설정(migration 32)이 아직 적용되지 않았습니다. DB 마이그레이션 후 다시 시도해 주세요.",
+        "부가세 설정(migration 33)이 아직 적용되지 않았습니다. DB 마이그레이션 후 다시 시도해 주세요.",
       );
     }
+    throwQuoteRpcError(
+      "create_quote_with_items",
+      error,
+      "견적 등록에 실패했습니다.",
+    );
+  }
+
+  const row = data as {
+    quote_id?: string;
+    company_id?: string;
+    customer_id?: string;
+    outcome?: string;
+    total_amount?: number;
+    discount_amount?: number;
+    lx_discount_amount?: number;
+    final_amount?: number;
+    vat_mode?: string | null;
+    vat_rate?: number | null;
+    supply_amount?: number;
+    vat_amount?: number;
+    customer_total_amount?: number;
+  } | null;
+
+  const quoteId = row?.quote_id;
+  if (!quoteId) {
     throw new Error("견적 등록에 실패했습니다.");
   }
 
-  await replaceQuoteItems(data.id, items);
-  await uploadQuoteFiles({
-    customerId: input.form.customer_id,
-    quoteId: data.id,
-    files: input.files ?? [],
-    userId: access.userId!,
-    setPrimaryFirst: true,
-  });
+  const outcome: "created" | "replayed" =
+    row?.outcome === "replayed" ? "replayed" : "created";
 
-  if (input.form.is_contract_quote) {
-    await setContractQuote(data.id);
+  // replay: 항목·계약·첨부 중복 금지. created만 파일 업로드 (실패해도 견적 유지).
+  if (outcome === "created" && (input.files?.length ?? 0) > 0) {
+    await uploadQuoteFiles({
+      customerId: input.form.customer_id,
+      quoteId,
+      files: input.files ?? [],
+      userId: access.userId!,
+      setPrimaryFirst: true,
+    });
   }
 
-  return (await getQuoteById(data.id))!;
+  return {
+    id: quoteId,
+    quote_id: quoteId,
+    company_id: String(row?.company_id ?? ""),
+    customer_id: String(row?.customer_id ?? input.form.customer_id),
+    outcome,
+    total_amount: Number(row?.total_amount ?? amounts.total_amount),
+    discount_amount: Number(row?.discount_amount ?? amounts.discount_amount),
+    lx_discount_amount: Number(
+      row?.lx_discount_amount ?? amounts.lx_discount_amount,
+    ),
+    final_amount: Number(row?.final_amount ?? amounts.final_amount),
+    vat_mode: row?.vat_mode ?? null,
+    vat_rate: row?.vat_rate == null ? null : Number(row.vat_rate),
+    supply_amount: Number(row?.supply_amount ?? amounts.final_amount),
+    vat_amount: Number(row?.vat_amount ?? 0),
+    customer_total_amount: Number(
+      row?.customer_total_amount ?? amounts.final_amount,
+    ),
+  };
 }
 
 export async function updateQuote(input: {
@@ -1085,27 +1117,61 @@ export async function createQuoteVersion(input: {
   return (await getQuoteById(data.id))!;
 }
 
+/** soft_delete_quote RPC slim 결과 (삭제 후 SELECT 재조회 없음) */
+export type SoftDeletedQuoteResult = {
+  quote_id: string;
+  deleted_at: string;
+};
+
+const SOFT_DELETE_REASON_MAX = 500;
+
 export async function softDeleteQuote(input: {
   id: string;
   deleteReason: string;
-}) {
-  const access = await requireAuthenticatedAccess();
+}): Promise<SoftDeletedQuoteResult> {
+  await requireAuthenticatedAccess();
+  const quoteId = String(input.id ?? "").trim();
+  if (!quoteId || !UUID_RE.test(quoteId)) {
+    throw new Error("견적 ID가 올바르지 않습니다.");
+  }
+
   const reason = input.deleteReason.trim();
   if (!reason) throw new Error("삭제 사유를 입력해 주세요.");
+  if (reason.length > SOFT_DELETE_REASON_MAX) {
+    throw new Error("삭제 사유는 500자 이하로 입력해 주세요.");
+  }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("quotes")
-    .update({
-      deleted_at: new Date().toISOString(),
-      deleted_by: access.userId,
-      delete_reason: reason,
-      updated_by: access.userId,
-    })
-    .eq("id", input.id)
-    .is("deleted_at", null);
 
-  if (error) throw new Error("견적 삭제에 실패했습니다.");
+  // 최종 권한·soft delete는 DB RPC(soft_delete_quote). 직접 quotes.update 금지.
+  // profiles.role / isAdmin 이 아닌 company membership + active company 기준.
+  const { data, error } = await supabase.rpc("soft_delete_quote", {
+    p_quote_id: quoteId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    throwQuoteRpcError(
+      "soft_delete_quote",
+      error,
+      "견적 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+    );
+  }
+
+  const row = data as {
+    quote_id?: string;
+    deleted_at?: string;
+  } | null;
+
+  const deletedQuoteId = row?.quote_id ? String(row.quote_id) : "";
+  const deletedAt = row?.deleted_at ? String(row.deleted_at) : "";
+  if (!deletedQuoteId || !deletedAt) {
+    throw new Error(
+      "견적 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+    );
+  }
+
+  return { quote_id: deletedQuoteId, deleted_at: deletedAt };
 }
 
 export async function softDeleteQuoteFile(input: {
@@ -1161,6 +1227,11 @@ export type QuoteSharePayload = {
   lx_discount_rate?: number;
   lx_discount_amount?: number;
   final_amount: number;
+  vat_mode?: string | null;
+  vat_rate?: number | null;
+  supply_amount?: number;
+  vat_amount?: number;
+  customer_total_amount?: number;
   valid_until: string | null;
   issued_at: string | null;
   customer_message: string | null;

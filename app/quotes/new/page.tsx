@@ -9,6 +9,8 @@ import { isMissingRelationError } from "@/lib/crm/errors";
 import { getCustomerById, getCustomers, getEmployees } from "@/lib/crm/customers";
 import { getCurrentCompanyQuoteBrand } from "@/lib/crm/quote-brand";
 import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
+import { getCurrentCompanyQuoteVatSettings } from "@/lib/crm/company-quote-vat";
+import type { QuoteVatMode } from "@/lib/crm/quote-constants";
 import { createClient } from "@/lib/supabase-server";
 import type { Employee } from "@/types/database";
 
@@ -49,15 +51,21 @@ export default async function NewQuotePage({
   let customers: WizardCustomer[] = [];
   let employees: Employee[] = [];
   let brand: QuoteBrandProfile | null = null;
+  let companyVatSettings: {
+    quote_vat_input_mode: QuoteVatMode;
+    quote_vat_rate: number;
+  } | null = null;
   let loadError: string | null = null;
   const tablesMissing = await isQuotesSchemaMissing();
 
   try {
-    const [customerList, employeeList, companyBrand] = await Promise.all([
-      getCustomers({ pageSize: 100 }),
-      getEmployees(),
-      getCurrentCompanyQuoteBrand(),
-    ]);
+    const [customerList, employeeList, companyBrand, vatSettings] =
+      await Promise.all([
+        getCustomers({ pageSize: 100 }),
+        getEmployees(),
+        getCurrentCompanyQuoteBrand(),
+        getCurrentCompanyQuoteVatSettings(),
+      ]);
     customers = customerList.customers.map((c) => ({
       id: c.id,
       name: c.name,
@@ -67,6 +75,10 @@ export default async function NewQuotePage({
     }));
     employees = employeeList;
     brand = companyBrand;
+    companyVatSettings = {
+      quote_vat_input_mode: vatSettings.quote_vat_input_mode,
+      quote_vat_rate: vatSettings.quote_vat_rate,
+    };
 
     if (customerId && !customers.some((c) => c.id === customerId)) {
       const found = await getCustomerById(customerId);
@@ -119,6 +131,7 @@ export default async function NewQuotePage({
             customers={customers}
             initialCustomerId={customerId}
             brand={brand}
+            companyVatSettings={companyVatSettings}
           />
         )}
       </div>

@@ -1,9 +1,12 @@
 import {
   computeQuoteAmounts,
+  formatLxDiscountSummaryLabel,
   formatQuoteUnit,
   groupQuoteItemsByTrade,
   quoteDocumentTitle,
+  resolveQuoteVatDisplayAmounts,
   resolveTradeDisplayName,
+  type QuoteVatMode,
 } from "@/lib/crm/quote-constants";
 
 export type QuoteDocumentItem = {
@@ -27,6 +30,8 @@ export type QuoteDocumentModel = {
   quoteType?: string | null;
   quoteMode?: string | null;
   quoteNumber?: string | null;
+  /** true면 확정 견적번호 대신 저장 전 상태 표시 */
+  isDraft?: boolean;
   versionNumber?: number | null;
   status?: string | null;
   validUntil?: string | null;
@@ -34,6 +39,13 @@ export type QuoteDocumentModel = {
   customerMessage?: string | null;
   discountAmount: number;
   lxDiscountRate: number;
+  /** 회사/견적 VAT 입력 방식. null = legacy */
+  vatMode?: QuoteVatMode | null;
+  vatRate?: number | null;
+  /** 저장된 snapshot (있으면 표시 우선) */
+  supplyAmount?: number | null;
+  vatAmount?: number | null;
+  customerTotalAmount?: number | null;
   items: QuoteDocumentItem[];
   showCover?: boolean;
   /** 회사별 표지 브랜드. 없으면 단순 표지 */
@@ -69,7 +81,16 @@ export type QuoteDocumentViewModel = {
     discount_amount: number;
     lx_discount_rate: number;
     lx_discount_amount: number;
+    /** LX 할인 표시 라벨 (예: 10% · 110,000원) */
+    lx_discount_label: string;
+    /** 할인 후 금액(= 공급가 기준 입력, exclusive 시 공급가액) */
     final_amount: number;
+    vat_mode: QuoteVatMode | null;
+    vat_rate: number | null;
+    supply_amount: number;
+    vat_amount: number;
+    /** 고객 최종금액 (VAT 별도: 공급가+부가세) */
+    customer_total_amount: number;
     lx_material_sum: number;
   };
 };
@@ -137,6 +158,21 @@ export function buildQuoteDocumentViewModel(
 
   const items_net_total = groups.reduce((s, g) => s + g.subtotal, 0);
 
+  const vat = resolveQuoteVatDisplayAmounts({
+    discountedAmount: amounts.final_amount,
+    vatMode: model.vatMode,
+    vatRate: model.vatRate,
+    supplyAmount: model.supplyAmount,
+    vatAmount: model.vatAmount,
+    customerTotalAmount: model.customerTotalAmount,
+  });
+
+  const lx_discount_label = formatLxDiscountSummaryLabel({
+    items: model.items,
+    quoteLevelRate: model.lxDiscountRate,
+    lxDiscountAmount: amounts.lx_discount_amount,
+  });
+
   return {
     model,
     documentTitle: quoteDocumentTitle(model.quoteMode),
@@ -148,7 +184,13 @@ export function buildQuoteDocumentViewModel(
       discount_amount: amounts.discount_amount,
       lx_discount_rate: amounts.lx_discount_rate,
       lx_discount_amount: amounts.lx_discount_amount,
+      lx_discount_label,
       final_amount: amounts.final_amount,
+      vat_mode: vat.vat_mode,
+      vat_rate: vat.vat_rate,
+      supply_amount: vat.supply_amount,
+      vat_amount: vat.vat_amount,
+      customer_total_amount: vat.customer_total_amount,
       lx_material_sum: amounts.lx_material_sum,
     },
   };

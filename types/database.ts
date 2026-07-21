@@ -443,6 +443,9 @@ export type ErpQuoteStatus =
 
 export type ErpQuoteFileType = "pdf" | "xls" | "xlsx";
 
+/** companies.quote_vat_input_mode — migration 32+ */
+export type CompanyQuoteVatInputMode = "exclusive" | "inclusive";
+
 export type ErpQuote = {
   id: string;
   customer_id: string;
@@ -474,6 +477,10 @@ export type ErpQuote = {
   vat_amount?: number;
   /** 고객 최종금액(공급가+부가세). legacy backfill = final_amount */
   customer_total_amount?: number;
+  /** 신규 생성 idempotency key (migration 33). legacy/수동행은 null */
+  create_request_id?: string | null;
+  /** create_request_id 대응 payload fingerprint (sha256 hex) */
+  create_request_hash?: string | null;
   valid_until: string | null;
   issued_at: string | null;
   sent_at: string | null;

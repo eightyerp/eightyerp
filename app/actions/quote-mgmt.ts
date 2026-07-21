@@ -56,13 +56,24 @@ export async function createQuoteAction(
     const items = parseQuoteItemsJson(
       String(formData.get("items_json") ?? ""),
     );
+    const requestId = String(formData.get("request_id") ?? "").trim();
+    // 서버에서 randomUUID fallback 금지 — 멱등성 무력화 방지
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+      return {
+        success: false,
+        error:
+          "생성 요청 ID가 없습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.",
+      };
+    }
     const quote = await createQuote({
       form,
       items,
       files: collectFiles(formData, "files"),
+      requestId,
     });
-    revalidateQuotes(form.customer_id, quote.id);
-    redirect(`/quotes/${quote.id}`);
+    const quoteId = quote.quote_id || quote.id;
+    revalidateQuotes(form.customer_id, quoteId);
+    redirect(`/quotes/${quoteId}`);
   } catch (error) {
     if (typeof error === "object" && error && "digest" in error) throw error;
     return {
@@ -155,9 +166,13 @@ export async function deleteQuoteAction(
     const id = String(formData.get("quote_id") ?? "").trim();
     const customerId = String(formData.get("customer_id") ?? "").trim();
     const deleteReason = String(formData.get("delete_reason") ?? "").trim();
-    await softDeleteQuote({ id, deleteReason });
-    revalidateQuotes(customerId, id);
-    return { success: true, message: "견적이 삭제되었습니다." };
+    const deleted = await softDeleteQuote({ id, deleteReason });
+    revalidateQuotes(customerId, deleted.quote_id);
+    return {
+      success: true,
+      message: "견적이 삭제되었습니다.",
+      quoteId: deleted.quote_id,
+    };
   } catch (error) {
     return {
       success: false,

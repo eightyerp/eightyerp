@@ -18,9 +18,11 @@ import { formatEmployeeLabel } from "@/lib/crm/constants";
 import {
   buildQuoteGuideMessage,
   ERP_QUOTE_STATUS_BADGE,
+  formatLxDiscountSummaryLabel,
   formatQuoteUnit,
   quoteCostTypeLabel,
   quoteDocumentTitle,
+  resolveQuoteVatDisplayAmounts,
 } from "@/lib/crm/quote-constants";
 import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
 import {
@@ -113,6 +115,36 @@ export default function QuoteDetailView({
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const vatDisplay = useMemo(
+    () =>
+      resolveQuoteVatDisplayAmounts({
+        discountedAmount: quote.final_amount,
+        vatMode: quote.vat_mode,
+        vatRate: quote.vat_rate,
+        supplyAmount: quote.supply_amount,
+        vatAmount: quote.vat_amount,
+        customerTotalAmount: quote.customer_total_amount,
+      }),
+    [
+      quote.final_amount,
+      quote.vat_mode,
+      quote.vat_rate,
+      quote.supply_amount,
+      quote.vat_amount,
+      quote.customer_total_amount,
+    ],
+  );
+
+  const lxDiscountLabel = useMemo(
+    () =>
+      formatLxDiscountSummaryLabel({
+        items: quote.quote_items ?? [],
+        quoteLevelRate: Number(quote.lx_discount_rate ?? 0),
+        lxDiscountAmount: Number(quote.lx_discount_amount ?? 0),
+      }),
+    [quote.quote_items, quote.lx_discount_rate, quote.lx_discount_amount],
+  );
+
   /** 이미 로드된 quote / quote_items만 사용 — 미리보기용 추가 조회 없음 */
   const previewModel: QuoteDocumentModel = useMemo(
     () => ({
@@ -128,6 +160,11 @@ export default function QuoteDetailView({
       customerMessage: quote.customer_message,
       discountAmount: Number(quote.discount_amount ?? 0),
       lxDiscountRate: Number(quote.lx_discount_rate ?? 0),
+      vatMode: vatDisplay.vat_mode,
+      vatRate: vatDisplay.vat_rate,
+      supplyAmount: vatDisplay.supply_amount,
+      vatAmount: vatDisplay.vat_amount,
+      customerTotalAmount: vatDisplay.customer_total_amount,
       brand,
       showCover: includeCover,
       items: (quote.quote_items ?? []).map((item, index) => ({
@@ -145,7 +182,7 @@ export default function QuoteDetailView({
         sort_order: item.sort_order ?? index,
       })),
     }),
-    [quote, includeCover, brand],
+    [quote, includeCover, brand, vatDisplay],
   );
 
   const previewGuideMessage = buildQuoteGuideMessage({
@@ -282,15 +319,28 @@ export default function QuoteDetailView({
     });
   }
 
-  function handleDelete(formData: FormData) {
+  async function handleDelete(formData: FormData) {
     setDeleteError(null);
+    const reason = String(formData.get("delete_reason") ?? "").trim();
+    if (!reason) {
+      setDeleteError("삭제 사유를 입력해 주세요.");
+      return;
+    }
     startDeleteTransition(async () => {
-      const result = await deleteQuoteAction(formData);
-      if (!result.success) {
-        setDeleteError(result.error || "견적 삭제에 실패했습니다.");
-        return;
+      try {
+        const result = await deleteQuoteAction(formData);
+        if (!result.success) {
+          setDeleteError(result.error || "견적 삭제에 실패했습니다.");
+          return;
+        }
+        router.push(`/customers/${quote.customer_id}/quotes?deleted=1`);
+      } catch (error) {
+        setDeleteError(
+          error instanceof Error
+            ? error.message
+            : "견적 삭제에 실패했습니다.",
+        );
       }
-      router.push(`/customers/${quote.customer_id}/quotes?deleted=1`);
     });
   }
 
@@ -389,10 +439,10 @@ export default function QuoteDetailView({
               <InfoItem label="유효기간" value={formatDate(quote.valid_until)} />
               <InfoItem label="발송일" value={formatDateTime(quote.sent_at)} />
               <InfoItem
-                label="최종금액"
+                label="고객 최종금액"
                 value={
                   <span className="text-base font-bold text-navy-900">
-                    {formatMoney(quote.final_amount)}
+                    {formatMoney(vatDisplay.customer_total_amount)}
                   </span>
                 }
               />
@@ -440,7 +490,10 @@ export default function QuoteDetailView({
             )}
             <button
               type="button"
-              onClick={() => setDeleteModal(true)}
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteModal(true);
+              }}
               className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
             >
               삭제
@@ -450,7 +503,7 @@ export default function QuoteDetailView({
       </section>
 
       {/* Amounts */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <div className="dashboard-card p-4">
           <p className="text-xs text-gray-500">총견적금액</p>
           <p className="mt-1 text-lg font-semibold text-gray-900">
@@ -463,7 +516,7 @@ export default function QuoteDetailView({
           )}
         </div>
         <div className="dashboard-card p-4">
-          <p className="text-xs text-gray-500">일반 할인금액</p>
+          <p className="text-xs text-gray-500">특별할인</p>
           <p className="mt-1 text-lg font-semibold text-gray-500">
             {quote.discount_amount ? `-${formatMoney(quote.discount_amount)}` : "-"}
           </p>
@@ -475,14 +528,30 @@ export default function QuoteDetailView({
               ? `-${formatMoney(quote.lx_discount_amount)}`
               : "-"}
           </p>
-          <p className="mt-1 text-[11px] text-gray-400">
-            할인율 {Number(quote.lx_discount_rate ?? 0)}%
+          <p className="mt-1 text-[11px] text-gray-400">{lxDiscountLabel}</p>
+        </div>
+        <div className="dashboard-card p-4">
+          <p className="text-xs text-gray-500">공급가액</p>
+          <p className="mt-1 text-lg font-semibold text-gray-900">
+            {formatMoney(vatDisplay.supply_amount)}
           </p>
         </div>
+        <div className="dashboard-card p-4">
+          <p className="text-xs text-gray-500">부가세</p>
+          <p className="mt-1 text-lg font-semibold text-gray-900">
+            {formatMoney(vatDisplay.vat_amount)}
+          </p>
+          {vatDisplay.vat_mode != null && vatDisplay.vat_rate != null ? (
+            <p className="mt-1 text-[11px] text-gray-400">
+              {vatDisplay.vat_mode === "exclusive" ? "VAT 별도" : "VAT 포함"} ·{" "}
+              {vatDisplay.vat_rate}%
+            </p>
+          ) : null}
+        </div>
         <div className="dashboard-card border-gold-300 bg-gold-50 p-4">
-          <p className="text-xs text-navy-700">최종금액</p>
+          <p className="text-xs text-navy-700">고객 최종금액</p>
           <p className="mt-1 text-lg font-bold text-navy-900">
-            {formatMoney(quote.final_amount)}
+            {formatMoney(vatDisplay.customer_total_amount)}
           </p>
         </div>
       </section>
@@ -1051,9 +1120,9 @@ export default function QuoteDetailView({
                 </span>
               </p>
               <p>
-                <span className="text-gray-500">최종금액</span>
+                <span className="text-gray-500">고객 최종금액</span>
                 <span className="ml-2 font-semibold text-gray-900">
-                  {formatMoney(quote.final_amount)}
+                  {formatMoney(vatDisplay.customer_total_amount)}
                 </span>
               </p>
             </div>
@@ -1065,15 +1134,16 @@ export default function QuoteDetailView({
                 value={quote.customer_id}
               />
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">
+                <label className="mb-1 block text-xs font-medium text-gray-700">
                   삭제 사유 <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   name="delete_reason"
                   required
                   rows={3}
+                  maxLength={500}
                   placeholder="삭제 사유를 입력하세요"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
                 />
               </div>
               {deleteError && (
@@ -1082,7 +1152,10 @@ export default function QuoteDetailView({
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setDeleteModal(false)}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteModal(false);
+                  }}
                   className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
                 >
                   취소

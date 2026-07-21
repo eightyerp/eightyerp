@@ -15,12 +15,20 @@ import {
   ERP_QUOTE_TYPES,
   QUOTE_DOCUMENT_TITLES,
   QUOTE_MODE_LABELS,
+  DEFAULT_QUOTE_VAT_MODE,
+  DEFAULT_QUOTE_VAT_RATE,
   canCostTypeHaveLx,
   computeQuoteAmounts,
+  formatLxDiscountSummaryLabel,
   normalizeQuoteCostType,
+  isActiveQuoteVatMode,
+  normalizeQuoteVatMode,
+  normalizeQuoteVatRate,
+  resolveQuoteVatDisplayAmounts,
   quoteDocumentTitle,
   type QuoteCostType,
   type QuoteMode,
+  type QuoteVatMode,
 } from "@/lib/crm/quote-constants";
 import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
 import type { QuoteDocumentModel } from "@/lib/crm/quote-document";
@@ -32,6 +40,11 @@ import QuoteTradeItemsPanel, {
   type QuoteLineRow,
 } from "@/components/quotes/QuoteTradeItemsPanel";
 import type { Employee, ErpQuote, ErpQuoteType } from "@/types/database";
+
+type CompanyVatSettingsProp = {
+  quote_vat_input_mode: QuoteVatMode;
+  quote_vat_rate: number;
+};
 
 const QuotePreviewModal = dynamic(
   () => import("@/components/quotes/QuotePreviewModal"),
@@ -54,6 +67,8 @@ type QuoteWizardFormProps = {
   initialQuote?: ErpQuote | null;
   /** 페이지 로더에서 1회 조회한 회사 표지 브랜드 */
   brand?: QuoteBrandProfile | null;
+  /** 신규 작성 시 회사 VAT 기본값 (페이지 1회 조회) */
+  companyVatSettings?: CompanyVatSettingsProp | null;
 };
 
 type TradeItemRow = QuoteLineRow;
@@ -177,6 +192,7 @@ export default function QuoteWizardForm({
   initialCustomerId,
   initialQuote,
   brand = null,
+  companyVatSettings = null,
 }: QuoteWizardFormProps) {
   const router = useRouter();
   const action = mode === "create" ? createQuoteAction : updateQuoteAction;
@@ -220,6 +236,9 @@ export default function QuoteWizardForm({
   const [customerMessage, setCustomerMessage] = useState(
     initialQuote?.customer_message ?? "",
   );
+
+  /** 신규 생성 idempotency — 마운트 시 1회 생성, 재제출에도 동일 유지 */
+  const [createRequestId] = useState(() => crypto.randomUUID());
 
   const [totalAmount, setTotalAmount] = useState(
     String(initialQuote?.total_amount ?? 0),
@@ -312,11 +331,58 @@ export default function QuoteWizardForm({
   const lxDiscount = amounts.lx_discount_amount;
   const finalAmount = amounts.final_amount;
 
+  const wizardVatMode: QuoteVatMode | null =
+    mode === "edit"
+      ? normalizeQuoteVatMode(initialQuote?.vat_mode)
+      : (companyVatSettings?.quote_vat_input_mode ??
+        normalizeQuoteVatMode(initialQuote?.vat_mode) ??
+        DEFAULT_QUOTE_VAT_MODE);
+  const wizardVatRate =
+    mode === "edit" && isActiveQuoteVatMode(initialQuote?.vat_mode)
+      ? normalizeQuoteVatRate(initialQuote?.vat_rate)
+      : normalizeQuoteVatRate(
+          companyVatSettings?.quote_vat_rate ??
+            initialQuote?.vat_rate ??
+            DEFAULT_QUOTE_VAT_RATE,
+        );
+
+  const vatAmounts = useMemo(
+    () =>
+      resolveQuoteVatDisplayAmounts({
+        discountedAmount: finalAmount,
+        vatMode: wizardVatMode,
+        vatRate: wizardVatRate,
+      }),
+    [finalAmount, wizardVatMode, wizardVatRate],
+  );
+
+  const lxDiscountLabel = useMemo(
+    () =>
+      formatLxDiscountSummaryLabel({
+        items: savableItems.map((row) => ({
+          is_lx_material:
+            canCostTypeHaveLx(row.cost_type) && row.is_lx_material,
+          cost_type: row.cost_type,
+          lx_discount_type: row.lx_discount_type || null,
+          lx_discount_value:
+            row.lx_discount_type === ""
+              ? null
+              : toNumber(row.lx_discount_value),
+        })),
+        quoteLevelRate: toNumber(lxDiscountRate),
+        lxDiscountAmount: lxDiscount,
+      }),
+    [savableItems, lxDiscountRate, lxDiscount],
+  );
+
   useEffect(() => {
     if (state.success && mode === "edit" && state.quoteId) {
       router.push(`/quotes/${state.quoteId}`);
     }
   }, [state, mode, router]);
+
+  /** 생성 모드: 확인(6) 단계에서만 DB 제출 허용 */
+  const canSubmitCreate = mode !== "create" || step === 6;
 
   /** 신규 작성: 고객 선택/해제 시 담당자를 고객 담당자로 맞춘다 (수동 변경 가능) */
   function applyCustomerSelection(nextCustomerId: string) {
@@ -467,7 +533,8 @@ export default function QuoteWizardForm({
       title,
       quoteType: quoteType || null,
       quoteMode,
-      quoteNumber: quoteNumber || null,
+      quoteNumber: mode === "create" ? null : quoteNumber || null,
+      isDraft: mode === "create",
       versionNumber: initialQuote?.version_number ?? 1,
       status,
       validUntil: validUntil || null,
@@ -475,6 +542,8 @@ export default function QuoteWizardForm({
       customerMessage: customerMessage || null,
       discountAmount: discount,
       lxDiscountRate: toNumber(lxDiscountRate),
+      vatMode: wizardVatMode,
+      vatRate: wizardVatRate,
       brand,
       showCover: includeCover,
       items: savableItems.map((row, index) => {
@@ -512,6 +581,7 @@ export default function QuoteWizardForm({
       title,
       quoteType,
       quoteMode,
+      mode,
       quoteNumber,
       initialQuote?.version_number,
       status,
@@ -520,6 +590,8 @@ export default function QuoteWizardForm({
       customerMessage,
       discount,
       lxDiscountRate,
+      wizardVatMode,
+      wizardVatRate,
       savableItems,
       brand,
       includeCover,
@@ -528,9 +600,17 @@ export default function QuoteWizardForm({
 
   return (
     <form
-      action={formAction}
+      action={canSubmitCreate ? formAction : undefined}
       className="space-y-5"
       onSubmit={(e) => {
+        if (!canSubmitCreate) {
+          e.preventDefault();
+          return;
+        }
+        if (pending) {
+          e.preventDefault();
+          return;
+        }
         const err = validateLxBaseBeforeSave();
         if (err) {
           e.preventDefault();
@@ -558,6 +638,13 @@ export default function QuoteWizardForm({
       <input type="hidden" name="lx_discount_rate" value={lxDiscountRate} />
       <input type="hidden" name="final_amount" value={String(finalAmount)} />
       <input type="hidden" name="items_json" value={itemsJson} />
+      {mode === "create" ? (
+        <input
+          type="hidden"
+          name="request_id"
+          value={createRequestId}
+        />
+      ) : null}
       <input
         type="hidden"
         name="removed_item_ids_json"
@@ -938,7 +1025,7 @@ export default function QuoteWizardForm({
                   />
                 )}
               </Field>
-              <Field label="일반 할인금액(원)">
+              <Field label="특별할인금액(원)">
                 <input
                   inputMode="numeric"
                   value={discountAmount}
@@ -961,12 +1048,19 @@ export default function QuoteWizardForm({
                 </p>
               </Field>
               <div className="rounded-lg border border-gold-300 bg-gold-50 px-4 py-3">
-                <p className="text-xs text-navy-700">최종금액</p>
+                <p className="text-xs text-navy-700">고객 최종금액</p>
                 <p className="mt-1 text-lg font-semibold text-navy-900">
-                  {formatMoney(finalAmount)}
+                  {formatMoney(vatAmounts.customer_total_amount)}
                 </p>
                 <p className="mt-1 text-[11px] text-navy-700/70">
-                  총액 − 일반할인 − LX할인
+                  공급가 {formatMoney(vatAmounts.supply_amount)}
+                  {vatAmounts.vat_mode != null
+                    ? ` · 부가세 ${formatMoney(vatAmounts.vat_amount)}`
+                    : ""}
+                </p>
+                <p className="mt-0.5 text-[11px] text-navy-700/60">
+                  총액 − 특별할인 − LX할인
+                  {vatAmounts.vat_mode === "exclusive" ? " + 부가세" : ""}
                 </p>
               </div>
             </div>
@@ -1054,14 +1148,23 @@ export default function QuoteWizardForm({
               <SummaryItem label="발행일" value={issuedAt || "-"} />
               <SummaryItem label="유효기간" value={validUntil || "-"} />
               <SummaryItem label="총금액" value={formatMoney(total)} />
-              <SummaryItem label="일반 할인" value={formatMoney(discount)} />
+              <SummaryItem label="특별할인" value={formatMoney(discount)} />
+              <SummaryItem label="LX 자재 할인" value={lxDiscountLabel} />
               <SummaryItem
-                label="LX 자재 할인"
-                value={`${lxDiscountRate}% · ${formatMoney(lxDiscount)}`}
+                label="공급가액"
+                value={formatMoney(vatAmounts.supply_amount)}
               />
               <SummaryItem
-                label="최종금액"
-                value={formatMoney(finalAmount)}
+                label="부가세"
+                value={
+                  vatAmounts.vat_mode != null
+                    ? formatMoney(vatAmounts.vat_amount)
+                    : "-"
+                }
+              />
+              <SummaryItem
+                label="고객 최종금액"
+                value={formatMoney(vatAmounts.customer_total_amount)}
                 emphasize
               />
               <SummaryItem
@@ -1172,10 +1275,10 @@ export default function QuoteWizardForm({
               ) : (
                 <button
                   type="submit"
-                  disabled={pending}
+                  disabled={pending || !canSubmitCreate}
                   className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
                 >
-                  {pending ? "저장 중..." : "견적 등록"}
+                  {pending ? "저장 중..." : "최종 저장"}
                 </button>
               )}
             </>
