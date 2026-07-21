@@ -130,6 +130,19 @@ export type QuoteFormInput = {
   memo: string | null;
 };
 
+const QUOTE_ITEM_REMARK_MAX = 500;
+
+/** 항목 비고: trim 후 공백-only → null, 최대 500자 */
+export function normalizeQuoteItemRemark(
+  value: unknown,
+): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  return text.length > QUOTE_ITEM_REMARK_MAX
+    ? text.slice(0, QUOTE_ITEM_REMARK_MAX)
+    : text;
+}
+
 export type QuoteItemInput = {
   /** 기존 DB 항목 ID. 없으면 신규 INSERT */
   id: string | null;
@@ -138,6 +151,8 @@ export type QuoteItemInput = {
   trade_name: string;
   item_name: string | null;
   description: string | null;
+  /** 항목별 선택 비고. null/빈값 허용 */
+  remark: string | null;
   quantity: number | null;
   unit: string | null;
   unit_price: number;
@@ -326,6 +341,7 @@ export function parseQuoteItemsJson(raw: string): QuoteItemInput[] {
         trade_name: tradeRaw,
         item_name: emptyToNull(itemName),
         description: emptyToNull(String(r.description ?? "")),
+        remark: normalizeQuoteItemRemark(r.remark),
         quantity:
           quantity != null && Number.isFinite(quantity) ? quantity : null,
         unit: emptyToNull(String(r.unit ?? "")),
@@ -652,6 +668,7 @@ function buildQuoteItemsRpcPayload(items: QuoteItemInput[]) {
     trade_name: item.trade_name || "미분류",
     item_name: item.item_name,
     description: item.description,
+    remark: normalizeQuoteItemRemark(item.remark),
     quantity: item.quantity,
     unit: item.unit,
     unit_price: item.unit_price,
@@ -1071,6 +1088,7 @@ export async function createQuoteVersion(input: {
         trade_name: i.trade_name,
         item_name: i.item_name,
         description: i.description,
+        remark: normalizeQuoteItemRemark(i.remark),
         quantity: i.quantity,
         unit: i.unit,
         unit_price: i.unit_price,
@@ -1252,6 +1270,7 @@ export type QuoteSharePayload = {
     trade_name: string;
     item_name: string | null;
     description: string | null;
+    remark?: string | null;
     quantity: number | null;
     unit: string | null;
     amount: number;

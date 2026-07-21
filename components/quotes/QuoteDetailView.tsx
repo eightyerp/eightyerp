@@ -167,10 +167,14 @@ export default function QuoteDetailView({
       customerTotalAmount: vatDisplay.customer_total_amount,
       brand,
       showCover: includeCover,
+      assigneeName: quote.employees?.name ?? null,
+      assigneeTitle: quote.employees?.title ?? null,
+      companyBusinessNumber: null,
       items: (quote.quote_items ?? []).map((item, index) => ({
         trade_name: item.trade_name,
         item_name: item.item_name,
         description: item.description,
+        remark: item.remark,
         quantity: item.quantity,
         unit: item.unit,
         amount: item.amount,
@@ -676,6 +680,14 @@ export default function QuoteDetailView({
                       {quote.quote_mode === "simple"
                         ? item.item_name || item.trade_name
                         : item.trade_name}
+                      {item.remark?.trim() ? (
+                        <p className="mt-1 whitespace-pre-wrap break-words text-xs font-normal text-gray-500">
+                          <span className="font-medium text-gray-400">
+                            비고{" "}
+                          </span>
+                          {item.remark.trim()}
+                        </p>
+                      ) : null}
                     </td>
                     {quote.quote_mode !== "simple" && (
                       <td className="py-2 text-gray-700">

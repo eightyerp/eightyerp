@@ -111,10 +111,12 @@ export default async function CustomerQuoteSharePage({
         : Number(share.customer_total_amount),
     brand,
     showCover,
+    companyBusinessNumber: share.company_business_number ?? null,
     items: (share.items ?? []).map((item) => ({
       trade_name: item.trade_name,
       item_name: item.item_name,
       description: item.description,
+      remark: item.remark ?? null,
       quantity: item.quantity,
       unit: item.unit,
       amount: item.amount,

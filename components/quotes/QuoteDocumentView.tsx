@@ -60,6 +60,13 @@ export default function QuoteDocumentView({
               vatMode: view.totals.vat_mode,
               customerTotalAmount: view.totals.customer_total_amount,
             }}
+            contact={{
+              assigneeName: model.assigneeName,
+              assigneeTitle: model.assigneeTitle,
+              companyPhone: brand.phone,
+              companyBusinessNumber: model.companyBusinessNumber,
+              validUntil: model.validUntil,
+            }}
           />
         </div>
       ) : null}
@@ -264,7 +271,7 @@ export default function QuoteDocumentView({
             <div className="mt-3 space-y-5">
               {view.groups.map((group) => (
                 <div key={group.tradeLabel} className="quote-print-group">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2 quote-print-group-title">
                     <h3
                       className={
                         isPrint
@@ -292,7 +299,7 @@ export default function QuoteDocumentView({
                           isPrint ? "text-[12px]" : "py-3 text-sm"
                         }`}
                       >
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-slate-900">
                             {line.lineTitle}
                           </p>
@@ -310,6 +317,18 @@ export default function QuoteDocumentView({
                               .filter(Boolean)
                               .join(" · ")}
                           </p>
+                          {line.remark?.trim() ? (
+                            <p
+                              className={`mt-1 whitespace-pre-wrap break-words text-slate-600 ${
+                                isPrint ? "text-[11px]" : "text-xs"
+                              }`}
+                            >
+                              <span className="font-medium text-slate-500">
+                                비고{" "}
+                              </span>
+                              {line.remark.trim()}
+                            </p>
+                          ) : null}
                           {line.is_lx_material ? (
                             <p className="mt-1">
                               <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-300">

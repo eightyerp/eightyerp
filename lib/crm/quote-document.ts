@@ -13,6 +13,8 @@ export type QuoteDocumentItem = {
   trade_name: string;
   item_name: string | null;
   description?: string | null;
+  /** 항목별 선택 비고. 없으면 출력 생략 */
+  remark?: string | null;
   quantity?: number | null;
   unit?: string | null;
   amount: number;
@@ -50,6 +52,10 @@ export type QuoteDocumentModel = {
   showCover?: boolean;
   /** 회사별 표지 브랜드. 없으면 단순 표지 */
   brand?: import("@/lib/crm/quote-brand-shared").QuoteBrandProfile | null;
+  /** 표지 담당자·회사 연락 (실데이터만) */
+  assigneeName?: string | null;
+  assigneeTitle?: string | null;
+  companyBusinessNumber?: string | null;
 };
 
 export type QuoteDocumentLine = QuoteDocumentItem & {

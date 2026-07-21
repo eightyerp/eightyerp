@@ -26,6 +26,8 @@ export type QuoteLineRow = {
   trade_name: string;
   item_name: string;
   description: string;
+  /** 항목별 선택 비고 (규격 description과 별도) */
+  remark: string;
   quantity: string;
   unit: string;
   unit_price: string;
@@ -418,6 +420,29 @@ export default function QuoteTradeItemsPanel({
     return <span className="text-xs text-slate-400">-</span>;
   }
 
+  function renderRemarkField(row: QuoteLineRow, opts?: { compact?: boolean }) {
+    return (
+      <div className={opts?.compact ? "space-y-1" : "space-y-1.5"}>
+        <label className="block text-[11px] font-medium text-slate-600">
+          비고{" "}
+          <span className="font-normal text-slate-400">(선택)</span>
+        </label>
+        <textarea
+          value={row.remark}
+          maxLength={500}
+          rows={opts?.compact ? 2 : 2}
+          placeholder="색상, 규격, 시공 조건 등"
+          onChange={(e) =>
+            updateRow(row.key, {
+              remark: e.target.value.slice(0, 500),
+            })
+          }
+          className={`${cellInputClass} min-h-[2.5rem] resize-y leading-snug`}
+        />
+      </div>
+    );
+  }
+
   function tradeSelect(row: QuoteLineRow) {
     const inList = (TRADE_SUGGESTIONS as readonly string[]).includes(
       row.trade_name,
@@ -703,6 +728,11 @@ export default function QuoteTradeItemsPanel({
                             </td>
                           </tr>
                         ) : null}
+                        <tr className="border-b border-gray-100 bg-slate-50/40">
+                          <td colSpan={7} className="px-3 pb-2.5 pt-0">
+                            {renderRemarkField(row, { compact: true })}
+                          </td>
+                        </tr>
                       </Fragment>
                     );
                   }),
@@ -948,6 +978,11 @@ export default function QuoteTradeItemsPanel({
                           </td>
                         </tr>
                       ) : null}
+                      <tr className="border-b border-gray-100 bg-slate-50/40">
+                        <td colSpan={13} className="px-2 pb-2.5 pt-0">
+                          {renderRemarkField(row, { compact: true })}
+                        </td>
+                      </tr>
                     </Fragment>
                     );
                   });
@@ -1010,6 +1045,7 @@ export default function QuoteTradeItemsPanel({
                             placeholder="규격"
                             className={cellInputClass}
                           />
+                          {renderRemarkField(row)}
                           <div className="grid grid-cols-2 gap-2">
                             <select
                               value={row.cost_type}

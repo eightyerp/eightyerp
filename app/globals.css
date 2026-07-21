@@ -117,7 +117,13 @@ body {
 }
 
 @media print {
+  /* 상세 페이지마다 상단 여백 반복 — 컨테이너 padding은 첫 페이지만 적용되므로 @page 사용 */
   @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 12mm 12mm;
+  }
+
+  @page cover {
     size: A4 portrait;
     margin: 0;
   }
@@ -166,6 +172,7 @@ body {
     min-height: 297mm;
     margin: 0;
     overflow: hidden !important;
+    page: cover;
     break-after: page;
     page-break-after: always;
     break-inside: avoid;
@@ -179,10 +186,11 @@ body {
     print-color-adjust: exact !important;
   }
 
+  /* @page margin이 페이지마다 반복. 본문 padding은 0으로 이중 여백 방지 */
   .quote-print-has-cover .quote-body-page {
     box-sizing: border-box;
     width: 210mm;
-    padding: 12mm;
+    padding: 0;
     margin: 0;
     overflow: visible !important;
   }
@@ -190,12 +198,17 @@ body {
   .quote-print-root:not(.quote-print-has-cover) .quote-body-page {
     box-sizing: border-box;
     width: 210mm;
-    padding: 12mm;
+    padding: 0;
     margin: 0;
     overflow: visible !important;
   }
 
-  .quote-print-group,
+  /* 공종 전체 avoid 금지 — 제목만 다음 항목과 붙이고, 항목 단위 avoid */
+  .quote-print-group-title {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
   .quote-print-line,
   .quote-print-totals {
     break-inside: avoid;

@@ -12,6 +12,14 @@ export type QuoteCoverAmountSummary = {
   customerTotalAmount: number;
 };
 
+export type QuoteCoverContact = {
+  assigneeName?: string | null;
+  assigneeTitle?: string | null;
+  companyPhone?: string | null;
+  companyBusinessNumber?: string | null;
+  validUntil?: string | null;
+};
+
 type Props = {
   brand: QuoteBrandProfile;
   customerName: string;
@@ -23,7 +31,63 @@ type Props = {
   variant?: "mobile" | "print";
   /** 공통 뷰모델 totals 기반 표지 금액 요약 */
   amountSummary?: QuoteCoverAmountSummary | null;
+  contact?: QuoteCoverContact | null;
 };
+
+const PROJECT_PROCESS = [
+  {
+    step: "01",
+    title: "상담·현장 실측",
+    body: "고객 요청과 현장 조건을 확인합니다.",
+  },
+  {
+    step: "02",
+    title: "디자인·상세 견적",
+    body: "공사 범위와 디자인, 세부 금액을 협의합니다.",
+  },
+  {
+    step: "03",
+    title: "계약·일정 확정",
+    body: "계약 내용과 공사 일정을 최종 확인합니다.",
+  },
+  {
+    step: "04",
+    title: "자재·사양 승인",
+    body: "색상·마감재·제품 사양을 확정합니다.",
+  },
+  {
+    step: "05",
+    title: "시공·품질 관리",
+    body: "공정별 시공과 현장 품질을 관리합니다.",
+  },
+  {
+    step: "06",
+    title: "준공 검수·인도",
+    body: "고객 검수 후 인도하고 사후관리를 진행합니다.",
+  },
+] as const;
+
+/** 에잇티(premium) 표지 전용 — 자체 신뢰 표시 (공식 기관 로고 아님) */
+const EIGHTY_TRUST_MARKS = [
+  {
+    key: "best",
+    eyebrow: "BEST",
+    label: "전국최우수 대리점",
+    Icon: IconLaurelBest,
+  },
+  {
+    key: "license",
+    eyebrow: "LICENSE",
+    label: "실내건축면허 보유",
+    Icon: IconLicense,
+  },
+  {
+    key: "grade-s",
+    eyebrow: "S",
+    label: "창호 S등급 시공",
+    Icon: IconShieldS,
+  },
+] as const;
 
 function formatWon(value: number): string {
   return `${Math.round(value).toLocaleString("ko-KR")}원`;
@@ -50,16 +114,102 @@ function vatBadgeLabel(mode: QuoteVatMode | null): string | null {
   return null;
 }
 
+function IconLaurelBest({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M14 34c-4-5-5-12-2-18 3 2 5 5 6 9-2 3-3 6-4 9Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M34 34c4-5 5-12 2-18-3 2-5 5-6 9 2 3 3 6 4 9Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18 18c1.5-3 4-5 6-6 2 1 4.5 3 6 6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M20 38h8M22 38v-3h4v3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconLicense({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="12"
+        y="10"
+        width="24"
+        height="30"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M18 18h12M18 24h12M18 30h7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <circle cx="32" cy="32" r="6" fill="white" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M29.5 32.2l1.8 1.8 3.4-3.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconShieldS({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M24 8l14 5v11c0 9-6 15-14 18-8-3-14-9-14-18V13l14-5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function AmountSummaryCard({
   summary,
-  tone,
   isPrint,
 }: {
   summary: QuoteCoverAmountSummary;
-  tone: "navy" | "light";
   isPrint: boolean;
 }) {
-  const isNavy = tone === "navy";
   const badge = vatBadgeLabel(summary.vatMode);
   const showDiscount = summary.discountAmount > 0;
   const showLx = summary.lxDiscountAmount > 0;
@@ -68,39 +218,13 @@ function AmountSummaryCard({
       ? `${summary.vatRate}%`
       : null;
 
-  const labelClass = isNavy
-    ? isPrint
-      ? "text-[12px] text-slate-200"
-      : "text-[12px] text-white/70 sm:text-[13px]"
-    : isPrint
-      ? "text-[12px] text-slate-500"
-      : "text-[12px] text-slate-500 sm:text-[13px]";
-
-  const valueClass = isNavy
-    ? isPrint
-      ? "text-[13px] font-semibold tabular-nums text-white"
-      : "text-[13px] font-semibold tabular-nums text-white sm:text-[14px]"
-    : isPrint
-      ? "text-[13px] font-semibold tabular-nums text-slate-900"
-      : "text-[13px] font-semibold tabular-nums text-slate-900 sm:text-[14px]";
-
-  const discountClass = isNavy
-    ? "tabular-nums text-rose-200"
-    : "tabular-nums text-rose-600";
-
   return (
     <div
-      className={
-        isNavy
-          ? `rounded-2xl border border-white/25 bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-[2px] ${
-              isPrint ? "px-4 py-3" : "px-4 py-3.5 sm:px-5 sm:py-4"
-            }`
-          : `rounded-2xl border border-slate-200 bg-slate-50 ${
-              isPrint ? "px-4 py-3" : "px-4 py-3.5"
-            }`
-      }
+      className={`overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80 ${
+        isPrint ? "" : ""
+      }`}
       style={
-        isPrint && isNavy
+        isPrint
           ? ({
               WebkitPrintColorAdjust: "exact",
               printColorAdjust: "exact",
@@ -108,103 +232,339 @@ function AmountSummaryCard({
           : undefined
       }
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-3.5 py-2">
         <p
-          className={
-            isNavy
-              ? `font-semibold tracking-wide text-gold-300 ${
-                  isPrint ? "text-[12px]" : "text-[12px] sm:text-[13px]"
-                }`
-              : `font-semibold tracking-wide text-navy-800 ${
-                  isPrint ? "text-[12px]" : "text-[12px] sm:text-[13px]"
-                }`
-          }
+          className={`font-semibold tracking-wide text-navy-900 ${
+            isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
+          }`}
         >
-          금액 요약
+          견적 금액 요약
         </p>
         {badge ? (
-          <span
-            className={
-              isNavy
-                ? "shrink-0 rounded-full border border-gold-400/50 bg-gold-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold-300"
-                : "shrink-0 rounded-full border border-navy-200 bg-navy-50 px-2.5 py-0.5 text-[11px] font-semibold text-navy-800"
-            }
-          >
+          <span className="shrink-0 rounded border border-navy-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-navy-800">
             {badge}
           </span>
         ) : null}
       </div>
 
-      <dl className={`mt-2.5 space-y-1.5 ${isPrint ? "mt-2" : ""}`}>
+      <dl className={`space-y-1.5 px-3.5 py-2.5 ${isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"}`}>
         <div className="flex items-baseline justify-between gap-3">
-          <dt className={labelClass}>견적 합계</dt>
-          <dd className={valueClass}>{formatWon(summary.totalAmount)}</dd>
+          <dt className="text-slate-500">공급가액</dt>
+          <dd className="font-semibold tabular-nums text-slate-900">
+            {formatWon(summary.supplyAmount)}
+          </dd>
         </div>
-        {showDiscount ? (
-          <div className="flex items-baseline justify-between gap-3">
-            <dt className={labelClass}>특별할인</dt>
-            <dd className={`${valueClass} ${discountClass}`}>
-              {formatDiscountWon(summary.discountAmount)}
-            </dd>
-          </div>
-        ) : null}
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-slate-500">
+            부가세{vatRateLabel ? ` (${vatRateLabel})` : ""}
+          </dt>
+          <dd className="font-semibold tabular-nums text-slate-900">
+            {formatWon(summary.vatAmount)}
+          </dd>
+        </div>
         {showLx ? (
           <div className="flex items-baseline justify-between gap-3">
-            <dt className={labelClass}>LX 자재 할인</dt>
-            <dd className={`${valueClass} ${discountClass}`}>
+            <dt className="text-slate-500">LX 자재 할인</dt>
+            <dd className="font-semibold tabular-nums text-rose-600">
               {formatDiscountWon(summary.lxDiscountAmount)}
             </dd>
           </div>
         ) : null}
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className={labelClass}>공급가액</dt>
-          <dd className={valueClass}>{formatWon(summary.supplyAmount)}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className={labelClass}>
-            부가세{vatRateLabel ? ` ${vatRateLabel}` : ""}
-          </dt>
-          <dd className={valueClass}>{formatWon(summary.vatAmount)}</dd>
-        </div>
+        {showDiscount ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-slate-500">특별할인</dt>
+            <dd className="font-semibold tabular-nums text-rose-600">
+              {formatDiscountWon(summary.discountAmount)}
+            </dd>
+          </div>
+        ) : null}
       </dl>
 
       <div
-        className={`mt-2.5 flex items-end justify-between gap-3 border-t pt-2.5 ${
-          isNavy ? "border-white/20" : "border-slate-200"
-        } ${isPrint ? "mt-2 pt-2" : ""}`}
+        className="flex items-end justify-between gap-3 bg-navy-900 px-3.5 py-2.5 text-white"
+        style={
+          isPrint
+            ? ({
+                WebkitPrintColorAdjust: "exact",
+                printColorAdjust: "exact",
+              } as React.CSSProperties)
+            : undefined
+        }
       >
         <p
-          className={
-            isNavy
-              ? `font-semibold text-gold-300 ${
-                  isPrint ? "text-[13px]" : "text-[13px] sm:text-[14px]"
-                }`
-              : `font-semibold text-navy-800 ${
-                  isPrint ? "text-[13px]" : "text-[13px] sm:text-[14px]"
-                }`
-          }
+          className={`font-semibold text-gold-300 ${
+            isPrint ? "text-[12px]" : "text-[13px]"
+          }`}
         >
           고객 최종금액
         </p>
         <p
-          className={
-            isNavy
-              ? `font-bold tabular-nums leading-none text-white ${
-                  isPrint
-                    ? "text-[22px]"
-                    : "text-[clamp(1.35rem,5vw,1.75rem)] sm:text-[28px]"
-                }`
-              : `font-bold tabular-nums leading-none text-navy-900 ${
-                  isPrint
-                    ? "text-[22px]"
-                    : "text-[clamp(1.35rem,5vw,1.75rem)] sm:text-[28px]"
-                }`
-          }
+          className={`font-bold tabular-nums leading-none text-white ${
+            isPrint
+              ? "text-[20px]"
+              : "text-[clamp(1.25rem,4.5vw,1.65rem)] sm:text-[26px]"
+          }`}
         >
           {formatWon(summary.customerTotalAmount)}
         </p>
       </div>
     </div>
+  );
+}
+
+function ProjectProcess({ isPrint }: { isPrint: boolean }) {
+  return (
+    <section
+      className="quote-cover-process"
+      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+    >
+      <div className="flex items-baseline justify-between gap-2 border-b border-navy-900/15 pb-1.5">
+        <div>
+          <p
+            className={`font-semibold tracking-[0.18em] text-navy-800 ${
+              isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+            }`}
+          >
+            PROJECT PROCESS
+          </p>
+          <h2
+            className={`mt-0.5 font-bold text-navy-900 ${
+              isPrint ? "text-[13px]" : "text-[14px] sm:text-[15px]"
+            }`}
+          >
+            공사 진행 절차
+          </h2>
+        </div>
+      </div>
+
+      <ol
+        className={`mt-2.5 grid gap-x-3 gap-y-2.5 ${
+          isPrint
+            ? "grid-cols-3"
+            : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+        }`}
+      >
+        {PROJECT_PROCESS.map((item) => (
+          <li key={item.step} className="min-w-0">
+            <p
+              className={`font-bold tabular-nums text-navy-900 ${
+                isPrint ? "text-[11px]" : "text-[12px]"
+              }`}
+            >
+              <span className="text-navy-700">{item.step}.</span> {item.title}
+            </p>
+            <p
+              className={`mt-0.5 leading-snug text-slate-600 ${
+                isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
+              }`}
+            >
+              {item.body}
+            </p>
+          </li>
+        ))}
+      </ol>
+
+      <p
+        className={`mt-2.5 border-t border-slate-200 pt-2 leading-snug text-slate-500 ${
+          isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+        }`}
+      >
+        공사 범위·자재·일정은 고객 확인 후 계약서에서 최종 확정되며, 변경사항은
+        사전 협의 후 반영됩니다.
+      </p>
+    </section>
+  );
+}
+
+function EightyTrustMarks({ isPrint }: { isPrint: boolean }) {
+  return (
+    <section
+      className="quote-cover-trust"
+      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+    >
+      <div className="border-b border-navy-900/15 pb-1.5">
+        <p
+          className={`font-semibold tracking-[0.18em] text-navy-800 ${
+            isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+          }`}
+        >
+          EIGHTY TRUST MARK
+        </p>
+        <p
+          className={`mt-0.5 text-slate-500 ${
+            isPrint ? "text-[9px]" : "text-[10px]"
+          }`}
+        >
+          에잇티 자체 신뢰 표시
+        </p>
+      </div>
+
+      <ul
+        className={`mt-2.5 grid gap-2 ${
+          isPrint ? "grid-cols-3" : "grid-cols-1 sm:grid-cols-3"
+        }`}
+      >
+        {EIGHTY_TRUST_MARKS.map((mark) => (
+          <li
+            key={mark.key}
+            className="flex min-w-0 items-center gap-2.5 rounded-md border border-slate-300 bg-white px-2.5 py-2"
+          >
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center text-navy-900">
+              <mark.Icon className="h-10 w-10" />
+              {mark.key === "grade-s" ? (
+                <span
+                  className="absolute inset-0 flex items-center justify-center pt-0.5 text-[15px] font-bold leading-none text-navy-900"
+                  aria-hidden="true"
+                >
+                  S
+                </span>
+              ) : null}
+            </div>
+            <div className="min-w-0">
+              <p
+                className="text-[9px] font-semibold tracking-wider text-slate-500"
+                aria-hidden="true"
+              >
+                {mark.key === "grade-s" ? "GRADE S" : mark.eyebrow}
+              </p>
+              <p
+                className={`font-bold leading-snug text-navy-900 ${
+                  isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
+                }`}
+              >
+                {mark.label}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function CoverHeader({
+  brand,
+  quoteNumberDisplay,
+  issuedAt,
+  isPrint,
+}: {
+  brand: QuoteBrandProfile;
+  quoteNumberDisplay: string;
+  issuedAt?: string | null;
+  isPrint: boolean;
+}) {
+  return (
+    <header className="shrink-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {brand.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={brand.logo.src}
+              alt={brand.logo.alt}
+              width={brand.logo.width}
+              height={brand.logo.height}
+              className={`shrink-0 object-contain ${
+                isPrint ? "h-9 w-9" : "h-10 w-10 sm:h-11 sm:w-11"
+              }`}
+              loading={isPrint ? "eager" : "lazy"}
+              decoding="async"
+            />
+          ) : (
+            <span
+              className={`flex shrink-0 items-center justify-center rounded bg-navy-900 font-bold text-white ${
+                isPrint ? "h-9 w-9 text-sm" : "h-10 w-10 text-base"
+              }`}
+            >
+              80
+            </span>
+          )}
+          <div className="min-w-0">
+            <p
+              className={`font-bold text-navy-900 ${
+                isPrint ? "text-[13px]" : "text-[14px] sm:text-[15px]"
+              }`}
+            >
+              {brand.companyName}
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <p
+            className={`font-semibold tracking-[0.2em] text-navy-800 ${
+              isPrint ? "text-[9px]" : "text-[10px]"
+            }`}
+          >
+            ESTIMATE
+          </p>
+          <p
+            className={`mt-0.5 tabular-nums text-slate-700 ${
+              isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
+            }`}
+          >
+            {quoteNumberDisplay}
+          </p>
+          <p
+            className={`text-slate-500 ${
+              isPrint ? "text-[10px]" : "text-[11px]"
+            }`}
+          >
+            {formatDate(issuedAt)}
+          </p>
+        </div>
+      </div>
+      <div className="mt-2.5 h-px bg-navy-900" />
+    </header>
+  );
+}
+
+function CoverContactFooter({
+  brand,
+  contact,
+  isPrint,
+}: {
+  brand: QuoteBrandProfile;
+  contact?: QuoteCoverContact | null;
+  isPrint: boolean;
+}) {
+  const assigneeName = contact?.assigneeName?.trim() || "";
+  const assigneeTitle = contact?.assigneeTitle?.trim() || "";
+  const assignee =
+    assigneeName && assigneeTitle
+      ? `${assigneeName} ${assigneeTitle}`
+      : assigneeName || assigneeTitle;
+  const companyPhone =
+    contact?.companyPhone?.trim() || brand.phone?.trim() || "";
+  const bizNo = contact?.companyBusinessNumber?.trim() || "";
+  const validUntil = contact?.validUntil?.trim() || "";
+
+  const hasAssignee = Boolean(assignee);
+  const hasCompanyMeta = Boolean(companyPhone || bizNo || validUntil);
+  if (!hasAssignee && !hasCompanyMeta && !brand.companyName) return null;
+
+  return (
+    <footer
+      className={`border-t border-slate-200 pt-2 ${
+        isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
+      }`}
+    >
+      {hasAssignee ? (
+        <p className="text-slate-800">
+          <span className="text-slate-500">담당자</span>
+          <span className="ml-2 font-semibold text-navy-900">{assignee}</span>
+        </p>
+      ) : null}
+      <div
+        className={`flex flex-wrap gap-x-4 gap-y-0.5 text-slate-600 ${
+          hasAssignee ? "mt-1" : ""
+        }`}
+      >
+        <span className="font-medium text-slate-800">{brand.companyName}</span>
+        {companyPhone ? <span>대표 {companyPhone}</span> : null}
+        {bizNo ? <span>사업자 {bizNo}</span> : null}
+        {validUntil ? <span>유효기간 {formatDate(validUntil)}</span> : null}
+      </div>
+    </footer>
   );
 }
 
@@ -217,6 +577,7 @@ export default function QuoteCoverPage({
   issuedAt,
   variant = "mobile",
   amountSummary = null,
+  contact = null,
 }: Props) {
   const isPrint = variant === "print";
   const name = customerName.trim() || "고객";
@@ -224,348 +585,104 @@ export default function QuoteCoverPage({
   const siteTitle = title.trim() || "-";
   const quoteNumberDisplay =
     quoteNumberLabel?.trim() || quoteNumber?.trim() || "-";
-  const hasAmountSummary = amountSummary != null;
-  const showImages =
-    !isPrint &&
-    (brand.certImages.length > 0 || brand.siteImages.length > 0);
-  const advantages = isPrint
-    ? brand.advantages.slice(0, hasAmountSummary ? 2 : 3)
-    : brand.advantages;
 
-  if (!isPremium) {
-    return (
-      <section
-        className={`quote-cover-page ${
-          isPrint
-            ? "box-border flex h-[297mm] w-[210mm] max-h-[297mm] flex-col justify-between border border-slate-200 bg-white p-[14mm]"
-            : "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
-        }`}
-      >
-        <div>
-          <p
-            className={`font-medium tracking-wide text-slate-600 ${
-              isPrint ? "text-[18px]" : "text-[15px] sm:text-[17px]"
-            }`}
-          >
-            {brand.companyName}
-          </p>
-          <h1
-            className={`mt-3 font-bold leading-snug text-navy-900 break-keep ${
-              isPrint
-                ? "text-[38px]"
-                : "text-[clamp(1.5rem,6vw,2.25rem)] sm:text-[36px]"
-            }`}
-          >
-            <span className="line-clamp-3">
-              {name} 고객님을 위한 견적서
-            </span>
-          </h1>
-          <p
-            className={`mt-2 font-semibold text-slate-800 break-keep ${
-              isPrint ? "text-[18px]" : "text-[16px] sm:text-[17px]"
-            }`}
-          >
-            {siteTitle}
-          </p>
-        </div>
-        <dl className="mt-8 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <dt className="text-[13px] text-slate-500">작성일</dt>
-            <dd
-              className={`mt-0.5 font-medium text-slate-900 ${
-                isPrint ? "text-[17px]" : "text-[16px]"
-              }`}
-            >
-              {formatDate(issuedAt)}
-            </dd>
-          </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <dt className="text-[13px] text-slate-500">견적번호</dt>
-            <dd
-              className={`mt-0.5 font-medium text-slate-900 ${
-                isPrint ? "text-[17px]" : "text-[16px]"
-              }`}
-            >
-              {quoteNumberDisplay}
-            </dd>
-          </div>
-        </dl>
-        {amountSummary ? (
-          <div className={`mt-4 ${isPrint ? "mt-3" : ""}`}>
-            <AmountSummaryCard
-              summary={amountSummary}
-              tone="light"
-              isPrint={isPrint}
-            />
-          </div>
-        ) : null}
-        {brand.trustLine ? (
-          <p
-            className={`mt-8 text-slate-600 ${
-              isPrint ? "text-[16px]" : "text-[15px]"
-            }`}
-          >
-            {brand.trustLine}
-          </p>
-        ) : null}
-      </section>
-    );
-  }
+  const shellClass = isPrint
+    ? "quote-cover-page box-border flex h-[297mm] w-[210mm] max-h-[297mm] flex-col overflow-hidden bg-white p-[11mm]"
+    : "quote-cover-page rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7";
 
   return (
     <section
-      className={`quote-cover-page relative overflow-hidden ${
-        isPrint
-          ? "box-border flex h-[297mm] w-[210mm] max-h-[297mm] flex-col justify-between overflow-hidden p-[12mm]"
-          : "rounded-2xl border border-navy-900/20 bg-white p-5 shadow-sm sm:p-8"
-      }`}
+      className={shellClass}
       style={
         isPrint
           ? ({
               WebkitPrintColorAdjust: "exact",
               printColorAdjust: "exact",
-              backgroundColor: "#0a1628",
+              backgroundColor: "#ffffff",
             } as React.CSSProperties)
           : undefined
       }
     >
+      <CoverHeader
+        brand={brand}
+        quoteNumberDisplay={quoteNumberDisplay}
+        issuedAt={issuedAt}
+        isPrint={isPrint}
+      />
+
       <div
-        className="pointer-events-none absolute inset-0"
-        aria-hidden="true"
+        className={`flex min-h-0 flex-1 flex-col ${
+          isPrint ? "justify-between gap-3 pt-3" : "gap-5 pt-5 sm:gap-6"
+        }`}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-navy-900 via-navy-800 to-navy-700" />
-        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-gold-500/15 blur-2xl" />
-        <div className="absolute -bottom-20 -left-10 h-64 w-64 rounded-full bg-gold-400/10 blur-3xl" />
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-gold-500 to-transparent" />
-      </div>
-
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col text-white">
-        <header className="flex shrink-0 items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            {brand.logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={brand.logo.src}
-                alt={brand.logo.alt}
-                width={brand.logo.width}
-                height={brand.logo.height}
-                className={`shrink-0 rounded-xl bg-white/10 object-contain p-1 ring-1 ring-gold-500/40 ${
-                  isPrint ? "h-12 w-12" : "h-14 w-14"
-                }`}
-                loading={isPrint ? "eager" : "lazy"}
-                decoding="async"
-              />
-            ) : (
-              <span
-                className={`flex shrink-0 items-center justify-center rounded-xl bg-gold-500/15 font-bold text-gold-400 ring-1 ring-gold-500/40 ${
-                  isPrint ? "h-12 w-12 text-xl" : "h-14 w-14 text-2xl"
-                }`}
-              >
-                80
-              </span>
-            )}
-            <div className="min-w-0">
-              <p
-                className={`tracking-[0.25em] text-gold-400 ${
-                  isPrint ? "text-[13px]" : "text-[13px]"
-                }`}
-              >
-                {brand.displayName}
-              </p>
-              <p
-                className={`mt-1 font-semibold text-white break-keep ${
-                  isPrint ? "text-[16px]" : "text-[16px] sm:text-[18px]"
-                }`}
-              >
-                {brand.companyName}
-              </p>
-            </div>
-          </div>
-          {brand.slogan?.trim() ? (
-            <p
-              className={`max-w-[40%] shrink-0 text-right font-medium text-gold-300 break-keep ${
-                isPrint ? "text-[14px]" : "text-[14px] sm:text-[15px]"
-              }`}
-            >
-              {brand.slogan.trim()}
-            </p>
-          ) : null}
-        </header>
-
-        <div className={`shrink-0 ${isPrint ? "mt-5" : "mt-8 sm:mt-10"}`}>
-          <p
-            className={`tracking-wide ${
-              isPrint ? "text-[12px] text-slate-200" : "text-[13px] text-white/70"
-            }`}
-          >
-            견적서
-          </p>
+        <div>
           <h1
-            className={`mt-1.5 font-bold leading-snug text-white break-keep ${
+            className={`text-center font-bold tracking-[0.35em] text-navy-900 ${
               isPrint
-                ? "text-[30px]"
-                : "text-[clamp(1.5rem,6.5vw,2.2rem)] sm:text-[36px]"
+                ? "text-[22px]"
+                : "text-[clamp(1.35rem,5vw,1.85rem)] sm:text-[28px]"
             }`}
           >
-            <span className="line-clamp-2">
-              {name} 고객님을 위한 견적서
-            </span>
+            견 적 서
           </h1>
-          {brand.intro && !isPrint ? (
-            <p className="mt-3 max-w-xl text-[16px] leading-relaxed text-white/85 sm:text-[18px]">
-              {brand.intro}
-            </p>
-          ) : null}
+          <p
+            className={`mt-2 text-center font-semibold text-slate-800 break-keep ${
+              isPrint ? "text-[14px]" : "text-[15px] sm:text-[17px]"
+            }`}
+          >
+            {name} 고객님을 위한 견적서
+          </p>
+          <p
+            className={`mt-1 text-center leading-snug text-slate-600 break-keep ${
+              isPrint ? "text-[12px]" : "text-[13px] sm:text-[14px]"
+            }`}
+          >
+            {siteTitle}
+          </p>
+
+          <dl
+            className={`mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-y border-slate-200 py-2.5 ${
+              isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
+            }`}
+          >
+            <div>
+              <dt className="text-slate-500">고객명</dt>
+              <dd className="mt-0.5 font-medium text-slate-900">{name}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">견적명</dt>
+              <dd className="mt-0.5 font-medium text-slate-900 break-keep">
+                {siteTitle}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">작성일</dt>
+              <dd className="mt-0.5 font-medium text-slate-900">
+                {formatDate(issuedAt)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">견적번호</dt>
+              <dd className="mt-0.5 font-medium tabular-nums text-slate-900">
+                {quoteNumberDisplay}
+              </dd>
+            </div>
+          </dl>
         </div>
 
-        <div
-          className={`grid shrink-0 gap-2.5 sm:grid-cols-2 ${
-            isPrint ? "mt-4" : "mt-6"
-          }`}
-        >
-          <div className="rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5">
-            <p
-              className={`text-[12px] ${isPrint ? "text-slate-200" : "text-white/70"}`}
-            >
-              고객명
-            </p>
-            <p
-              className={`mt-0.5 font-semibold text-white break-keep ${
-                isPrint ? "text-[15px]" : "text-[15px] sm:text-[16px]"
-              }`}
-            >
-              <span className="line-clamp-1">{name}</span>
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5">
-            <p
-              className={`text-[12px] ${isPrint ? "text-slate-200" : "text-white/70"}`}
-            >
-              견적명 / 현장명
-            </p>
-            <p
-              className={`mt-0.5 font-semibold text-white break-keep ${
-                isPrint ? "text-[15px]" : "text-[15px] sm:text-[16px]"
-              }`}
-            >
-              <span className="line-clamp-1">{siteTitle}</span>
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5">
-            <p
-              className={`text-[12px] ${isPrint ? "text-slate-200" : "text-white/70"}`}
-            >
-              작성일
-            </p>
-            <p
-              className={`mt-0.5 font-semibold text-white ${
-                isPrint ? "text-[15px]" : "text-[15px] sm:text-[16px]"
-              }`}
-            >
-              {formatDate(issuedAt)}
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5">
-            <p
-              className={`text-[12px] ${isPrint ? "text-slate-200" : "text-white/70"}`}
-            >
-              견적번호
-            </p>
-            <p
-              className={`mt-0.5 font-semibold text-white ${
-                isPrint ? "text-[15px]" : "text-[15px] sm:text-[16px]"
-              }`}
-            >
-              {quoteNumberDisplay}
-            </p>
-          </div>
-        </div>
+        {isPremium ? <ProjectProcess isPrint={isPrint} /> : null}
 
         {amountSummary ? (
-          <div className={`shrink-0 ${isPrint ? "mt-3.5" : "mt-5"}`}>
-            <AmountSummaryCard
-              summary={amountSummary}
-              tone="navy"
-              isPrint={isPrint}
-            />
-          </div>
+          <AmountSummaryCard summary={amountSummary} isPrint={isPrint} />
         ) : null}
 
-        {advantages.length > 0 ? (
-          <div className={`min-h-0 shrink ${isPrint ? "mt-3.5" : "mt-6"}`}>
-            <p
-              className={`font-semibold tracking-wide text-gold-400 ${
-                isPrint ? "text-[13px]" : "text-[14px]"
-              }`}
-            >
-              왜 {brand.displayName}인가
-            </p>
-            <ul className={`mt-2 space-y-1.5 ${isPrint ? "mt-1.5" : ""}`}>
-              {advantages.map((item, index) => (
-                <li
-                  key={`${item}-${index}`}
-                  className={`flex items-start gap-2 break-keep ${
-                    isPrint
-                      ? "text-[13px] text-slate-100"
-                      : "text-[15px] text-white/90 sm:text-[16px]"
-                  }`}
-                >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-500/20 text-[11px] font-bold text-gold-400">
-                    {index + 1}
-                  </span>
-                  <span className="line-clamp-2">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        {isPremium ? <EightyTrustMarks isPrint={isPrint} /> : null}
 
-        {showImages ? (
-          <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${isPrint ? "" : "mt-5"}`}>
-            {[...brand.certImages, ...brand.siteImages]
-              .slice(0, hasAmountSummary ? 2 : 3)
-              .map((img) => (
-                <div
-                  key={img.src}
-                  className="overflow-hidden rounded-lg border border-white/10 bg-white/5"
-                  style={{ aspectRatio: "4 / 3" }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={img.src}
-                    alt={img.alt}
-                    width={img.width}
-                    height={img.height}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-              ))}
-          </div>
-        ) : null}
-
-        <footer className="mt-auto shrink-0 pt-4">
-          {brand.trustLine ? (
-            <p
-              className={`font-medium text-gold-300 ${
-                isPrint ? "text-[13px]" : "text-[15px]"
-              }`}
-            >
-              {brand.trustLine}
-            </p>
-          ) : null}
-          <div
-            className={`mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-white/20 pt-2.5 ${
-              isPrint
-                ? "text-[12px] text-slate-200"
-                : "text-[13px] text-white/75"
-            }`}
-          >
-            <span>{brand.companyName}</span>
-            {brand.phone ? <span>대표 연락처 {brand.phone}</span> : null}
-          </div>
-        </footer>
+        <CoverContactFooter
+          brand={brand}
+          contact={contact}
+          isPrint={isPrint}
+        />
       </div>
     </section>
   );

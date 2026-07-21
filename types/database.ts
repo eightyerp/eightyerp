@@ -526,6 +526,8 @@ export type ErpQuoteItem = {
   trade_name: string;
   item_name: string | null;
   description: string | null;
+  /** 항목별 선택 비고 (규격 description과 별도). migration 35+ */
+  remark?: string | null;
   quantity: number | null;
   unit: string | null;
   unit_price: number;

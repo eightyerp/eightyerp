@@ -104,6 +104,7 @@ function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
     trade_name: source?.trade_name ?? "",
     item_name: source?.item_name ?? "",
     description: source?.description ?? "",
+    remark: source?.remark ?? "",
     quantity: source?.quantity ?? "",
     unit: source?.unit ?? "",
     unit_price: source?.unit_price ?? "0",
@@ -172,6 +173,7 @@ function mapQuoteItemsToRows(
       trade_name: legacySynced ? "" : tradeName,
       item_name: itemName || (legacySynced ? tradeName : ""),
       description: item.description ?? "",
+      remark: item.remark ?? "",
       quantity: item.quantity != null ? String(item.quantity) : "",
       unit: item.unit ?? "",
       unit_price: String(item.unit_price ?? 0),
@@ -507,6 +509,11 @@ export default function QuoteWizardForm({
         trade_name: row.trade_name || "미분류",
         item_name: row.item_name || row.trade_name || null,
         description: row.description || null,
+        remark: (() => {
+          const text = String(row.remark ?? "").trim();
+          if (!text) return null;
+          return text.length > 500 ? text.slice(0, 500) : text;
+        })(),
         quantity: row.quantity !== "" ? qty : null,
         unit: row.unit || null,
         unit_price: unitPrice,
@@ -546,6 +553,8 @@ export default function QuoteWizardForm({
       vatRate: wizardVatRate,
       brand,
       showCover: includeCover,
+      assigneeName: assignedEmployee?.name ?? null,
+      assigneeTitle: assignedEmployee?.title ?? null,
       items: savableItems.map((row, index) => {
         const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
         const amount =
@@ -556,6 +565,11 @@ export default function QuoteWizardForm({
           trade_name: row.trade_name || "미분류",
           item_name: row.item_name || null,
           description: row.description || null,
+          remark: (() => {
+            const text = String(row.remark ?? "").trim();
+            if (!text) return null;
+            return text.length > 500 ? text.slice(0, 500) : text;
+          })(),
           quantity: row.quantity !== "" ? qty : null,
           unit: row.unit || null,
           unit_price: toNumber(row.unit_price),
@@ -595,6 +609,8 @@ export default function QuoteWizardForm({
       savableItems,
       brand,
       includeCover,
+      assignedEmployee?.name,
+      assignedEmployee?.title,
     ],
   );
 
