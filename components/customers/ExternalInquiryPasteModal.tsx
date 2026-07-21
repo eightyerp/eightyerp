@@ -25,6 +25,7 @@ type Props = {
   employees: Employee[];
   leadSources: LeadSource[];
   defaultAssignedEmployeeId?: string | null;
+  canChangeAssignee?: boolean;
 };
 
 type PreviewState = {
@@ -98,6 +99,7 @@ export default function ExternalInquiryPasteModal({
   employees,
   leadSources,
   defaultAssignedEmployeeId = null,
+  canChangeAssignee = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"paste" | "preview">("paste");
@@ -282,31 +284,42 @@ export default function ExternalInquiryPasteModal({
                       <p className="text-sm font-semibold text-amber-900">
                         중복 가능성이 있는 고객이 있습니다
                       </p>
-                      <ul className="space-y-1 text-sm text-amber-950">
-                        {duplicates.map((d) => (
-                          <li key={d.id}>
-                            <label className="flex cursor-pointer items-start gap-2">
-                              <input
-                                type="radio"
-                                name="dup_pick"
-                                checked={selectedExisting === d.id}
-                                onChange={() => setSelectedExisting(d.id)}
-                              />
-                              <span>
-                                {d.name} · {d.phone}
-                                {d.assignee_name
-                                  ? ` · 담당 ${d.assignee_name}`
-                                  : ""}
-                                {d.status ? ` · ${d.status}` : ""}
-                                {d.address ? ` · ${d.address}` : ""}
-                                <span className="ml-1 text-xs text-amber-800">
-                                  ({REASON_LABEL[d.reason]})
+                      <ul className="space-y-2 text-sm text-amber-950">
+                        {duplicates.map((d, index) =>
+                          d.accessible && d.id ? (
+                            <li key={d.id}>
+                              <label className="flex cursor-pointer items-start gap-2">
+                                <input
+                                  type="radio"
+                                  name="dup_pick"
+                                  checked={selectedExisting === d.id}
+                                  onChange={() => setSelectedExisting(d.id!)}
+                                />
+                                <span>
+                                  {d.name} · {d.phone}
+                                  {d.assignee_name
+                                    ? ` · 담당 ${d.assignee_name}`
+                                    : ""}
+                                  {d.status ? ` · ${d.status}` : ""}
+                                  {d.address ? ` · ${d.address}` : ""}
+                                  <span className="ml-1 text-xs text-amber-800">
+                                    ({REASON_LABEL[d.reason]})
+                                  </span>
                                 </span>
-                              </span>
-                            </label>
-                          </li>
-                        ))}
+                              </label>
+                            </li>
+                          ) : (
+                            <li
+                              key={`blocked-${index}`}
+                              className="rounded-lg border border-amber-200/70 bg-white/60 px-3 py-2 text-sm"
+                            >
+                              이미 등록된 고객입니다. 관리자 또는 담당자에게
+                              확인해주세요.
+                            </li>
+                          ),
+                        )}
                       </ul>
+                      {duplicates.some((d) => d.accessible && d.id) && (
                       <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           type="button"
@@ -342,6 +355,7 @@ export default function ExternalInquiryPasteModal({
                           신규 고객으로 별도 등록
                         </button>
                       </div>
+                      )}
                       {dupMode === "view" && selectedExisting && (
                         <Link
                           href={`/customers/${selectedExisting}`}
@@ -416,25 +430,51 @@ export default function ExternalInquiryPasteModal({
                     </label>
                     <label className="text-xs text-gray-600">
                       담당자 *
-                      <select
-                        name="assigned_employee_id"
-                        required
-                        value={preview.assigned_employee_id}
-                        onChange={(e) =>
-                          setPreview((p) => ({
-                            ...p,
-                            assigned_employee_id: e.target.value,
-                          }))
-                        }
-                        className="mt-1 min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
-                      >
-                        <option value="">담당자 선택</option>
-                        {employees.map((e) => (
-                          <option key={e.id} value={e.id}>
-                            {formatEmployeeLabel(e.name, e.title)}
-                          </option>
-                        ))}
-                      </select>
+                      {canChangeAssignee ? (
+                        <select
+                          name="assigned_employee_id"
+                          required
+                          value={preview.assigned_employee_id}
+                          onChange={(e) =>
+                            setPreview((p) => ({
+                              ...p,
+                              assigned_employee_id: e.target.value,
+                            }))
+                          }
+                          className="mt-1 min-h-11 w-full rounded-lg border px-3 py-2 text-sm"
+                        >
+                          <option value="">담당자 선택</option>
+                          {employees.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {formatEmployeeLabel(e.name, e.title)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <>
+                          <input
+                            type="hidden"
+                            name="assigned_employee_id"
+                            value={preview.assigned_employee_id}
+                          />
+                          <div className="mt-1 min-h-11 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                            {employees.find(
+                              (e) => e.id === preview.assigned_employee_id,
+                            )
+                              ? formatEmployeeLabel(
+                                  employees.find(
+                                    (e) =>
+                                      e.id === preview.assigned_employee_id,
+                                  )!.name,
+                                  employees.find(
+                                    (e) =>
+                                      e.id === preview.assigned_employee_id,
+                                  )!.title,
+                                )
+                              : "본인 담당"}
+                          </div>
+                        </>
+                      )}
                     </label>
                     <label className="text-xs text-gray-600">
                       채널

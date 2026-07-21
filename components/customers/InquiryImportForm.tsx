@@ -25,6 +25,7 @@ type InquiryImportFormProps = {
   employees: Employee[];
   leadSources: LeadSource[];
   defaultAssignedEmployeeId?: string | null;
+  canChangeAssignee?: boolean;
 };
 
 type FormState = {
@@ -79,6 +80,7 @@ export default function InquiryImportForm({
   employees,
   leadSources,
   defaultAssignedEmployeeId = null,
+  canChangeAssignee = false,
 }: InquiryImportFormProps) {
   const [form, setForm] = useState<FormState>({
     ...emptyForm,
@@ -337,22 +339,44 @@ export default function InquiryImportForm({
               />
             </Field>
             <Field label="담당자" required>
-              <select
-                name="assigned_employee_id"
-                required
-                value={form.assigned_employee_id}
-                onChange={(e) =>
-                  updateField("assigned_employee_id", e.target.value)
-                }
-                className={inputClass}
-              >
-                <option value="">담당자 선택</option>
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {formatEmployeeLabel(employee.name, employee.title)}
-                  </option>
-                ))}
-              </select>
+              {canChangeAssignee ? (
+                <select
+                  name="assigned_employee_id"
+                  required
+                  value={form.assigned_employee_id}
+                  onChange={(e) =>
+                    updateField("assigned_employee_id", e.target.value)
+                  }
+                  className={inputClass}
+                >
+                  <option value="">담당자 선택</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {formatEmployeeLabel(employee.name, employee.title)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <input
+                    type="hidden"
+                    name="assigned_employee_id"
+                    value={form.assigned_employee_id}
+                  />
+                  <div className={`${inputClass} bg-gray-50 text-gray-700`}>
+                    {employees.find((e) => e.id === form.assigned_employee_id)
+                      ? formatEmployeeLabel(
+                          employees.find(
+                            (e) => e.id === form.assigned_employee_id,
+                          )!.name,
+                          employees.find(
+                            (e) => e.id === form.assigned_employee_id,
+                          )!.title,
+                        )
+                      : "본인 담당"}
+                  </div>
+                </>
+              )}
             </Field>
             <Field label="고객상태">
               <select

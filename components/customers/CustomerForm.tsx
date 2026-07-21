@@ -24,6 +24,8 @@ type CustomerFormProps = {
   /** 신규 등록 시 기본 담당자 (수정 시에는 사용하지 않음) */
   defaultAssignedEmployeeId?: string | null;
   isAdmin?: boolean;
+  /** Bundle E: 직원이면 담당자 선택 잠금 */
+  canChangeAssignee?: boolean;
 };
 
 const initialState: ActionResult = { success: false };
@@ -37,6 +39,7 @@ export default function CustomerForm({
   customer,
   defaultAssignedEmployeeId = null,
   isAdmin = false,
+  canChangeAssignee = isAdmin,
 }: CustomerFormProps) {
   const isEdit = Boolean(customer);
   const action = isEdit ? updateCustomerAction : createCustomerAction;
@@ -52,6 +55,7 @@ export default function CustomerForm({
   const defaultAssignee = isEdit
     ? (customer?.assigned_employee_id ?? "")
     : (defaultAssignedEmployeeId ?? "");
+  const lockedAssignee = employees.find((e) => e.id === defaultAssignee);
 
   function toggleInterest(item: string) {
     setInterestItems((prev) =>
@@ -113,36 +117,39 @@ export default function CustomerForm({
 
       {visibleDuplicates.length > 0 && (
         <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold">
-            같은 연락처의 고객이 이미 있습니다
-          </p>
+          <p className="font-semibold">연락처 중복 안내</p>
           <ul className="space-y-2">
-            {visibleDuplicates.map((dup) => (
-              <li
-                key={dup.id}
-                className="flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <p className="font-medium text-navy-900">{dup.name}</p>
-                  <p className="text-xs text-amber-900/80">
-                    담당자 {dup.assignee_name ?? "미배정"}
-                    {dup.status ? ` · ${dup.status}` : ""}
-                    {dup.phone ? ` · ${dup.phone}` : ""}
-                  </p>
-                </div>
-                <Link
-                  href={`/customers/${dup.id}`}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-navy-800/20 bg-navy-800 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-700 sm:min-h-9"
+            {visibleDuplicates.map((dup, index) =>
+              dup.accessible && dup.id ? (
+                <li
+                  key={dup.id}
+                  className="flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  기존 고객 열기
-                </Link>
-              </li>
-            ))}
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="font-medium text-navy-900">{dup.name}</p>
+                    <p className="text-xs text-amber-900/80">
+                      담당자 {dup.assignee_name ?? "미배정"}
+                      {dup.status ? ` · ${dup.status}` : ""}
+                      {dup.phone ? ` · ${dup.phone}` : ""}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/customers/${dup.id}`}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-navy-800/20 bg-navy-800 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-700 sm:min-h-9"
+                  >
+                    기존 고객 열기
+                  </Link>
+                </li>
+              ) : (
+                <li
+                  key={`blocked-${index}`}
+                  className="rounded-lg border border-amber-200/80 bg-white/70 px-3 py-2 text-sm text-amber-950"
+                >
+                  이미 등록된 고객입니다. 관리자 또는 담당자에게 확인해주세요.
+                </li>
+              ),
+            )}
           </ul>
-          <p className="text-xs text-amber-800">
-            등록을 이어가려면 연락처를 바꾸거나, 위 버튼을 눌러 기존 고객을
-            확인하세요.
-          </p>
         </div>
       )}
 
@@ -249,24 +256,46 @@ export default function CustomerForm({
         </Field>
 
         <Field label="담당자" required>
-          <select
-            name="assigned_employee_id"
-            required
-            defaultValue={defaultAssignee}
-            className={inputClass}
-          >
-            <option value="">담당자 선택</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {formatEmployeeLabel(employee.name, employee.title)}
-              </option>
-            ))}
-          </select>
-          {!isEdit && defaultAssignedEmployeeId && (
+          {canChangeAssignee ? (
+            <select
+              name="assigned_employee_id"
+              required
+              defaultValue={defaultAssignee}
+              className={inputClass}
+            >
+              <option value="">담당자 선택</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {formatEmployeeLabel(employee.name, employee.title)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <input
+                type="hidden"
+                name="assigned_employee_id"
+                value={defaultAssignee}
+              />
+              <div className={`${inputClass} bg-gray-50 text-gray-700`}>
+                {lockedAssignee
+                  ? formatEmployeeLabel(
+                      lockedAssignee.name,
+                      lockedAssignee.title,
+                    )
+                  : "본인 담당"}
+              </div>
+              <p className="mt-1 text-xs text-gray-400">
+                {isEdit
+                  ? "담당자 변경은 관리자만 할 수 있습니다."
+                  : "신규 고객은 본인이 담당자로 등록됩니다."}
+              </p>
+            </>
+          )}
+          {!isEdit && canChangeAssignee && defaultAssignedEmployeeId && (
             <p className="mt-1 text-xs text-gray-400">
-              {isAdmin
-                ? "로그인 직원으로 기본 선택되었습니다. 관리자는 다른 담당자로 변경할 수 있습니다."
-                : "로그인 직원이 기본 담당자로 선택되었습니다."}
+              로그인 직원으로 기본 선택되었습니다. 관리자는 다른 담당자로 변경할
+              수 있습니다.
             </p>
           )}
         </Field>

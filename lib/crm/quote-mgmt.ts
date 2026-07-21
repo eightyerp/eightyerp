@@ -447,6 +447,12 @@ export async function listQuotes(
   const scopedEmployees = await listEmployeesInScope(access);
   const scopedIds = new Set(scopedEmployees.map((e) => e.id));
 
+  if (filters.customerId) {
+    const { getCustomerById } = await import("@/lib/crm/customers");
+    const customer = await getCustomerById(filters.customerId);
+    if (!customer) return [];
+  }
+
   const supabase = await createClient();
 
   function buildQuery(selectClause: string) {

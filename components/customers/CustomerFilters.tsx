@@ -12,11 +12,14 @@ import type { Employee, LeadSource } from "@/types/database";
 type CustomerFiltersProps = {
   employees: Employee[];
   leadSources: LeadSource[];
+  /** Bundle E: 관리자만 담당자 필터 표시 */
+  canFilterByAssignee?: boolean;
 };
 
 export default function CustomerFilters({
   employees,
   leadSources,
+  canFilterByAssignee = true,
 }: CustomerFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -77,23 +80,25 @@ export default function CustomerFilters({
         />
       </div>
 
-      <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
-          담당자
-        </label>
-        <select
-          name="employeeId"
-          defaultValue={searchParams.get("employeeId") ?? ""}
-          className={inputClass}
-        >
-          <option value="">전체</option>
-          {employees.map((employee) => (
-            <option key={employee.id} value={employee.id}>
-              {formatEmployeeLabel(employee.name, employee.title)}
-            </option>
-          ))}
-        </select>
-      </div>
+      {canFilterByAssignee && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            담당자
+          </label>
+          <select
+            name="employeeId"
+            defaultValue={searchParams.get("employeeId") ?? ""}
+            className={inputClass}
+          >
+            <option value="">전체</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {formatEmployeeLabel(employee.name, employee.title)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-500">

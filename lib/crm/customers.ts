@@ -1,5 +1,12 @@
 import { createClient } from "@/lib/supabase-server";
 import { getCurrentUserAccess, requireAdminAccess } from "@/lib/crm/access";
+import {
+  assertCanAccessCustomerRecord,
+  assertCanChangeAssignee,
+  assertCanSetAssignee,
+  canAccessCustomerRecord,
+  requireCustomerAccess,
+} from "@/lib/crm/customer-access";
 import { getContactBucket } from "@/lib/crm/contact";
 import { normalizePhone } from "@/lib/crm/parse-inquiry";
 import { CUSTOMER_PAGE_SIZE } from "@/lib/crm/constants";
@@ -213,6 +220,7 @@ export async function getEmployees(): Promise<Employee[]> {
 export async function getCustomers(
   filters: CustomerListFilters = {},
 ): Promise<CustomerListResult> {
+  const access = await requireCustomerAccess();
   const supabase = await createClient();
   const pageSize = Math.max(1, Math.min(filters.pageSize ?? CUSTOMER_PAGE_SIZE, 100));
   const page = Math.max(1, filters.page ?? 1);
@@ -234,17 +242,27 @@ export async function getCustomers(
     .order("created_at", { ascending: false });
 
   if (filters.deletedOnly) {
+    if (!access.isAdmin) {
+      return { customers: [], total: 0, page, pageSize, totalPages: 1 };
+    }
     query = query.not("deleted_at", "is", null);
   } else {
     query = query.is("deleted_at", null);
   }
 
+  // Bundle E: 직원은 본인 담당만 (UI 필터로 타인 조회 불가)
+  if (!access.canViewAllCompanyCustomers) {
+    if (!access.employeeId) {
+      return { customers: [], total: 0, page, pageSize, totalPages: 1 };
+    }
+    query = query.eq("assigned_employee_id", access.employeeId);
+  } else if (filters.employeeId) {
+    query = query.eq("assigned_employee_id", filters.employeeId);
+  }
+
   if (filters.q?.trim()) {
     const q = filters.q.trim().replace(/[%_,]/g, "");
     query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,address.ilike.%${q}%`);
-  }
-  if (filters.employeeId) {
-    query = query.eq("assigned_employee_id", filters.employeeId);
   }
   if (filters.leadSourceId) {
     query = query.eq("lead_source_id", filters.leadSourceId);
@@ -295,6 +313,7 @@ export async function getCustomers(
 export async function getCustomerById(
   id: string,
 ): Promise<CustomerWithRelations | null> {
+  const access = await requireCustomerAccess();
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("customers")
@@ -311,7 +330,12 @@ export async function getCustomerById(
 
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return enrichCustomer(data as CustomerWithRelations);
+
+  const customer = enrichCustomer(data as CustomerWithRelations);
+  if (!canAccessCustomerRecord(access, customer)) {
+    return null;
+  }
+  return customer;
 }
 
 export async function getCustomerChecklists(
@@ -417,32 +441,39 @@ export async function findCustomerByPhone(
 ) {
   const { findPhoneDuplicates } = await import("@/lib/crm/inquiry-duplicates");
   const matches = await findPhoneDuplicates({ phone, excludeId });
-  return matches[0]
+  const first = matches.find((m) => m.accessible && m.id);
+  return first
     ? {
-        id: matches[0].id,
-        name: matches[0].name,
-        phone: matches[0].phone,
-        status: matches[0].status,
-        assignee_name: matches[0].assignee_name,
+        id: first.id!,
+        name: first.name ?? "",
+        phone: first.phone ?? "",
+        status: first.status,
+        assignee_name: first.assignee_name,
       }
     : null;
 }
 
 export async function createCustomer(input: CustomerInsert) {
+  const access = await requireCustomerAccess();
   const supabase = await createClient();
   const phone = normalizePhone(input.phone);
 
   if (!phone) throw new Error("연락처를 입력해 주세요.");
-  if (!input.assigned_employee_id) {
-    throw new Error("담당자를 선택해 주세요.");
-  }
 
-  // 전화번호 중복은 soft 경고(UI/action)로 처리. 여기서는 hard block 하지 않음.
-  // DB unique가 있으면 23505로 안내.
+  let assignedEmployeeId = input.assigned_employee_id ?? null;
+  if (!access.canChangeAssignee) {
+    assignedEmployeeId = access.employeeId;
+  }
+  assertCanSetAssignee(access, assignedEmployeeId);
+
+  const payload = toCustomerWritePayload(
+    { ...input, assigned_employee_id: assignedEmployeeId },
+    phone,
+  );
 
   const { data, error } = await supabase
     .from("customers")
-    .insert(toCustomerWritePayload(input, phone))
+    .insert(payload)
     .select("*")
     .single();
 
@@ -467,21 +498,36 @@ export async function createCustomer(input: CustomerInsert) {
 }
 
 export async function updateCustomer(id: string, input: CustomerInsert) {
+  const access = await requireCustomerAccess();
   const supabase = await createClient();
   const phone = normalizePhone(input.phone);
   if (!phone) throw new Error("연락처를 입력해 주세요.");
-  if (!input.assigned_employee_id) {
-    throw new Error("담당자를 선택해 주세요.");
-  }
 
   const previous = await getCustomerById(id);
   if (!previous || previous.deleted_at) {
     throw new Error("고객을 찾을 수 없습니다.");
   }
+  assertCanAccessCustomerRecord(access, previous);
+
+  let assignedEmployeeId = input.assigned_employee_id ?? null;
+  if (!access.canChangeAssignee) {
+    assignedEmployeeId = previous.assigned_employee_id;
+  }
+  assertCanChangeAssignee(
+    access,
+    previous.assigned_employee_id,
+    assignedEmployeeId,
+  );
+  assertCanSetAssignee(access, assignedEmployeeId);
 
   const { data, error } = await supabase
     .from("customers")
-    .update(toCustomerWritePayload(input, phone))
+    .update(
+      toCustomerWritePayload(
+        { ...input, assigned_employee_id: assignedEmployeeId },
+        phone,
+      ),
+    )
     .eq("id", id)
     .is("deleted_at", null)
     .select("*")
@@ -497,7 +543,6 @@ export async function updateCustomer(id: string, input: CustomerInsert) {
   }
 
   const customer = data as Customer;
-  const access = await getCurrentUserAccess();
 
   if (previous.status !== customer.status) {
     await supabase.from("customer_activities").insert({
@@ -545,7 +590,7 @@ export async function registerConsultation(input: {
   status?: CustomerStatus | null;
   employee_id?: string | null;
 }) {
-  const access = await getCurrentUserAccess();
+  const access = await requireCustomerAccess();
   const supabase = await createClient();
   const previous = await getCustomerById(input.customer_id);
 
@@ -555,10 +600,23 @@ export async function registerConsultation(input: {
 
   const nowIso = new Date().toISOString();
   const nextStatus = input.status || previous.status;
-  const nextAssignee =
+  let nextAssignee =
     input.employee_id !== undefined && input.employee_id !== null
       ? input.employee_id
       : previous.assigned_employee_id;
+
+  if (!access.canChangeAssignee) {
+    nextAssignee = previous.assigned_employee_id;
+  } else if (
+    input.employee_id !== undefined &&
+    input.employee_id !== previous.assigned_employee_id
+  ) {
+    assertCanChangeAssignee(
+      access,
+      previous.assigned_employee_id,
+      nextAssignee,
+    );
+  }
 
   const customerPatch: Record<string, unknown> = {};
 
@@ -671,20 +729,29 @@ export async function updateCustomerQuickFields(input: {
   next_contact_at?: string | null;
   change_assignee?: boolean;
 }) {
-  const access = await getCurrentUserAccess();
+  const access = await requireCustomerAccess();
   const supabase = await createClient();
   const previous = await getCustomerById(input.customer_id);
 
   if (!previous || previous.deleted_at) {
     throw new Error("고객을 찾을 수 없습니다.");
   }
+  assertCanAccessCustomerRecord(access, previous);
 
   const patch: Record<string, unknown> = {};
   if (input.status && input.status !== previous.status) {
     patch.status = input.status;
   }
   if (input.change_assignee) {
+    if (!access.canChangeAssignee) {
+      throw new Error("담당자 변경은 관리자만 할 수 있습니다.");
+    }
     const nextAssignee = input.assigned_employee_id || null;
+    assertCanChangeAssignee(
+      access,
+      previous.assigned_employee_id,
+      nextAssignee,
+    );
     if (nextAssignee !== previous.assigned_employee_id) {
       patch.assigned_employee_id = nextAssignee;
     }
@@ -906,6 +973,7 @@ export async function createCustomerActivity(input: {
 }
 
 export async function getDashboardCrmStats(): Promise<DashboardCrmStats> {
+  await requireCustomerAccess();
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("customers")

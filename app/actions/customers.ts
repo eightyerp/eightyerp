@@ -24,13 +24,17 @@ import {
   updateCustomerQuickFields,
 } from "@/lib/crm/customers";
 import { canShowDevDiagnostics } from "@/lib/crm/dev-diagnostics";
-import { findInquiryDuplicates, findPhoneDuplicates } from "@/lib/crm/inquiry-duplicates";
+import { findInquiryDuplicates, findPhoneDuplicates, duplicateUserMessage } from "@/lib/crm/inquiry-duplicates";
 import type { DuplicateCandidate } from "@/lib/crm/inquiry-duplicates";
 import type { InquiryMissingField } from "@/lib/crm/parse-inquiry";
 import {
   parseInquiryText,
   parseInterestItemsInput,
 } from "@/lib/crm/parse-inquiry";
+import {
+  assertCanSetAssignee,
+  requireCustomerAccess,
+} from "@/lib/crm/customer-access";
 import type {
   ActivityType,
   ConsultationType,
@@ -110,20 +114,32 @@ export async function createCustomerAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const access = await requireCustomerAccess();
     const input = formDataToCustomerInsert(formData);
     if (!input.name || !input.phone) {
       return { success: false, error: "고객명과 연락처는 필수입니다." };
     }
-    if (!input.assigned_employee_id) {
-      return { success: false, error: "담당자를 선택해 주세요." };
+
+    if (!access.canChangeAssignee) {
+      input.assigned_employee_id = access.employeeId;
+    }
+    try {
+      assertCanSetAssignee(access, input.assigned_employee_id);
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "담당자를 선택해 주세요.",
+      };
     }
 
     const phoneDuplicates = await findPhoneDuplicates({ phone: input.phone });
     if (phoneDuplicates.length > 0) {
       return {
         success: false,
-        error:
-          "같은 연락처의 고객이 이미 있습니다. 기존 고객을 확인하거나 열어 주세요.",
+        error: duplicateUserMessage(phoneDuplicates),
         duplicates: phoneDuplicates,
       };
     }
@@ -143,6 +159,7 @@ export async function updateCustomerAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const access = await requireCustomerAccess();
     const id = String(formData.get("id") ?? "").trim();
     if (!id) return { success: false, error: "고객 ID가 없습니다." };
 
@@ -150,7 +167,16 @@ export async function updateCustomerAction(
     if (!input.name || !input.phone) {
       return { success: false, error: "고객명과 연락처는 필수입니다." };
     }
-    if (!input.assigned_employee_id) {
+
+    if (!access.canChangeAssignee) {
+      // 서버에서 기존 담당자 유지 (폼 조작 방지)
+      const { getCustomerById } = await import("@/lib/crm/customers");
+      const existing = await getCustomerById(id);
+      if (!existing) {
+        return { success: false, error: "고객을 찾을 수 없습니다." };
+      }
+      input.assigned_employee_id = existing.assigned_employee_id;
+    } else if (!input.assigned_employee_id) {
       return { success: false, error: "담당자를 선택해 주세요." };
     }
 
@@ -161,8 +187,7 @@ export async function updateCustomerAction(
     if (phoneDuplicates.length > 0) {
       return {
         success: false,
-        error:
-          "같은 연락처의 고객이 이미 있습니다. 기존 고객을 확인하거나 열어 주세요.",
+        error: duplicateUserMessage(phoneDuplicates),
         duplicates: phoneDuplicates,
       };
     }
@@ -481,6 +506,7 @@ export async function registerInquiryCustomerAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
+    const access = await requireCustomerAccess();
     const rawText = String(formData.get("raw_text") ?? "").trim();
     const mode = String(formData.get("duplicate_mode") ?? "create").trim() as
       | "create"
@@ -497,10 +523,22 @@ export async function registerInquiryCustomerAction(
       return { success: false, error: "고객명과 연락처는 필수입니다." };
     }
 
+    if (!access.canChangeAssignee) {
+      parsed.assigned_employee_id = access.employeeId;
+    }
+
     const sourceType = (formData.get("source_type") ||
       "other") as InquirySourceType;
 
     if (mode === "view" && existingId) {
+      const { getCustomerById } = await import("@/lib/crm/customers");
+      const existing = await getCustomerById(existingId);
+      if (!existing) {
+        return {
+          success: false,
+          error: "접근 권한이 없는 고객입니다.",
+        };
+      }
       redirect(`/customers/${existingId}`);
     }
 
@@ -521,17 +559,19 @@ export async function registerInquiryCustomerAction(
 
     // create — 강제 신규 또는 중복 없음
     const forceCreate = String(formData.get("force_create") ?? "") === "1";
-    if (!forceCreate) {
-      const duplicates = await findInquiryDuplicates({
-        source_order_no: parsed.source_order_no,
-        phone: parsed.phone,
-        name: parsed.name,
-        address: parsed.address,
-      });
-      if (duplicates.length > 0) {
+    const duplicates = await findInquiryDuplicates({
+      source_order_no: parsed.source_order_no,
+      phone: parsed.phone,
+      name: parsed.name,
+      address: parsed.address,
+    });
+    if (duplicates.length > 0) {
+      const hasBlocked = duplicates.some((d) => !d.accessible);
+      // 권한 밖 중복은 force create 불가 (개인정보 비노출 + 중복 방지)
+      if (hasBlocked || !forceCreate) {
         return {
           success: false,
-          error: "중복 가능성이 있는 고객이 있습니다. 처리 방법을 선택해 주세요.",
+          error: duplicateUserMessage(duplicates),
           duplicates,
           parsed,
           sourceType,
@@ -539,8 +579,16 @@ export async function registerInquiryCustomerAction(
       }
     }
 
-    if (!parsed.assigned_employee_id) {
-      return { success: false, error: "담당자를 선택해 주세요." };
+    try {
+      assertCanSetAssignee(access, parsed.assigned_employee_id);
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "담당자를 선택해 주세요.",
+      };
     }
 
     const sources = await getLeadSources();
@@ -564,7 +612,7 @@ export async function registerInquiryCustomerAction(
     const message =
       error instanceof Error ? error.message : "고객 등록에 실패했습니다.";
     // 개인정보 노출 방지
-    if (/already|duplicate|23505|이미 등록된 연락처/i.test(message)) {
+    if (/already|duplicate|23505|이미 등록된 연락처|이미 등록된 고객/i.test(message)) {
       return {
         success: false,
         error: "이미 등록된 고객일 수 있습니다. 중복 처리 방법을 선택해 주세요.",

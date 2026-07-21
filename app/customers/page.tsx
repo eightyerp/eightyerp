@@ -105,6 +105,10 @@ export default async function CustomersPage({
             <p className="mt-1 text-sm text-gray-500">
               검색 · 필터 · 상담이력 기반 고객 관리
             </p>
+            <p className="mt-1 text-xs font-medium text-navy-800">
+              조회 범위:{" "}
+              {access.isAdmin ? "회사 전체 고객" : "내 담당 고객"}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {access.isAdmin && (
@@ -119,6 +123,7 @@ export default async function CustomersPage({
               employees={employees}
               leadSources={leadSources}
               defaultAssignedEmployeeId={access.profile?.employee_id ?? null}
+              canChangeAssignee={access.isAdmin}
             />
             <Link
               href="/customers/import"
@@ -180,6 +185,7 @@ export default async function CustomersPage({
               <CustomerFilters
                 employees={employees}
                 leadSources={leadSources}
+                canFilterByAssignee={access.isAdmin}
               />
             </Suspense>
 

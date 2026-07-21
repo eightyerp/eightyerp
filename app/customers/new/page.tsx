@@ -96,6 +96,7 @@ export default async function NewCustomerPage() {
             leadSources={leadSources}
             defaultAssignedEmployeeId={access.profile?.employee_id ?? null}
             isAdmin={access.isAdmin}
+            canChangeAssignee={access.isAdmin}
           />
         )}
       </div>

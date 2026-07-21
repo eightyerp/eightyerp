@@ -89,6 +89,10 @@ const SELECT =
 export async function listCustomerProjects(
   customerId: string,
 ): Promise<Project[]> {
+  const { getCustomerById } = await import("@/lib/crm/customers");
+  const customer = await getCustomerById(customerId);
+  if (!customer) return [];
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("projects")

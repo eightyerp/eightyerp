@@ -72,6 +72,7 @@ export default async function CustomerImportPage() {
             employees={employees}
             leadSources={leadSources}
             defaultAssignedEmployeeId={access.profile?.employee_id ?? null}
+            canChangeAssignee={access.isAdmin}
           />
         )}
       </div>

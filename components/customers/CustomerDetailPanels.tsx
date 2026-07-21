@@ -510,6 +510,7 @@ export default function CustomerDetailPanels({
               <select
                 name="assigned_employee_id"
                 defaultValue={customer.assigned_employee_id ?? ""}
+                disabled={!isAdmin}
                 className={inputClass}
               >
                 <option value="">미배정</option>
@@ -520,13 +521,19 @@ export default function CustomerDetailPanels({
                 ))}
               </select>
             </div>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            >
-              담당자 저장
-            </button>
+            {isAdmin ? (
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                담당자 저장
+              </button>
+            ) : (
+              <p className="pb-2 text-xs text-gray-400">
+                담당자 변경은 관리자만 가능
+              </p>
+            )}
           </form>
         </div>
       </section>

@@ -122,6 +122,13 @@ export async function listCustomerSchedules(
   access?: ScheduleAccess,
 ): Promise<CustomerSchedule[]> {
   const sch = access ?? (await getScheduleAccess());
+
+  if (filters.customerId) {
+    const { getCustomerById } = await import("@/lib/crm/customers");
+    const customer = await getCustomerById(filters.customerId);
+    if (!customer) return [];
+  }
+
   const supabase = await createClient();
 
   let query = supabase
