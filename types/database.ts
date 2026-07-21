@@ -89,9 +89,18 @@ export type Team = {
 
 export type Employee = {
   id: string;
+  company_id?: string | null;
   team_id: string | null;
   name: string;
   title: string;
+  /** 휴대전화. migration 36 */
+  phone?: string | null;
+  /** 이메일. migration 36 */
+  email?: string | null;
+  /** 명함 Storage path (employee-business-cards). URL 아님 */
+  business_card_path?: string | null;
+  /** 견적서 표지 명함 표시 */
+  show_business_card_on_quote?: boolean;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -486,6 +495,18 @@ export type ErpQuote = {
   sent_at: string | null;
   sent_by: string | null;
   assigned_employee_id: string | null;
+  /** 담당자 이름 스냅샷. migration 36 */
+  assignee_name?: string | null;
+  /** 담당자 직책 스냅샷 */
+  assignee_title?: string | null;
+  /** 담당자 휴대전화 스냅샷 */
+  assignee_phone?: string | null;
+  /** 담당자 이메일 스냅샷 */
+  assignee_email?: string | null;
+  /** 명함 Storage path 스냅샷 */
+  assignee_card_path?: string | null;
+  /** 명함 표시 여부 스냅샷. null = 스냅샷 없음 */
+  assignee_show_business_card?: boolean | null;
   is_lx_material: boolean;
   is_contract_quote: boolean;
   customer_message: string | null;
@@ -499,7 +520,17 @@ export type ErpQuote = {
   deleted_by?: string | null;
   delete_reason?: string | null;
   customers?: Pick<Customer, "id" | "name" | "phone" | "address" | "assigned_employee_id" | "status"> | null;
-  employees?: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
+  employees?: Pick<
+    Employee,
+    | "id"
+    | "name"
+    | "title"
+    | "team_id"
+    | "phone"
+    | "email"
+    | "business_card_path"
+    | "show_business_card_on_quote"
+  > | null;
   quote_files?: ErpQuoteFile[];
   quote_items?: ErpQuoteItem[];
 };

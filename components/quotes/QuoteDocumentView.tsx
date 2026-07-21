@@ -1,9 +1,13 @@
 import QuoteCoverPage from "@/components/quotes/QuoteCoverPage";
 import {
+  buildQuotePrintPages,
+  QuotePageFooter,
+} from "@/components/quotes/QuotePrintPages";
+import {
   buildQuoteDocumentViewModel,
   type QuoteDocumentModel,
 } from "@/lib/crm/quote-document";
-import { ERP_QUOTE_STATUS_BADGE, quoteCostTypeLabel } from "@/lib/crm/quote-constants";
+import { quoteCostTypeLabel } from "@/lib/crm/quote-constants";
 import { buildSimpleQuoteBrand } from "@/lib/crm/quote-brand-shared";
 
 type Props = {
@@ -25,59 +29,42 @@ export default function QuoteDocumentView({
   const view = buildQuoteDocumentViewModel(model);
   const showCover = model.showCover !== false;
   const brand = model.brand ?? buildSimpleQuoteBrand(null);
-  const badge =
-    (model.status && ERP_QUOTE_STATUS_BADGE[model.status]) ||
-    "bg-gray-100 text-gray-600";
   const isPrint = variant === "print";
+  const pages = buildQuotePrintPages(showCover);
 
-  return (
-    <div
-      className={`${
-        isPrint
-          ? `quote-print-root bg-white text-slate-900${showCover ? " quote-print-has-cover" : ""}`
-          : ""
-      } ${className}`}
-    >
-      {showCover ? (
-        <div className={isPrint ? "quote-print-cover-wrap" : "mx-auto max-w-3xl px-4 pt-6"}>
-          <QuoteCoverPage
-            brand={brand}
-            customerName={model.customerName}
-            title={model.title}
-            quoteNumber={model.isDraft ? null : model.quoteNumber}
-            quoteNumberLabel={
-              model.isDraft ? "저장 전 (미발급)" : null
-            }
-            issuedAt={model.issuedAt}
-            variant={variant}
-            amountSummary={{
-              totalAmount: view.totals.total_amount,
-              discountAmount: view.totals.discount_amount,
-              lxDiscountAmount: view.totals.lx_discount_amount,
-              supplyAmount: view.totals.supply_amount,
-              vatAmount: view.totals.vat_amount,
-              vatRate: view.totals.vat_rate,
-              vatMode: view.totals.vat_mode,
-              customerTotalAmount: view.totals.customer_total_amount,
-            }}
-            contact={{
-              assigneeName: model.assigneeName,
-              assigneeTitle: model.assigneeTitle,
-              companyPhone: brand.phone,
-              companyBusinessNumber: model.companyBusinessNumber,
-              validUntil: model.validUntil,
-            }}
-          />
-        </div>
-      ) : null}
+  const cover = (
+    <QuoteCoverPage
+      brand={brand}
+      customerName={model.customerName}
+      title={model.title}
+      quoteNumber={model.isDraft ? null : model.quoteNumber}
+      quoteNumberLabel={model.isDraft ? "저장 전 (미발급)" : null}
+      issuedAt={model.issuedAt}
+      variant={variant}
+      amountSummary={{
+        totalAmount: view.totals.total_amount,
+        discountAmount: view.totals.discount_amount,
+        lxDiscountAmount: view.totals.lx_discount_amount,
+        supplyAmount: view.totals.supply_amount,
+        vatAmount: view.totals.vat_amount,
+        vatRate: view.totals.vat_rate,
+        vatMode: view.totals.vat_mode,
+        customerTotalAmount: view.totals.customer_total_amount,
+      }}
+      contact={{
+        assigneeName: model.assigneeName,
+        assigneeTitle: model.assigneeTitle,
+        assigneePhone: model.assigneePhone,
+        assigneeEmail: model.assigneeEmail,
+        assigneeShowBusinessCard: model.assigneeShowBusinessCard,
+        assigneeCardImageUrl: model.assigneeCardImageUrl,
+      }}
+    />
+  );
 
-      <div
-        className={
-          isPrint
-            ? "quote-body-page space-y-6"
-            : "mx-auto max-w-3xl space-y-6 px-4 py-8"
-        }
-      >
+  function renderBodyContent() {
+    return (
+      <>
         <section
           className={
             isPrint
@@ -134,13 +121,6 @@ export default function QuoteDocumentView({
                   .join(" · ")}
               </p>
             </div>
-            {model.status ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${badge}`}
-              >
-                {model.status}
-              </span>
-            ) : null}
           </div>
 
           <dl className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -415,6 +395,50 @@ export default function QuoteDocumentView({
             </div>
           </section>
         ) : null}
+      </>
+    );
+  }
+
+  if (isPrint) {
+    return (
+      <div
+        className={`quote-print-root bg-white text-slate-900${
+          showCover ? " quote-print-has-cover" : ""
+        } ${className}`}
+      >
+        {pages.map((page, pageIndex) => (
+          <div
+            key={page.key}
+            className={
+              page.kind === "cover"
+                ? "quote-print-cover-wrap"
+                : "quote-body-page"
+            }
+          >
+            {page.kind === "cover" ? (
+              cover
+            ) : (
+              <div className="quote-body-page-inner space-y-6">
+                {renderBodyContent()}
+              </div>
+            )}
+            <QuotePageFooter
+              pageIndex={pageIndex}
+              pageCount={pages.length}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {showCover ? (
+        <div className="mx-auto max-w-3xl px-4 pt-6">{cover}</div>
+      ) : null}
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
+        {renderBodyContent()}
       </div>
     </div>
   );

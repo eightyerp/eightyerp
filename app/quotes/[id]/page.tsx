@@ -17,6 +17,8 @@ import {
   listQuoteSendLogs,
   listQuoteVersions,
 } from "@/lib/crm/quote-mgmt";
+import { resolveQuoteAssigneeContact } from "@/lib/crm/quote-assignee-contact";
+import { createSignedEmployeeCardUrl } from "@/lib/crm/employee-contacts";
 import { createClient } from "@/lib/supabase-server";
 import type { Employee, ErpQuote, ErpQuoteSendLog } from "@/types/database";
 
@@ -51,6 +53,7 @@ export default async function QuoteDetailPage({
   let signedUrls: Record<string, string> = {};
   let employees: Employee[] = [];
   let brand: QuoteBrandProfile | null = null;
+  let assigneeCardImageUrl: string | null = null;
   let loadError: string | null = null;
   let tablesMissing = false;
 
@@ -70,6 +73,18 @@ export default async function QuoteDetailPage({
       signedUrls = urls;
       employees = employeeList;
       brand = companyBrand;
+
+      const contact = resolveQuoteAssigneeContact(quote);
+      if (contact.showBusinessCard && contact.cardPath) {
+        try {
+          assigneeCardImageUrl = await createSignedEmployeeCardUrl(
+            contact.cardPath,
+            60 * 60,
+          );
+        } catch {
+          assigneeCardImageUrl = null;
+        }
+      }
     }
   } catch (error) {
     tablesMissing = await isQuotesSchemaMissing();
@@ -129,6 +144,7 @@ export default async function QuoteDetailPage({
             signedUrls={signedUrls}
             employees={employees}
             brand={brand}
+            assigneeCardImageUrl={assigneeCardImageUrl}
           />
         )}
       </div>

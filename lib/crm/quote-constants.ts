@@ -521,6 +521,16 @@ export const QUOTE_FILES_BUCKET = "quote-files";
 export const QUOTE_FILE_MAX_BYTES = 30 * 1024 * 1024;
 export const QUOTE_FILE_EXTENSIONS = ["pdf", "xls", "xlsx"] as const;
 
+/** 직원 명함 이미지 (private). path: {company_id}/{employee_id}/{uuid}.ext */
+export const EMPLOYEE_BUSINESS_CARDS_BUCKET = "employee-business-cards";
+export const EMPLOYEE_BUSINESS_CARD_MAX_BYTES = 10 * 1024 * 1024;
+export const EMPLOYEE_BUSINESS_CARD_MIME = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+
 export function buildQuoteGuideMessage(input: {
   customerName: string;
   title: string;

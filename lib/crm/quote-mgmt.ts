@@ -390,11 +390,11 @@ function resolveQuoteAmounts(
 }
 
 const SELECT_FULL =
-  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id ), quote_files (*), quote_items (*)";
+  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id, phone, email, business_card_path, show_business_card_on_quote ), quote_files (*), quote_items (*)";
 
 /** quote_files / quote_items 미적용 환경용 — 목록·고객상세는 동작 유지 */
 const SELECT_BASIC =
-  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id )";
+  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id, phone, email, business_card_path, show_business_card_on_quote )";
 
 function sortNested(q: ErpQuote): ErpQuote {
   q.quote_files = [...(q.quote_files ?? [])]
@@ -1266,6 +1266,13 @@ export type QuoteSharePayload = {
   brand_logo_path?: string | null;
   brand_cert_image_paths?: unknown;
   brand_site_image_paths?: unknown;
+  assignee_name?: string | null;
+  assignee_title?: string | null;
+  assignee_phone?: string | null;
+  assignee_email?: string | null;
+  assignee_card_path?: string | null;
+  assignee_show_business_card?: boolean | null;
+  assigned_employee_id?: string | null;
   items: {
     trade_name: string;
     item_name: string | null;

@@ -180,7 +180,7 @@ export default function QuotePreviewModal({
             <div
               className={
                 variant === "print"
-                  ? "quote-preview-sheet mx-auto min-h-[297mm] max-w-[210mm] bg-white p-[12mm] shadow-sm"
+                  ? "quote-preview-sheet mx-auto w-[210mm] max-w-full"
                   : "quote-preview-sheet"
               }
             >

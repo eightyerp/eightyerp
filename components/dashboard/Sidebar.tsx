@@ -49,13 +49,14 @@ function buildNav(isAdmin: boolean): MenuItem[] {
     if (label === "시스템관리") {
       return {
         label: "시스템관리",
-        href: "/system/approvals",
+        href: isAdmin ? "/system/approvals" : "/system/employees",
         children: isAdmin
           ? [
               { label: "가입 승인 관리", href: "/system/approvals" },
               { label: "직원 초대 관리", href: "/system/invitations" },
+              { label: "직원 연락처·명함", href: "/system/employees" },
             ]
-          : undefined,
+          : [{ label: "내 연락처·명함", href: "/system/employees" }],
       };
     }
     return { label, href };
@@ -107,7 +108,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   }, []);
 
   const NAV = buildNav(isAdmin).filter((item) => {
-    if (item.label === "시스템관리") return isAdmin;
+    if (item.label === "시스템관리") {
+      // 관리자: 전체 / 일반: 내 연락처·명함만
+      return true;
+    }
     return true;
   });
 

@@ -15,9 +15,11 @@ export type QuoteCoverAmountSummary = {
 export type QuoteCoverContact = {
   assigneeName?: string | null;
   assigneeTitle?: string | null;
-  companyPhone?: string | null;
-  companyBusinessNumber?: string | null;
-  validUntil?: string | null;
+  assigneePhone?: string | null;
+  assigneeEmail?: string | null;
+  /** 명함 표시 + 이미지 URL이 있을 때만 카드 렌더 */
+  assigneeShowBusinessCard?: boolean | null;
+  assigneeCardImageUrl?: string | null;
 };
 
 type Props = {
@@ -37,34 +39,39 @@ type Props = {
 const PROJECT_PROCESS = [
   {
     step: "01",
-    title: "상담·현장 실측",
-    body: "고객 요청과 현장 조건을 확인합니다.",
+    title: "상담·현장진단",
+    body: "요구사항과 현장 상태 확인",
   },
   {
     step: "02",
-    title: "디자인·상세 견적",
-    body: "공사 범위와 디자인, 세부 금액을 협의합니다.",
+    title: "실측·맞춤견적",
+    body: "공사 범위와 금액 제안",
   },
   {
     step: "03",
-    title: "계약·일정 확정",
-    body: "계약 내용과 공사 일정을 최종 확인합니다.",
+    title: "계약·자재확정",
+    body: "디자인·제품·일정 확정",
   },
   {
     step: "04",
-    title: "자재·사양 승인",
-    body: "색상·마감재·제품 사양을 확정합니다.",
+    title: "공사준비",
+    body: "자재 발주와 공정 사전 점검",
   },
   {
     step: "05",
-    title: "시공·품질 관리",
-    body: "공정별 시공과 현장 품질을 관리합니다.",
+    title: "전문시공·검수",
+    body: "기준 시공 후 최종 품질 확인",
   },
   {
     step: "06",
-    title: "준공 검수·인도",
-    body: "고객 검수 후 인도하고 사후관리를 진행합니다.",
+    title: "완료검수·인계",
+    body: "고객 확인 후 최종 인계",
   },
+] as const;
+
+const COVER_CATCHPHRASE = [
+  "공간의 완성은, 에잇티.",
+  "보이는 디자인, 보이지 않는 품질.",
 ] as const;
 
 /** 에잇티(premium) 표지 전용 — 자체 신뢰 표시 (공식 기관 로고 아님) */
@@ -86,6 +93,12 @@ const EIGHTY_TRUST_MARKS = [
     eyebrow: "S",
     label: "창호 S등급 시공",
     Icon: IconShieldS,
+  },
+  {
+    key: "eighty-on",
+    eyebrow: "AFTER CARE",
+    label: "EIGHTY ON",
+    Icon: IconEightyOn,
   },
 ] as const;
 
@@ -197,6 +210,26 @@ function IconShieldS({ className }: { className?: string }) {
         d="M24 8l14 5v11c0 9-6 15-14 18-8-3-14-9-14-18V13l14-5Z"
         stroke="currentColor"
         strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconEightyOn({ className }: { className?: string }) {
+  // lucide-react Wrench path (패키지 미도입 — SVG만 재사용)
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
@@ -401,19 +434,31 @@ function EightyTrustMarks({ isPrint }: { isPrint: boolean }) {
 
       <ul
         className={`mt-2.5 grid gap-2 ${
-          isPrint ? "grid-cols-3" : "grid-cols-1 sm:grid-cols-3"
+          isPrint
+            ? "grid-cols-4"
+            : "grid-cols-2 sm:grid-cols-2 lg:grid-cols-4"
         }`}
       >
         {EIGHTY_TRUST_MARKS.map((mark) => (
           <li
             key={mark.key}
-            className="flex min-w-0 items-center gap-2.5 rounded-md border border-slate-300 bg-white px-2.5 py-2"
+            className={`flex min-w-0 items-center rounded-md border border-slate-300 bg-white ${
+              isPrint ? "gap-1.5 px-1.5 py-1.5" : "gap-2 px-2 py-2 sm:gap-2.5 sm:px-2.5"
+            }`}
           >
-            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center text-navy-900">
-              <mark.Icon className="h-10 w-10" />
+            <div
+              className={`relative flex shrink-0 items-center justify-center text-navy-900 ${
+                isPrint ? "h-8 w-8" : "h-9 w-9 sm:h-10 sm:w-10"
+              }`}
+            >
+              <mark.Icon
+                className={isPrint ? "h-8 w-8" : "h-9 w-9 sm:h-10 sm:w-10"}
+              />
               {mark.key === "grade-s" ? (
                 <span
-                  className="absolute inset-0 flex items-center justify-center pt-0.5 text-[15px] font-bold leading-none text-navy-900"
+                  className={`absolute inset-0 flex items-center justify-center pt-0.5 font-bold leading-none text-navy-900 ${
+                    isPrint ? "text-[12px]" : "text-[13px] sm:text-[15px]"
+                  }`}
                   aria-hidden="true"
                 >
                   S
@@ -518,53 +563,84 @@ function CoverHeader({
   );
 }
 
+function formatDisplayPhone(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10 && digits.startsWith("02")) {
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return raw;
+}
+
 function CoverContactFooter({
-  brand,
   contact,
   isPrint,
 }: {
-  brand: QuoteBrandProfile;
   contact?: QuoteCoverContact | null;
   isPrint: boolean;
 }) {
   const assigneeName = contact?.assigneeName?.trim() || "";
   const assigneeTitle = contact?.assigneeTitle?.trim() || "";
-  const assignee =
+  const assigneeLabel =
     assigneeName && assigneeTitle
       ? `${assigneeName} ${assigneeTitle}`
       : assigneeName || assigneeTitle;
-  const companyPhone =
-    contact?.companyPhone?.trim() || brand.phone?.trim() || "";
-  const bizNo = contact?.companyBusinessNumber?.trim() || "";
-  const validUntil = contact?.validUntil?.trim() || "";
+  const assigneePhone = formatDisplayPhone(contact?.assigneePhone ?? "");
+  const assigneeEmail = contact?.assigneeEmail?.trim() || "";
+  const showCard =
+    Boolean(contact?.assigneeShowBusinessCard) &&
+    Boolean(contact?.assigneeCardImageUrl?.trim());
+  const cardUrl = contact?.assigneeCardImageUrl?.trim() || "";
 
-  const hasAssignee = Boolean(assignee);
-  const hasCompanyMeta = Boolean(companyPhone || bizNo || validUntil);
-  if (!hasAssignee && !hasCompanyMeta && !brand.companyName) return null;
+  const hasAssigneeBlock = Boolean(
+    assigneeLabel || assigneePhone || assigneeEmail || showCard,
+  );
+  if (!hasAssigneeBlock) return null;
 
   return (
-    <footer
+    <div
       className={`border-t border-slate-200 pt-2 ${
         isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
       }`}
     >
-      {hasAssignee ? (
-        <p className="text-slate-800">
-          <span className="text-slate-500">담당자</span>
-          <span className="ml-2 font-semibold text-navy-900">{assignee}</span>
-        </p>
-      ) : null}
-      <div
-        className={`flex flex-wrap gap-x-4 gap-y-0.5 text-slate-600 ${
-          hasAssignee ? "mt-1" : ""
-        }`}
-      >
-        <span className="font-medium text-slate-800">{brand.companyName}</span>
-        {companyPhone ? <span>대표 {companyPhone}</span> : null}
-        {bizNo ? <span>사업자 {bizNo}</span> : null}
-        {validUntil ? <span>유효기간 {formatDate(validUntil)}</span> : null}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-0.5 text-slate-800">
+          {assigneeLabel ? (
+            <p>
+              <span className="text-slate-500">담당자</span>
+              <span className="ml-2 font-semibold text-navy-900">
+                {assigneeLabel}
+              </span>
+            </p>
+          ) : null}
+          {assigneePhone ? (
+            <p className="text-slate-700">
+              <span className="text-slate-500">M.</span> {assigneePhone}
+            </p>
+          ) : null}
+          {assigneeEmail ? (
+            <p className="text-slate-700">
+              <span className="text-slate-500">E.</span> {assigneeEmail}
+            </p>
+          ) : null}
+        </div>
+        {showCard ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={cardUrl}
+            alt="담당자 명함"
+            className="h-auto w-[55mm] max-h-[32mm] shrink-0 rounded border border-slate-200 object-contain"
+          />
+        ) : null}
       </div>
-    </footer>
+    </div>
   );
 }
 
@@ -587,8 +663,8 @@ export default function QuoteCoverPage({
     quoteNumberLabel?.trim() || quoteNumber?.trim() || "-";
 
   const shellClass = isPrint
-    ? "quote-cover-page box-border flex h-[297mm] w-[210mm] max-h-[297mm] flex-col overflow-hidden bg-white p-[11mm]"
-    : "quote-cover-page rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7";
+    ? "quote-cover-page box-border flex h-[279mm] w-[210mm] max-h-[279mm] flex-col overflow-hidden bg-white px-[11mm] pb-[12mm] pt-[11mm]"
+    : "quote-cover-page flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7";
 
   return (
     <section
@@ -640,6 +716,18 @@ export default function QuoteCoverPage({
             {siteTitle}
           </p>
 
+          {isPremium ? (
+            <p
+              className={`mt-2.5 text-center leading-snug text-navy-900 break-keep ${
+                isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
+              }`}
+            >
+              <span className="font-semibold">{COVER_CATCHPHRASE[0]}</span>
+              <br />
+              <span className="text-slate-600">{COVER_CATCHPHRASE[1]}</span>
+            </p>
+          ) : null}
+
           <dl
             className={`mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-y border-slate-200 py-2.5 ${
               isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
@@ -678,11 +766,7 @@ export default function QuoteCoverPage({
 
         {isPremium ? <EightyTrustMarks isPrint={isPrint} /> : null}
 
-        <CoverContactFooter
-          brand={brand}
-          contact={contact}
-          isPrint={isPrint}
-        />
+        <CoverContactFooter contact={contact} isPrint={isPrint} />
       </div>
     </section>
   );

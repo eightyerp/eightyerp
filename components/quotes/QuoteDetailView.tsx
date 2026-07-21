@@ -29,6 +29,7 @@ import {
   withQuoteCoverQuery,
   type QuoteDocumentModel,
 } from "@/lib/crm/quote-document";
+import { resolveQuoteAssigneeContact } from "@/lib/crm/quote-assignee-contact";
 import type {
   Employee,
   ErpQuote,
@@ -49,6 +50,8 @@ type QuoteDetailViewProps = {
   employees?: Employee[];
   /** 서버에서 1회 조회한 표지 브랜드 (미리보기 재조회 없음) */
   brand?: QuoteBrandProfile | null;
+  /** 담당자 명함 signed URL (서버에서 생성) */
+  assigneeCardImageUrl?: string | null;
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -78,6 +81,7 @@ export default function QuoteDetailView({
   signedUrls,
   employees = [],
   brand = null,
+  assigneeCardImageUrl = null,
 }: QuoteDetailViewProps) {
   const router = useRouter();
   const [toast, setToast] = useState<string | null>(null);
@@ -146,6 +150,11 @@ export default function QuoteDetailView({
   );
 
   /** 이미 로드된 quote / quote_items만 사용 — 미리보기용 추가 조회 없음 */
+  const assigneeContact = useMemo(
+    () => resolveQuoteAssigneeContact(quote),
+    [quote],
+  );
+
   const previewModel: QuoteDocumentModel = useMemo(
     () => ({
       customerName: quote.customers?.name ?? "",
@@ -167,8 +176,15 @@ export default function QuoteDetailView({
       customerTotalAmount: vatDisplay.customer_total_amount,
       brand,
       showCover: includeCover,
-      assigneeName: quote.employees?.name ?? null,
-      assigneeTitle: quote.employees?.title ?? null,
+      assigneeName: assigneeContact.name,
+      assigneeTitle: assigneeContact.title,
+      assigneePhone: assigneeContact.phone,
+      assigneeEmail: assigneeContact.email,
+      assigneeShowBusinessCard: assigneeContact.showBusinessCard,
+      assigneeCardImageUrl:
+        assigneeContact.showBusinessCard && assigneeContact.cardPath
+          ? assigneeCardImageUrl
+          : null,
       companyBusinessNumber: null,
       items: (quote.quote_items ?? []).map((item, index) => ({
         trade_name: item.trade_name,
@@ -186,7 +202,7 @@ export default function QuoteDetailView({
         sort_order: item.sort_order ?? index,
       })),
     }),
-    [quote, includeCover, brand, vatDisplay],
+    [quote, includeCover, brand, vatDisplay, assigneeContact, assigneeCardImageUrl],
   );
 
   const previewGuideMessage = buildQuoteGuideMessage({

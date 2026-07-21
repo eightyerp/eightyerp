@@ -188,6 +188,22 @@ export function formatEmployeeLabel(name: string, title: string): string {
   return `${name} ${title}`;
 }
 
+/** 견적 담당자 선택용 — 이름 · 직책 · 휴대전화 */
+export function formatEmployeeAssigneeOption(
+  employee: {
+    name: string;
+    title?: string | null;
+    phone?: string | null;
+  },
+): string {
+  const title = (employee.title ?? "").trim();
+  const phone = (employee.phone ?? "").trim();
+  const base = title
+    ? formatEmployeeLabel(employee.name, title)
+    : employee.name.trim();
+  return phone ? `${base} · ${phone}` : base;
+}
+
 export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "admin" || role === "super_admin";
 }

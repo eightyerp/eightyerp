@@ -8,6 +8,7 @@ import {
   createSignedQuoteFileUrl,
   getQuoteShareByToken,
 } from "@/lib/crm/quote-mgmt";
+import { createSignedEmployeeCardUrl } from "@/lib/crm/employee-contacts";
 import { normalizeQuoteVatMode, normalizeQuoteVatRate } from "@/lib/crm/quote-constants";
 import {
   buildQuoteSharePageTitle,
@@ -84,7 +85,21 @@ export default async function CustomerQuoteSharePage({
     (f) => f.file_type === "pdf" && signedUrls[f.id],
   );
 
-  const brand = resolveQuoteBrandFromShare(share);
+    const brand = resolveQuoteBrandFromShare(share);
+
+  let assigneeCardImageUrl: string | null = null;
+  const showCard = Boolean(share.assignee_show_business_card);
+  const cardPath = String(share.assignee_card_path ?? "").trim();
+  if (showCard && cardPath) {
+    try {
+      assigneeCardImageUrl = await createSignedEmployeeCardUrl(
+        cardPath,
+        60 * 60,
+      );
+    } catch {
+      assigneeCardImageUrl = null;
+    }
+  }
 
   const documentModel: QuoteDocumentModel = {
     customerName: share.customer_name,
@@ -112,6 +127,12 @@ export default async function CustomerQuoteSharePage({
     brand,
     showCover,
     companyBusinessNumber: share.company_business_number ?? null,
+    assigneeName: share.assignee_name ?? null,
+    assigneeTitle: share.assignee_title ?? null,
+    assigneePhone: share.assignee_phone ?? null,
+    assigneeEmail: share.assignee_email ?? null,
+    assigneeShowBusinessCard: showCard,
+    assigneeCardImageUrl,
     items: (share.items ?? []).map((item) => ({
       trade_name: item.trade_name,
       item_name: item.item_name,

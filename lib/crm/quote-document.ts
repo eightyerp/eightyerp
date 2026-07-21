@@ -52,9 +52,15 @@ export type QuoteDocumentModel = {
   showCover?: boolean;
   /** 회사별 표지 브랜드. 없으면 단순 표지 */
   brand?: import("@/lib/crm/quote-brand-shared").QuoteBrandProfile | null;
-  /** 표지 담당자·회사 연락 (실데이터만) */
+  /** 표지 담당자·회사 연락 (스냅샷 우선, 없으면 live fallback) */
   assigneeName?: string | null;
   assigneeTitle?: string | null;
+  assigneePhone?: string | null;
+  assigneeEmail?: string | null;
+  /** 명함 표시 여부 (스냅샷/fallback) */
+  assigneeShowBusinessCard?: boolean | null;
+  /** 서버에서 만든 명함 signed URL. path는 노출하지 않음 */
+  assigneeCardImageUrl?: string | null;
   companyBusinessNumber?: string | null;
 };
 

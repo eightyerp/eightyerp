@@ -9,7 +9,9 @@ import {
   updateQuoteAction,
   type QuoteActionResult,
 } from "@/app/actions/quote-mgmt";
-import { formatEmployeeLabel } from "@/lib/crm/constants";
+import { formatEmployeeAssigneeOption, formatEmployeeLabel } from "@/lib/crm/constants";
+import { resolveLiveEmployeeAssigneeContact } from "@/lib/crm/quote-assignee-contact";
+import { getEmployeeCardSignedUrlAction } from "@/app/actions/employee-contacts";
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
@@ -416,6 +418,41 @@ export default function QuoteWizardForm({
 
   const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
   const assignedEmployee = employees.find((e) => e.id === assignedEmployeeId);
+  const liveAssignee = useMemo(
+    () => resolveLiveEmployeeAssigneeContact(assignedEmployee),
+    [assignedEmployee],
+  );
+  const [fetchedCardUrl, setFetchedCardUrl] = useState<string | null>(null);
+  const [fetchedCardPath, setFetchedCardPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    const path = liveAssignee.cardPath;
+    if (!previewOpen || !liveAssignee.showBusinessCard || !path) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const url = await getEmployeeCardSignedUrlAction(path);
+      if (cancelled) return;
+      setFetchedCardUrl(url);
+      setFetchedCardPath(path);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    previewOpen,
+    liveAssignee.cardPath,
+    liveAssignee.showBusinessCard,
+  ]);
+
+  const assigneeCardImageUrl =
+    previewOpen &&
+    liveAssignee.showBusinessCard &&
+    liveAssignee.cardPath &&
+    fetchedCardPath === liveAssignee.cardPath
+      ? fetchedCardUrl
+      : null;
 
   function goNext() {
     if (step === 1 && !customerId) {
@@ -553,8 +590,15 @@ export default function QuoteWizardForm({
       vatRate: wizardVatRate,
       brand,
       showCover: includeCover,
-      assigneeName: assignedEmployee?.name ?? null,
-      assigneeTitle: assignedEmployee?.title ?? null,
+      assigneeName: liveAssignee.name,
+      assigneeTitle: liveAssignee.title,
+      assigneePhone: liveAssignee.phone,
+      assigneeEmail: liveAssignee.email,
+      assigneeShowBusinessCard: liveAssignee.showBusinessCard,
+      assigneeCardImageUrl:
+        liveAssignee.showBusinessCard && liveAssignee.cardPath
+          ? assigneeCardImageUrl
+          : null,
       items: savableItems.map((row, index) => {
         const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
         const amount =
@@ -609,8 +653,13 @@ export default function QuoteWizardForm({
       savableItems,
       brand,
       includeCover,
-      assignedEmployee?.name,
-      assignedEmployee?.title,
+      liveAssignee.name,
+      liveAssignee.title,
+      liveAssignee.phone,
+      liveAssignee.email,
+      liveAssignee.showBusinessCard,
+      liveAssignee.cardPath,
+      assigneeCardImageUrl,
     ],
   );
 
@@ -900,7 +949,7 @@ export default function QuoteWizardForm({
                   <option value="">미배정</option>
                   {employees.map((employee) => (
                     <option key={employee.id} value={employee.id}>
-                      {formatEmployeeLabel(employee.name, employee.title)}
+                      {formatEmployeeAssigneeOption(employee)}
                     </option>
                   ))}
                 </select>
