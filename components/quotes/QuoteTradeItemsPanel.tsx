@@ -1,11 +1,14 @@
 "use client";
 
 import { Fragment, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   QUOTE_COST_TYPES,
+  QUOTE_LINE_AMOUNT_WARN,
   QUOTE_UNITS,
   TRADE_SUGGESTIONS,
   canCostTypeHaveLx,
+  formatQuoteMoneyWon,
   normalizeQuoteCostType,
   quoteCostTypeLabel,
   type QuoteCostType,
@@ -18,6 +21,12 @@ import {
   moveTradeOrder,
   tradeKeyOf,
 } from "@/lib/crm/quote-trade-groups";
+import { LX_WINDOW_TRADE_NAME } from "@/lib/crm/lx-window-excel";
+
+const LxWindowExcelImportModal = dynamic(
+  () => import("@/components/quotes/LxWindowExcelImportModal"),
+  { ssr: false },
+);
 
 export type QuoteLineRow = {
   key: string;
@@ -50,6 +59,10 @@ type Props = {
   onRemoveExistingItem?: (itemId: string) => void;
   createRow: (partial?: Partial<QuoteLineRow>) => QuoteLineRow;
   isInterior?: boolean;
+  /** 창호 견적(quote_type===창호)일 때만 LX 엑셀 가져오기 표시 */
+  isWindowQuote?: boolean;
+  /** 프로모션 할인 → 특별할인 금액에 반영 (계산식 변경 아님) */
+  onApplyPromotionDiscount?: (amount: number, memo: string) => void;
 };
 
 function toNumber(value: string): number {
@@ -58,12 +71,26 @@ function toNumber(value: string): number {
 }
 
 function formatMoney(value: number): string {
-  return `${Math.max(0, Math.round(value)).toLocaleString("ko-KR")}원`;
+  return formatQuoteMoneyWon(value);
 }
 
 function formatComma(value: string | number): string {
   const n = typeof value === "number" ? value : toNumber(String(value));
   return Math.max(0, Math.round(n)).toLocaleString("ko-KR");
+}
+
+function digitsOnlyMoney(value: string): string {
+  return String(value ?? "").replace(/[^\d]/g, "");
+}
+
+function moneyHint(amount: number): string | null {
+  if (amount >= QUOTE_LINE_AMOUNT_WARN) {
+    return `확인: ${formatMoney(amount)} (원 단위)`;
+  }
+  if (amount > 0) {
+    return formatMoney(amount);
+  }
+  return null;
 }
 
 function rowAmount(row: QuoteLineRow): number {
@@ -112,6 +139,8 @@ export default function QuoteTradeItemsPanel({
   onRemoveExistingItem,
   createRow,
   isInterior = false,
+  isWindowQuote = false,
+  onApplyPromotionDiscount,
 }: Props) {
   const isSimple = quoteMode === "simple";
   const [customTrade, setCustomTrade] = useState("");
@@ -121,14 +150,37 @@ export default function QuoteTradeItemsPanel({
   /** 일괄 할인 등으로 강제 표시하는 행 오류 */
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const focusKeyRef = useRef<string | null>(null);
-
-  const groups = useMemo(
-    () =>
-      buildTradeGroups(items, tradeOrder, quoteMode, (row) =>
-        rowAmount(row),
-      ).filter((g) => g.items.some((row) => !row.isPlaceholder)),
-    [items, tradeOrder, quoteMode],
+  /** 상세견적 공종 접기 상태 */
+  const [collapsedTrades, setCollapsedTrades] = useState<Set<string>>(
+    () => new Set(),
   );
+  const [lxImportOpen, setLxImportOpen] = useState(false);
+
+  const showLxImport =
+    isWindowQuote && !isSimple && !isInterior;
+
+  function openLxImportForTrade(tradeLabel: string) {
+    if (tradeLabel !== LX_WINDOW_TRADE_NAME) return;
+    setLxImportOpen(true);
+  }
+
+  function toggleTradeCollapsed(label: string) {
+    setCollapsedTrades((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }
+
+  const groups = useMemo(() => {
+    const built = buildTradeGroups(items, tradeOrder, quoteMode, (row) =>
+      rowAmount(row),
+    );
+    // 상세견적: 빈 대표공종도 화면에 표시. 간편: 항목 있는 공종만.
+    if (!isSimple) return built;
+    return built.filter((g) => g.items.some((row) => !row.isPlaceholder));
+  }, [items, tradeOrder, quoteMode, isSimple]);
 
   const flatRows = useMemo(() => {
     const ordered = flattenItemsByTradeOrder(items, tradeOrder, quoteMode);
@@ -189,7 +241,12 @@ export default function QuoteTradeItemsPanel({
       }
       const label = tradeKeyOf(target, quoteMode);
       const stillHas = next.some((r) => tradeKeyOf(r, quoteMode) === label);
-      if (!stillHas) {
+      // 상세견적 대표공종은 항목이 없어도 화면에 유지 (출력에서만 제외)
+      if (
+        !stillHas &&
+        (isSimple ||
+          !(TRADE_SUGGESTIONS as readonly string[]).includes(label))
+      ) {
         onTradeOrderChange(tradeOrder.filter((t) => t !== label));
       }
       return next;
@@ -602,7 +659,7 @@ export default function QuoteTradeItemsPanel({
         <p className="text-sm text-red-600">{panelError}</p>
       ) : null}
 
-      {flatRows.length === 0 ? (
+      {flatRows.length === 0 && isSimple ? (
         <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
           {isInterior
             ? "공종 빠른 추가로 항목 행을 추가해 주세요."
@@ -616,7 +673,7 @@ export default function QuoteTradeItemsPanel({
                 <th className="w-10 px-2 py-2 text-center">선택</th>
                 <th className="px-3 py-2 font-medium">공종</th>
                 <th className="px-3 py-2 font-medium">항목내역</th>
-                <th className="px-3 py-2 text-right font-medium">금액</th>
+                <th className="px-3 py-2 text-right font-medium">금액(원)</th>
                 <th className="px-3 py-2 font-medium">LX/할인</th>
                 <th className="min-w-[140px] px-3 py-2 font-medium">
                   LX 할인 대상
@@ -695,11 +752,30 @@ export default function QuoteTradeItemsPanel({
                             <input
                               value={row.amount}
                               onChange={(e) =>
-                                updateRow(row.key, { amount: e.target.value })
+                                updateRow(row.key, {
+                                  amount: digitsOnlyMoney(e.target.value),
+                                })
                               }
                               inputMode="numeric"
-                              className={`${cellInputClass} text-right font-medium tabular-nums`}
+                              className={`${cellInputClass} text-right font-medium tabular-nums ${
+                                toNumber(row.amount) >= QUOTE_LINE_AMOUNT_WARN
+                                  ? "border-amber-300 bg-amber-50"
+                                  : ""
+                              }`}
+                              placeholder="원"
+                              title="원 단위 (예: 35000000)"
                             />
+                            {moneyHint(toNumber(row.amount)) ? (
+                              <p
+                                className={`mt-0.5 text-[10px] tabular-nums ${
+                                  toNumber(row.amount) >= QUOTE_LINE_AMOUNT_WARN
+                                    ? "text-amber-700"
+                                    : "text-slate-400"
+                                }`}
+                              >
+                                {moneyHint(toNumber(row.amount))}
+                              </p>
+                            ) : null}
                           </td>
                           <td className="px-3 py-2">
                             {renderLxDiscountControls(row, true)}
@@ -755,10 +831,10 @@ export default function QuoteTradeItemsPanel({
                   <th className="w-[64px] px-2 py-2 font-medium">수량</th>
                   <th className="w-[72px] px-2 py-2 font-medium">단위</th>
                   <th className="w-[96px] px-2 py-2 text-right font-medium">
-                    단가
+                    단가(원)
                   </th>
                   <th className="w-[96px] px-2 py-2 text-right font-medium">
-                    금액
+                    금액(원)
                   </th>
                   <th className="w-[72px] px-2 py-2 text-center font-medium">
                     LX
@@ -777,7 +853,96 @@ export default function QuoteTradeItemsPanel({
               <tbody>
                 {groups.map((group) => {
                   const rows = group.items.filter((r) => !r.isPlaceholder);
-                  return rows.map((row, idxInGroup) => {
+                  const collapsed = collapsedTrades.has(group.tradeLabel);
+                  const groupIndex = groups.findIndex(
+                    (g) => g.tradeLabel === group.tradeLabel,
+                  );
+                  return (
+                    <Fragment key={group.tradeLabel}>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <td colSpan={13} className="px-3 py-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleTradeCollapsed(group.tradeLabel)
+                              }
+                              className="flex min-w-0 items-center gap-2 text-left"
+                            >
+                              <span className="text-xs text-slate-500">
+                                {collapsed ? "▶" : "▼"}
+                              </span>
+                              <span className="text-sm font-bold text-navy-900">
+                                {group.tradeLabel}
+                              </span>
+                              <span className="text-xs font-semibold tabular-nums text-slate-700">
+                                소계 {formatMoney(group.subtotal)}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                {rows.length}항목
+                              </span>
+                            </button>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                aria-label={`${group.tradeLabel} 위로`}
+                                disabled={groupIndex <= 0}
+                                onClick={() =>
+                                  moveTrade(group.tradeLabel, "up")
+                                }
+                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`${group.tradeLabel} 아래로`}
+                                disabled={groupIndex >= groups.length - 1}
+                                onClick={() =>
+                                  moveTrade(group.tradeLabel, "down")
+                                }
+                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => addRowForTrade(group.tradeLabel)}
+                                className="rounded-md border border-gold-300 bg-gold-50 px-2.5 py-1 text-xs font-medium text-navy-800 hover:bg-gold-100"
+                              >
+                                + 항목 추가
+                              </button>
+                              {showLxImport &&
+                              group.tradeLabel === LX_WINDOW_TRADE_NAME ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openLxImportForTrade(group.tradeLabel)
+                                  }
+                                  className="rounded-md border border-navy-800/20 bg-white px-2.5 py-1 text-xs font-semibold text-navy-900 hover:bg-navy-50"
+                                >
+                                  LX 본사 엑셀 가져오기
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      {collapsed
+                        ? null
+                        : rows.length === 0
+                          ? (
+                              <tr className="border-b border-slate-100">
+                                <td
+                                  colSpan={13}
+                                  className="px-3 py-3 text-xs text-slate-400"
+                                >
+                                  세부항목이 없습니다. 위 ‘+ 항목 추가’로
+                                  입력하세요. (비어 있으면 출력에서 제외됩니다)
+                                </td>
+                              </tr>
+                            )
+                          : rows.map((row, idxInGroup) => {
                     const qty = toNumber(row.quantity);
                     const computedAmount =
                       qty > 0
@@ -910,27 +1075,58 @@ export default function QuoteTradeItemsPanel({
                             value={row.unit_price}
                             onChange={(e) =>
                               updateRow(row.key, {
-                                unit_price: e.target.value,
+                                unit_price: digitsOnlyMoney(e.target.value),
                               })
                             }
                             inputMode="numeric"
-                            className={`${cellInputClass} text-right tabular-nums`}
+                            className={`${cellInputClass} text-right tabular-nums ${
+                              toNumber(row.unit_price) >= QUOTE_LINE_AMOUNT_WARN
+                                ? "border-amber-300 bg-amber-50"
+                                : ""
+                            }`}
+                            placeholder="원"
+                            title="원 단위 단가"
                           />
+                          {moneyHint(toNumber(row.unit_price)) ? (
+                            <p
+                              className={`mt-0.5 text-[10px] tabular-nums ${
+                                toNumber(row.unit_price) >= QUOTE_LINE_AMOUNT_WARN
+                                  ? "text-amber-700"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {moneyHint(toNumber(row.unit_price))}
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2 align-top text-right">
                           {qty > 0 ? (
-                            <p className="rounded-md border border-transparent px-2 py-1.5 text-sm font-semibold tabular-nums text-slate-900">
-                              {formatComma(computedAmount)}
-                            </p>
+                            <div>
+                              <p
+                                className={`rounded-md border border-transparent px-2 py-1.5 text-sm font-semibold tabular-nums ${
+                                  computedAmount >= QUOTE_LINE_AMOUNT_WARN
+                                    ? "bg-amber-50 text-amber-900"
+                                    : "text-slate-900"
+                                }`}
+                              >
+                                {formatComma(computedAmount)}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-slate-400">
+                                수량×단가(원)
+                              </p>
+                            </div>
                           ) : (
                             <input
                               value={row.amount}
                               onChange={(e) =>
-                                updateRow(row.key, { amount: e.target.value })
+                                updateRow(row.key, {
+                                  amount: digitsOnlyMoney(e.target.value),
+                                })
                               }
                               inputMode="numeric"
                               className={`${cellInputClass} text-right font-medium tabular-nums`}
-                              title="수량 없을 때 금액 직접 입력"
+                              title="수량 없을 때 금액 직접 입력 (원)"
+                              placeholder="원"
                             />
                           )}
                         </td>
@@ -985,7 +1181,10 @@ export default function QuoteTradeItemsPanel({
                       </tr>
                     </Fragment>
                     );
-                  });
+                  })
+                        }
+                    </Fragment>
+                  );
                 })}
               </tbody>
             </table>
@@ -995,12 +1194,47 @@ export default function QuoteTradeItemsPanel({
           <div className="space-y-3 md:hidden">
             {groups.map((group) => {
               const rows = group.items.filter((r) => !r.isPlaceholder);
+              const collapsed = collapsedTrades.has(group.tradeLabel);
               return (
-                <div key={group.tradeLabel} className="space-y-2">
-                  <p className="border-b border-slate-200 pb-1 text-xs font-semibold text-navy-800">
-                    {group.tradeLabel} · 소계 {formatMoney(group.subtotal)}
-                  </p>
-                  {rows.map((row, idxInGroup) => {
+                <div
+                  key={group.tradeLabel}
+                  className="space-y-2 rounded-lg border border-slate-200 bg-white p-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleTradeCollapsed(group.tradeLabel)}
+                      className="flex items-center gap-1.5 text-left text-xs font-semibold text-navy-800"
+                    >
+                      <span>{collapsed ? "▶" : "▼"}</span>
+                      <span>
+                        {group.tradeLabel} · 소계 {formatMoney(group.subtotal)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addRowForTrade(group.tradeLabel)}
+                      className="rounded-md border border-gold-300 bg-gold-50 px-2 py-1 text-[11px] font-medium text-navy-800"
+                    >
+                      + 항목 추가
+                    </button>
+                    {showLxImport &&
+                    group.tradeLabel === LX_WINDOW_TRADE_NAME ? (
+                      <button
+                        type="button"
+                        onClick={() => openLxImportForTrade(group.tradeLabel)}
+                        className="rounded-md border border-navy-800/20 bg-white px-2 py-1 text-[11px] font-semibold text-navy-900"
+                      >
+                        LX 엑셀 가져오기
+                      </button>
+                    ) : null}
+                  </div>
+                  {collapsed ? null : rows.length === 0 ? (
+                    <p className="px-1 py-2 text-[11px] text-slate-400">
+                      세부항목 없음 (출력 제외)
+                    </p>
+                  ) : (
+                    rows.map((row, idxInGroup) => {
                     const qty = toNumber(row.quantity);
                     const computedAmount =
                       qty > 0
@@ -1091,14 +1325,27 @@ export default function QuoteTradeItemsPanel({
                               value={row.unit_price}
                               onChange={(e) =>
                                 updateRow(row.key, {
-                                  unit_price: e.target.value,
+                                  unit_price: digitsOnlyMoney(e.target.value),
                                 })
                               }
-                              placeholder="단가"
+                              placeholder="단가(원)"
                               inputMode="numeric"
                               className={`${cellInputClass} text-right`}
+                              title="원 단위 단가"
                             />
                           </div>
+                          {moneyHint(computedAmount) ? (
+                            <p
+                              className={`text-[11px] tabular-nums ${
+                                computedAmount >= QUOTE_LINE_AMOUNT_WARN
+                                  ? "text-amber-700"
+                                  : "text-slate-500"
+                              }`}
+                            >
+                              금액 {moneyHint(computedAmount)}
+                              {qty > 0 ? " · 수량×단가" : ""}
+                            </p>
+                          ) : null}
                           {renderLxDiscountControls(row, true)}
                           <div>
                             <p className="mb-1 text-[11px] font-medium text-slate-600">
@@ -1144,7 +1391,8 @@ export default function QuoteTradeItemsPanel({
                         </div>
                       </details>
                     );
-                  })}
+                  })
+                  )}
                 </div>
               );
             })}
@@ -1169,6 +1417,39 @@ export default function QuoteTradeItemsPanel({
           + 미분류 행 추가
         </button>
       )}
+
+      {lxImportOpen ? (
+        <LxWindowExcelImportModal
+          open={lxImportOpen}
+          onClose={() => setLxImportOpen(false)}
+          createRow={createRow}
+          onApply={({ rows: imported, promotionDiscount, promotionMemo }) => {
+            onItemsChange((prev) => {
+              // 빈 placeholder 창호 행이 있으면 뒤에 붙이고, 공종은 창호공사 유지
+              const withoutEmptyWindowPlaceholders = prev.filter((row) => {
+                if (row.trade_name !== LX_WINDOW_TRADE_NAME) return true;
+                if (!row.isPlaceholder) return true;
+                const empty =
+                  !row.item_name.trim() &&
+                  !row.description.trim() &&
+                  toNumber(row.amount) <= 0;
+                return !empty;
+              });
+              return [...withoutEmptyWindowPlaceholders, ...imported];
+            });
+            if (
+              promotionDiscount > 0 &&
+              typeof onApplyPromotionDiscount === "function"
+            ) {
+              onApplyPromotionDiscount(promotionDiscount, promotionMemo);
+            }
+            // 창호공사 공종이 tradeOrder에 없으면 추가
+            if (!tradeOrder.includes(LX_WINDOW_TRADE_NAME)) {
+              onTradeOrderChange([...tradeOrder, LX_WINDOW_TRADE_NAME]);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1177,5 +1458,21 @@ export function initialTradeOrderFromItems(
   items: QuoteLineRow[],
   quoteMode: QuoteMode,
 ): string[] {
-  return extractTradeOrder(items, quoteMode);
+  const fromItems = extractTradeOrder(items, quoteMode);
+  if (quoteMode !== "detailed") return fromItems;
+
+  // 상세견적: 대표공종을 기본 순서로 앞에 두고, 기존·커스텀 공종을 뒤에 유지
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const trade of TRADE_SUGGESTIONS) {
+    if (seen.has(trade)) continue;
+    seen.add(trade);
+    order.push(trade);
+  }
+  for (const trade of fromItems) {
+    if (seen.has(trade)) continue;
+    seen.add(trade);
+    order.push(trade);
+  }
+  return order;
 }

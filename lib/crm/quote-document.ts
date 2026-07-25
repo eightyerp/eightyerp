@@ -17,6 +17,8 @@ export type QuoteDocumentItem = {
   remark?: string | null;
   quantity?: number | null;
   unit?: string | null;
+  /** 단가(원). 표시용 — 계산 재실행 금지 */
+  unit_price?: number | null;
   amount: number;
   cost_type?: string | null;
   is_lx_material?: boolean | null;
@@ -40,6 +42,8 @@ export type QuoteDocumentModel = {
   issuedAt?: string | null;
   customerMessage?: string | null;
   discountAmount: number;
+  /** 특별할인 메모 (금액 있을 때만 출력 라벨에 반영) */
+  specialDiscountMemo?: string | null;
   lxDiscountRate: number;
   /** 회사/견적 VAT 입력 방식. null = legacy */
   vatMode?: QuoteVatMode | null;
@@ -91,6 +95,8 @@ export type QuoteDocumentViewModel = {
     /** 공종 소계의 합 = 항목 최종금액 합 (= total_amount - lx_discount_amount) */
     items_net_total: number;
     discount_amount: number;
+    /** 특별할인 메모 원문 (라벨 조합용) */
+    special_discount_memo: string | null;
     lx_discount_rate: number;
     lx_discount_amount: number;
     /** LX 할인 표시 라벨 (예: 10% · 110,000원) */
@@ -158,15 +164,26 @@ export function buildQuoteDocumentViewModel(
     model.quoteMode,
   );
 
-  const groups = grouped.map((g) => {
-    const groupLines = g.items as QuoteDocumentLine[];
-    return {
-      tradeLabel: g.tradeLabel,
-      lines: groupLines,
-      subtotal: groupLines.reduce((s, i) => s + i.netAmount, 0),
-      lxDiscount: groupLines.reduce((s, i) => s + i.lxDiscount, 0),
-    };
-  });
+  // 항목·금액이 없는 공종(예: 준비공사만 추가하고 미입력)은 합계표·상세·PDF에서 제외
+  const groups = grouped
+    .map((g) => {
+      const groupLines = (g.items as QuoteDocumentLine[]).filter((line) => {
+        const named = Boolean(
+          (line.item_name ?? "").trim() ||
+            (line.lineTitle &&
+              line.lineTitle !== "품목" &&
+              line.lineTitle !== "항목"),
+        );
+        return named || line.listAmount > 0 || line.netAmount > 0;
+      });
+      return {
+        tradeLabel: g.tradeLabel,
+        lines: groupLines,
+        subtotal: groupLines.reduce((s, i) => s + i.netAmount, 0),
+        lxDiscount: groupLines.reduce((s, i) => s + i.lxDiscount, 0),
+      };
+    })
+    .filter((g) => g.lines.length > 0);
 
   const items_net_total = groups.reduce((s, g) => s + g.subtotal, 0);
 
@@ -194,6 +211,10 @@ export function buildQuoteDocumentViewModel(
       total_amount: amounts.total_amount,
       items_net_total,
       discount_amount: amounts.discount_amount,
+      special_discount_memo: (() => {
+        const text = String(model.specialDiscountMemo ?? "").trim();
+        return text ? text.slice(0, 40) : null;
+      })(),
       lx_discount_rate: amounts.lx_discount_rate,
       lx_discount_amount: amounts.lx_discount_amount,
       lx_discount_label,
@@ -272,4 +293,27 @@ export function withQuoteCoverQuery(
     const join = url.includes("?") ? "&" : "?";
     return `${url}${join}cover=0`;
   }
+}
+
+/** 수량 표시: 불필요한 소수 0 제거 (1.00→1, 32.0→32, 1.5→1.5) */
+export function formatQuoteQuantityDisplay(
+  value: number | null | undefined,
+): string {
+  if (value == null || !Number.isFinite(Number(value))) return "-";
+  const n = Number(value);
+  const rounded = Math.round(n * 1000) / 1000;
+  if (Number.isInteger(rounded)) return String(rounded);
+  return String(rounded)
+    .replace(/(\.\d*?[1-9])0+$/, "$1")
+    .replace(/\.0+$/, "");
+}
+
+/** 고객용 특별할인 라벨. 메모 없으면 '특별할인' */
+export function formatSpecialDiscountLabel(
+  memo?: string | null,
+): string {
+  const text = String(memo ?? "").trim();
+  if (!text) return "특별할인";
+  const clipped = text.length > 40 ? `${text.slice(0, 40)}…` : text;
+  return `특별할인 (${clipped})`;
 }

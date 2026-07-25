@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SignupForm from "@/components/auth/SignupForm";
+import EightyLogo from "@/components/brand/EightyLogo";
 import { getCompanyEmployeeInvitation } from "@/lib/crm/company-employee-invitations";
 import { getSupabasePublicMeta } from "@/lib/supabase-env";
 
@@ -71,13 +72,13 @@ export default async function SignupPage({ searchParams }: Props) {
     <div className="login-gradient flex min-h-full flex-1 items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
       <div className="login-shell flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl lg:min-h-[560px] lg:flex-row">
         <section className="relative flex flex-col items-center justify-center px-8 py-12 text-center lg:w-5/12 lg:px-12 lg:py-16">
-          <div
-            className="brand-number select-none text-[7rem] font-bold leading-none tracking-tighter sm:text-[8rem] lg:text-[9rem]"
-            aria-hidden="true"
-          >
-            80
-          </div>
-          <div className="gold-line mt-4 h-px w-24" />
+          <EightyLogo
+            variant="white"
+            layout="full"
+            className="h-16 w-auto max-w-[240px] sm:h-[4.5rem] sm:max-w-[280px]"
+            title="EIGHTY"
+          />
+          <div className="gold-line mt-6 h-px w-24" />
           <h1 className="mt-6 text-2xl font-semibold tracking-[0.25em] text-gold-400 sm:text-3xl">
             EIGHTY ERP
           </h1>

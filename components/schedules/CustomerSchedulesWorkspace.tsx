@@ -176,6 +176,7 @@ export default function CustomerSchedulesWorkspace({
   const [completeRow, setCompleteRow] = useState<CustomerSchedule | null>(null);
   /** 서버 props와 동기화되는 로컬 목록 (부분 패치 금지, 전체 행 교체만) */
   const [schedules, setSchedules] = useState(initialSchedules);
+  const [schedulesSource, setSchedulesSource] = useState(initialSchedules);
   const [actionResetKey, setActionResetKey] = useState(0);
   const pendingKindRef = useRef<"create" | "update" | null>(null);
   const [moveDraft, setMoveDraft] = useState<{
@@ -201,18 +202,16 @@ export default function CustomerSchedulesWorkspace({
   const formState = editing ? updateState : createState;
   const formPending = editing ? updatePending : createPending;
 
-  useEffect(() => {
+  // props 변경 시 렌더 중 상태 조정 (React 권장 패턴 — useEffect sync 대체)
+  if (initialSchedules !== schedulesSource) {
+    setSchedulesSource(initialSchedules);
     setSchedules(initialSchedules);
-  }, [initialSchedules]);
+  }
 
-  /** 목록이 갱신되면 열린 상세도 동일 id의 완전한 행으로 동기화 */
-  useEffect(() => {
-    if (!detail) return;
-    const fresh = schedules.find((s) => s.id === detail.id);
-    if (fresh && fresh !== detail) {
-      setDetail(fresh);
-    }
-  }, [schedules, detail]);
+  /** 목록이 갱신되면 열린 상세는 동일 id의 최신 행으로 표시 (별도 sync effect 없음) */
+  const resolvedDetail = detail
+    ? (schedules.find((s) => s.id === detail.id) ?? detail)
+    : null;
 
   function upsertSchedule(row: CustomerSchedule) {
     setSchedules((prev) => {
@@ -738,21 +737,25 @@ export default function CustomerSchedulesWorkspace({
         />
       )}
 
-      {detail && (
+      {resolvedDetail && (
         <DetailModal
-          row={detail}
+          row={resolvedDetail}
           pending={quickPending}
-          canEdit={canEditCustomerSchedule(access, detail)}
+          canEdit={canEditCustomerSchedule(access, resolvedDetail)}
           onClose={() => setDetail(null)}
-          onEdit={() => openEdit(detail)}
+          onEdit={() => openEdit(resolvedDetail)}
           onComplete={() => {
-            setCompleteRow(detail);
+            setCompleteRow(resolvedDetail);
             setDetail(null);
           }}
-          onCancel={() => quickUpdate(detail, { status: "취소" })}
-          onPostpone={(newStartAt) => quickUpdate(detail, { status: "연기", start_at: newStartAt })}
-          onSetNextContact={(next) => quickUpdate(detail, { next_contact_at: next })}
-          onDelete={(reason) => handleDelete(detail, reason)}
+          onCancel={() => quickUpdate(resolvedDetail, { status: "취소" })}
+          onPostpone={(newStartAt) =>
+            quickUpdate(resolvedDetail, { status: "연기", start_at: newStartAt })
+          }
+          onSetNextContact={(next) =>
+            quickUpdate(resolvedDetail, { next_contact_at: next })
+          }
+          onDelete={(reason) => handleDelete(resolvedDetail, reason)}
         />
       )}
 

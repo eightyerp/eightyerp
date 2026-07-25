@@ -9,14 +9,11 @@ import {
   deleteQuoteAction,
   deleteQuoteFileAction,
   getQuoteFileSignedUrlAction,
-  markQuoteSentAction,
-  prepareQuoteSendAction,
   setContractQuoteAction,
   type QuoteActionResult,
 } from "@/app/actions/quote-mgmt";
 import { formatEmployeeLabel } from "@/lib/crm/constants";
 import {
-  buildQuoteGuideMessage,
   ERP_QUOTE_STATUS_BADGE,
   formatLxDiscountSummaryLabel,
   formatQuoteUnit,
@@ -25,10 +22,7 @@ import {
   resolveQuoteVatDisplayAmounts,
 } from "@/lib/crm/quote-constants";
 import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
-import {
-  withQuoteCoverQuery,
-  type QuoteDocumentModel,
-} from "@/lib/crm/quote-document";
+import type { QuoteDocumentModel } from "@/lib/crm/quote-document";
 import { resolveQuoteAssigneeContact } from "@/lib/crm/quote-assignee-contact";
 import type {
   Employee,
@@ -39,6 +33,11 @@ import type {
 
 const QuotePreviewModal = dynamic(
   () => import("@/components/quotes/QuotePreviewModal"),
+  { ssr: false },
+);
+
+const QuoteCustomerShareModal = dynamic(
+  () => import("@/components/quotes/QuoteCustomerShareModal"),
   { ssr: false },
 );
 
@@ -97,12 +96,7 @@ export default function QuoteDetailView({
   const [versionError, setVersionError] = useState<string | null>(null);
 
   const [sendModal, setSendModal] = useState(false);
-  const [sendPending, startSendTransition] = useTransition();
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [guideMessage, setGuideMessage] = useState<string | null>(null);
-  const [viewUrl, setViewUrl] = useState<string | null>(null);
   const [includeCover, setIncludeCover] = useState(true);
-  const [baseViewUrl, setBaseViewUrl] = useState<string | null>(null);
 
   const [contractPending, startContractTransition] = useTransition();
   const [showContractConfirm, setShowContractConfirm] = useState(false);
@@ -112,6 +106,7 @@ export default function QuoteDetailView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [autoPrintPreview, setAutoPrintPreview] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -168,6 +163,7 @@ export default function QuoteDetailView({
       issuedAt: quote.issued_at,
       customerMessage: quote.customer_message,
       discountAmount: Number(quote.discount_amount ?? 0),
+      specialDiscountMemo: quote.special_discount_memo ?? null,
       lxDiscountRate: Number(quote.lx_discount_rate ?? 0),
       vatMode: vatDisplay.vat_mode,
       vatRate: vatDisplay.vat_rate,
@@ -193,6 +189,7 @@ export default function QuoteDetailView({
         remark: item.remark,
         quantity: item.quantity,
         unit: item.unit,
+        unit_price: item.unit_price,
         amount: item.amount,
         cost_type: item.cost_type,
         is_lx_material: item.is_lx_material,
@@ -205,64 +202,8 @@ export default function QuoteDetailView({
     [quote, includeCover, brand, vatDisplay, assigneeContact, assigneeCardImageUrl],
   );
 
-  const previewGuideMessage = buildQuoteGuideMessage({
-    customerName: quote.customers?.name || "고객",
-    title: quote.title,
-    validUntil: quote.valid_until,
-    finalAmount: quote.final_amount,
-    customerMessage: quote.customer_message,
-    viewUrl,
-  });
-
-  function applyCoverToUrl(url: string | null, cover: boolean) {
-    if (!url) return null;
-    return withQuoteCoverQuery(url, cover);
-  }
-
-  function rebuildGuideForCover(url: string | null, cover: boolean) {
-    const nextUrl = applyCoverToUrl(url, cover);
-    setViewUrl(nextUrl);
-    setGuideMessage(
-      buildQuoteGuideMessage({
-        customerName: quote.customers?.name || "고객",
-        title: quote.title,
-        validUntil: quote.valid_until,
-        finalAmount: quote.final_amount,
-        customerMessage: quote.customer_message,
-        viewUrl: nextUrl,
-      }),
-    );
-  }
-
   function openSendModal() {
-    setSendError(null);
     setSendModal(true);
-    startSendTransition(async () => {
-      const fd = new FormData();
-      fd.set("quote_id", quote.id);
-      fd.set("origin", window.location.origin);
-      const result = await prepareQuoteSendAction(fd);
-      if (!result.success) {
-        setSendError(result.error || "발송 안내 준비에 실패했습니다.");
-        return;
-      }
-      const rawUrl = result.viewUrl || null;
-      setBaseViewUrl(rawUrl);
-      const nextUrl = applyCoverToUrl(rawUrl, includeCover);
-      setViewUrl(nextUrl);
-      setGuideMessage(
-        result.guideMessage
-          ? result.guideMessage.replace(rawUrl ?? "", nextUrl ?? "")
-          : buildQuoteGuideMessage({
-              customerName: quote.customers?.name || "고객",
-              title: quote.title,
-              validUntil: quote.valid_until,
-              finalAmount: quote.final_amount,
-              customerMessage: quote.customer_message,
-              viewUrl: nextUrl,
-            }),
-      );
-    });
   }
 
   async function openFile(file: ErpQuoteFile, mode: "preview" | "download") {
@@ -297,30 +238,6 @@ export default function QuoteDetailView({
       if (result && !result.success) {
         setVersionError(result.error || "새 버전 생성에 실패했습니다.");
       }
-    });
-  }
-
-  function handleMarkSent(formData: FormData) {
-    setSendError(null);
-    formData.set("origin", window.location.origin);
-    if (viewUrl) formData.set("view_url", viewUrl);
-    startSendTransition(async () => {
-      const result = await markQuoteSentAction(formData);
-      if (!result.success) {
-        setSendError(result.error || "발송 처리에 실패했습니다.");
-        return;
-      }
-      const rawUrl = result.viewUrl || baseViewUrl;
-      if (rawUrl) setBaseViewUrl(rawUrl);
-      const nextUrl = applyCoverToUrl(rawUrl, includeCover);
-      setViewUrl(nextUrl);
-      setGuideMessage(
-        result.guideMessage
-          ? result.guideMessage.replace(rawUrl ?? "", nextUrl ?? "")
-          : previewGuideMessage,
-      );
-      setToast(result.message || "발송완료로 처리되었습니다.");
-      router.refresh();
     });
   }
 
@@ -362,15 +279,6 @@ export default function QuoteDetailView({
         );
       }
     });
-  }
-
-  async function copyToClipboard(text: string, label: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setToast(`${label}이(가) 복사되었습니다.`);
-    } catch {
-      setToast("복사에 실패했습니다. 직접 선택해 복사해 주세요.");
-    }
   }
 
   const items = quote.quote_items ?? [];
@@ -487,6 +395,16 @@ export default function QuoteDetailView({
             </button>
             <button
               type="button"
+              onClick={() => {
+                setAutoPrintPreview(true);
+                setPreviewOpen(true);
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50"
+            >
+              인쇄·PDF 저장
+            </button>
+            <button
+              type="button"
               onClick={() => setVersionModal(true)}
               className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900 hover:bg-gold-100"
             >
@@ -497,7 +415,7 @@ export default function QuoteDetailView({
               onClick={openSendModal}
               className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800 hover:bg-sky-100"
             >
-              고객 발송
+              고객전송 링크
             </button>
             {!quote.is_contract_quote && (
               <button
@@ -989,114 +907,21 @@ export default function QuoteDetailView({
         </div>
       )}
 
-      {/* Send modal */}
-      {sendModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-            <h4 className="text-base font-semibold text-gray-900">
-              고객 발송
-            </h4>
-            <p className="mt-1 text-xs text-gray-500">
-              카카오톡/문자 등으로 직접 발송한 뒤, 아래 안내 문구를 복사해
-              전달하고 발송완료로 표시해 주세요.
-            </p>
-
-            <label className="mt-3 flex items-center gap-2 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={includeCover}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setIncludeCover(next);
-                  rebuildGuideForCover(baseViewUrl ?? viewUrl, next);
-                }}
-                className="h-3.5 w-3.5 rounded border-slate-300"
-              />
-              고객 링크에 회사소개 표지 포함
-            </label>
-
-            <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-500">안내 문구</p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    copyToClipboard(guideMessage ?? previewGuideMessage, "안내 문구")
-                  }
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-                >
-                  복사
-                </button>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
-                {guideMessage ?? previewGuideMessage}
-              </p>
-            </div>
-
-            {viewUrl && (
-              <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2">
-                <p className="truncate text-xs text-sky-800">{viewUrl}</p>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(viewUrl, "확인 링크")}
-                  className="shrink-0 rounded-md border border-sky-200 bg-white px-2 py-1 text-xs text-sky-700"
-                >
-                  링크 복사
-                </button>
-              </div>
-            )}
-
-            {quote.customers?.phone && (
-              <div className="mt-2 flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-                <p className="text-sm text-gray-600">
-                  고객 연락처: {quote.customers.phone}
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    copyToClipboard(quote.customers!.phone, "연락처")
-                  }
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
-                >
-                  복사
-                </button>
-              </div>
-            )}
-
-            <form action={handleMarkSent} className="mt-4 space-y-3">
-              <input type="hidden" name="quote_id" value={quote.id} />
-              <div>
-                <label className="mb-1 block text-xs text-gray-500">
-                  발송 비고 (선택)
-                </label>
-                <textarea
-                  name="note"
-                  rows={2}
-                  placeholder="예: 카카오톡으로 발송함"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
-                />
-              </div>
-              {sendError && <p className="text-sm text-red-600">{sendError}</p>}
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSendModal(false)}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600"
-                >
-                  닫기
-                </button>
-                <button
-                  type="submit"
-                  disabled={sendPending}
-                  className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
-                >
-                  {sendPending ? "처리 중..." : "발송완료로 표시"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <QuoteCustomerShareModal
+        key={sendModal ? `share-${quote.id}` : "share-closed"}
+        open={sendModal}
+        onClose={() => setSendModal(false)}
+        quoteId={quote.id}
+        customerName={quote.customers?.name || "고객"}
+        title={quote.title}
+        validUntil={quote.valid_until}
+        finalAmount={quote.final_amount}
+        customerMessage={quote.customer_message}
+        customerPhone={quote.customers?.phone ?? null}
+        showMarkSent
+        onToast={setToast}
+        onChanged={() => router.refresh()}
+      />
 
       {/* Contract confirm */}
       {showContractConfirm && (
@@ -1203,10 +1028,14 @@ export default function QuoteDetailView({
       {previewOpen ? (
         <QuotePreviewModal
           open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
+          onClose={() => {
+            setPreviewOpen(false);
+            setAutoPrintPreview(false);
+          }}
           model={previewModel}
           includeCover={includeCover}
           onIncludeCoverChange={setIncludeCover}
+          autoPrint={autoPrintPreview}
         />
       ) : null}
     </div>

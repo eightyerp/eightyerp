@@ -15,21 +15,30 @@ export function buildQuotePrintPages(showCover: boolean): QuotePrintPage[] {
   return pages;
 }
 
+export function formatQuotePageFooterCompany(
+  quoteNumber?: string | null,
+): string {
+  const num = String(quoteNumber ?? "").trim();
+  if (num) return `${QUOTE_PAGE_FOOTER_COMPANY} · 견적번호 ${num}`;
+  return QUOTE_PAGE_FOOTER_COMPANY;
+}
+
 export function QuotePageFooter({
   pageIndex,
   pageCount,
+  quoteNumber,
 }: {
   pageIndex: number;
   pageCount: number;
+  quoteNumber?: string | null;
 }) {
+  const company = formatQuotePageFooterCompany(quoteNumber);
+  const pages = `${pageIndex + 1} / ${pageCount}`;
+
   return (
     <div className="quote-print-page-footer" aria-hidden="true">
-      <span className="quote-print-page-footer-company">
-        {QUOTE_PAGE_FOOTER_COMPANY}
-      </span>
-      <span className="quote-print-page-footer-pages">
-        {`${pageIndex + 1} / ${pageCount}`}
-      </span>
+      <span className="quote-print-page-footer-company">{company}</span>
+      <span className="quote-print-page-footer-pages">{pages}</span>
     </div>
   );
 }

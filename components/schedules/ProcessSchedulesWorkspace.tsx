@@ -188,12 +188,7 @@ export default function ProcessSchedulesWorkspace({
   const formState = editing ? updateState : createState;
   const formPending = editing ? updatePending : createPending;
 
-  useEffect(() => {
-    if (!initialCreateOpen) return;
-    setEditing(null);
-    setForceSave(false);
-    setFormOpen(true);
-  }, [initialCreateOpen]);
+  // 폼 자동 오픈은 useState(initialCreateOpen) 초기값으로 처리 (editing/forceSave 기본값과 동일)
 
   useEffect(() => {
     if (!formState.success) return;

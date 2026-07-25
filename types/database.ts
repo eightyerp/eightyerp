@@ -457,6 +457,8 @@ export type CompanyQuoteVatInputMode = "exclusive" | "inclusive";
 
 export type ErpQuote = {
   id: string;
+  /** multi-tenant 스코프. RLS·공유 토큰 갱신 시 사용 */
+  company_id?: string;
   customer_id: string;
   project_id: string | null;
   quote_group_id: string;
@@ -512,6 +514,8 @@ export type ErpQuote = {
   customer_message: string | null;
   share_token?: string | null;
   memo: string | null;
+  /** 특별할인 메모. migration 42. 없으면 null */
+  special_discount_memo?: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -657,6 +661,83 @@ export type Project = {
   deleted_at: string | null;
   customers?: Pick<Customer, "id" | "name" | "phone"> | null;
   employees?: Pick<Employee, "id" | "name" | "title"> | null;
+};
+
+export type ContractStatus =
+  | "active"
+  | "cancelled"
+  | "draft"
+  | "confirmed"
+  | "amending"
+  | "adding"
+  | "terminated"
+  | "completed";
+
+export type ContractKind = "original" | "amendment" | "addition";
+export type ContractTerminationFault = "customer" | "company" | "mutual" | "other";
+
+export type Contract = {
+  id: string;
+  company_id: string;
+  customer_id: string;
+  quote_id: string | null;
+  project_id: string;
+  contract_number: string;
+  contract_date: string;
+  status: ContractStatus | string;
+  contract_kind: ContractKind | string;
+  root_contract_id: string | null;
+  parent_contract_id: string | null;
+  revision_seq: number;
+  title: string | null;
+  scope_summary: string | null;
+  work_start_date: string | null;
+  work_end_date: string | null;
+  change_reason: string | null;
+  supply_amount: number;
+  vat_amount: number;
+  discount_amount: number;
+  contract_amount: number;
+  previous_contract_amount: number | null;
+  delta_amount: number | null;
+  cumulative_contract_amount: number | null;
+  confirmed_at: string | null;
+  confirmed_by: string | null;
+  terminated_at: string | null;
+  termination_reason: string | null;
+  termination_fault: ContractTerminationFault | string | null;
+  penalty_amount: number;
+  received_amount: number;
+  progress_amount: number;
+  refund_amount: number;
+  outstanding_amount: number;
+  termination_memo: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
+  restore_reason: string | null;
+  items_snapshot: Record<string, unknown> | null;
+  assigned_employee_id: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  customers?: Pick<Customer, "id" | "name" | "phone" | "address"> | null;
+  projects?: Pick<Project, "id" | "name" | "address" | "status"> | null;
+  children?: Contract[];
+  contract_events?: ContractEvent[];
+};
+
+export type ContractEvent = {
+  id: string;
+  company_id: string;
+  contract_id: string;
+  root_contract_id: string | null;
+  event_type: string;
+  actor_id: string | null;
+  reason: string | null;
+  before_data: Record<string, unknown> | null;
+  after_data: Record<string, unknown> | null;
+  created_at: string;
 };
 
 export type MaterialCategory = {

@@ -166,7 +166,8 @@ export async function updateEmployeeContactProfile(input: {
   email: string | null;
   businessCardPath?: string | null;
   clearBusinessCard?: boolean;
-  showBusinessCardOnQuote: boolean;
+  /** null이면 기존 show_business_card_on_quote 유지 */
+  showBusinessCardOnQuote?: boolean | null;
 }): Promise<Employee> {
   await requireAuthenticatedAccess();
   const title = input.title.trim();
@@ -180,7 +181,10 @@ export async function updateEmployeeContactProfile(input: {
     p_email: input.email,
     p_business_card_path: input.businessCardPath ?? null,
     p_clear_business_card: Boolean(input.clearBusinessCard),
-    p_show_business_card_on_quote: input.showBusinessCardOnQuote,
+    p_show_business_card_on_quote:
+      input.showBusinessCardOnQuote === undefined
+        ? null
+        : input.showBusinessCardOnQuote,
   });
 
   if (error) {

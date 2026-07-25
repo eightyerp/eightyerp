@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import {
   createProjectAction,
@@ -48,6 +48,8 @@ export default function CreateSiteButton({
   variant = "header",
 }: Props) {
   const [open, setOpen] = useState(false);
+  /** 오류 후 사용자가 닫으면 숨김. 재제출/재오픈 시 해제 */
+  const [errorDismissed, setErrorDismissed] = useState(false);
   const [state, action, pending] = useActionState(createProjectAction, initial);
 
   const hasProject = Boolean(existingProjectId);
@@ -60,9 +62,7 @@ export default function CreateSiteButton({
     hasProject,
   });
 
-  useEffect(() => {
-    if (state.error) setOpen(true);
-  }, [state.error]);
+  const showModal = open || (Boolean(state.error) && !errorDismissed);
 
   if (hasProject && existingProjectId) {
     return (
@@ -90,14 +90,21 @@ export default function CreateSiteButton({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
+      <button
+        type="button"
+        onClick={() => {
+          setErrorDismissed(false);
+          setOpen(true);
+        }}
+        className={buttonClass}
+      >
         현장 생성
         {isAdmin && !isContract ? (
           <span className="ml-1 font-normal opacity-80">(테스트)</span>
         ) : null}
       </button>
 
-      {open && (
+      {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
             <h3 className="text-base font-semibold text-navy-900">현장 생성</h3>
@@ -105,7 +112,14 @@ export default function CreateSiteButton({
               계약 고객을 현장으로 전환합니다. 저장 후 공사 스케줄 화면으로 이동합니다.
             </p>
 
-            <form action={action} className="mt-4 grid gap-3 sm:grid-cols-2">
+            <form
+              action={action}
+              onSubmit={() => {
+                setErrorDismissed(false);
+                setOpen(true);
+              }}
+              className="mt-4 grid gap-3 sm:grid-cols-2"
+            >
               <input type="hidden" name="customer_id" value={customerId} />
 
               <div className="sm:col-span-2">
@@ -175,7 +189,10 @@ export default function CreateSiteButton({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    if (state.error) setErrorDismissed(true);
+                  }}
                   className="rounded-lg border px-4 py-2 text-sm"
                 >
                   닫기

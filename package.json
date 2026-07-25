@@ -8,14 +8,16 @@
     "start": "next start",
     "lint": "eslint",
     "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
-    "test:parse-inquiry": "npx --yes tsx scripts/test-parse-inquiry-run.ts"
+    "test:parse-inquiry": "npx --yes tsx scripts/test-parse-inquiry-run.ts",
+    "test:lx-window-excel": "npx --yes tsx scripts/test-lx-window-excel.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.6",
     "next": "16.2.10",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

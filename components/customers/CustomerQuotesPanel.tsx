@@ -10,7 +10,7 @@ import {
   type QuoteActionResult,
 } from "@/app/actions/quotes";
 import {
-  QUOTE_BRANDS,
+  quoteBrandSelectOptions,
   QUOTE_SEND_METHODS,
   QUOTE_STATUS_BADGE_CLASS,
   QUOTE_STATUSES,
@@ -595,10 +595,14 @@ function UploadForm({
         <Field label="브랜드">
           <select
             name="brand"
-            defaultValue={parent?.brand ?? "LX하우시스"}
+            defaultValue={
+              parent?.brand === "LX하우시스" || parent?.brand === "기타"
+                ? parent.brand
+                : "LX하우시스"
+            }
             className={inputClass}
           >
-            {QUOTE_BRANDS.map((brand) => (
+            {quoteBrandSelectOptions().map((brand) => (
               <option key={brand} value={brand}>
                 {brand}
               </option>

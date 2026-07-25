@@ -2,11 +2,10 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import QuoteA4PreviewFrame from "@/components/quotes/QuoteA4PreviewFrame";
 import QuoteDocumentView from "@/components/quotes/QuoteDocumentView";
-import {
-  buildQuotePdfFileName,
-  type QuoteDocumentModel,
-} from "@/lib/crm/quote-document";
+import { useQuotePrint } from "@/components/quotes/useQuotePrint";
+import type { QuoteDocumentModel } from "@/lib/crm/quote-document";
 
 type Props = {
   open: boolean;
@@ -15,6 +14,8 @@ type Props = {
   /** 부모(위저드)와 표지 포함 여부를 동기화 */
   includeCover?: boolean;
   onIncludeCoverChange?: (value: boolean) => void;
+  /** true면 모달 오픈 직후 브라우저 인쇄 실행 */
+  autoPrint?: boolean;
 };
 
 function subscribeNoop() {
@@ -31,53 +32,21 @@ export default function QuotePreviewModal({
   model,
   includeCover,
   onIncludeCoverChange,
+  autoPrint = false,
 }: Props) {
   const [variant, setVariant] = useState<"mobile" | "print">("print");
   const [localCover, setLocalCover] = useState(model.showCover !== false);
-  const [isPrinting, setIsPrinting] = useState(false);
   const isClient = useIsClient();
   const showCover = includeCover ?? localCover;
+  const { isPrinting, startPrint } = useQuotePrint(model.customerName);
 
   useEffect(() => {
-    if (!isPrinting) return;
-
-    const previousTitle = document.title;
-    document.title = buildQuotePdfFileName(model.customerName).replace(
-      /\.pdf$/i,
-      "",
-    );
-    document.body.setAttribute("data-quote-printing", "1");
-    document.documentElement.setAttribute("data-quote-printing", "1");
-
-    let finished = false;
-
-    function cleanup() {
-      if (finished) return;
-      finished = true;
-      document.body.removeAttribute("data-quote-printing");
-      document.documentElement.removeAttribute("data-quote-printing");
-      document.title = previousTitle;
-      setIsPrinting(false);
-    }
-
-    function onAfterPrint() {
-      cleanup();
-    }
-
-    window.addEventListener("afterprint", onAfterPrint);
-
+    if (!open || !autoPrint) return;
     const timer = window.setTimeout(() => {
-      window.print();
-    }, 80);
-
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", onAfterPrint);
-      document.body.removeAttribute("data-quote-printing");
-      document.documentElement.removeAttribute("data-quote-printing");
-      document.title = previousTitle;
-    };
-  }, [isPrinting, model.customerName]);
+      startPrint();
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [open, autoPrint, startPrint]);
 
   if (!open || !isClient) return null;
 
@@ -86,7 +55,6 @@ export default function QuotePreviewModal({
     showCover,
   };
 
-  /** 인쇄는 항상 A4 print variant만 사용 (모바일 미리보기 제외) */
   const printModel: QuoteDocumentModel = {
     ...model,
     showCover,
@@ -95,10 +63,6 @@ export default function QuotePreviewModal({
   function setShowCover(value: boolean) {
     if (onIncludeCoverChange) onIncludeCoverChange(value);
     else setLocalCover(value);
-  }
-
-  function handlePrint() {
-    setIsPrinting(true);
   }
 
   return createPortal(
@@ -156,11 +120,11 @@ export default function QuotePreviewModal({
               </div>
               <button
                 type="button"
-                onClick={handlePrint}
+                onClick={startPrint}
                 disabled={isPrinting}
                 className="rounded-lg bg-navy-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-navy-800 disabled:opacity-60"
               >
-                인쇄 / PDF 저장
+                {isPrinting ? "인쇄 준비 중…" : "인쇄·PDF 저장"}
               </button>
               <button
                 type="button"
@@ -177,30 +141,28 @@ export default function QuotePreviewModal({
               variant === "print" ? "bg-slate-100 p-4" : "bg-white"
             }`}
           >
-            <div
-              className={
-                variant === "print"
-                  ? "quote-preview-sheet mx-auto w-[210mm] max-w-full"
-                  : "quote-preview-sheet"
-              }
-            >
-              <QuoteDocumentView model={docModel} variant={variant} />
-            </div>
+            {variant === "print" ? (
+              <QuoteA4PreviewFrame>
+                <QuoteDocumentView model={docModel} variant="print" />
+              </QuoteA4PreviewFrame>
+            ) : (
+              <div className="quote-preview-sheet">
+                <QuoteDocumentView model={docModel} variant="mobile" />
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {isPrinting
-        ? (
-            <div data-quote-print-portal="" className="quote-print-portal">
-              <QuoteDocumentView
-                model={printModel}
-                variant="print"
-                className="quote-print-document"
-              />
-            </div>
-          )
-        : null}
+      {isPrinting ? (
+        <div data-quote-print-portal="" className="quote-print-portal">
+          <QuoteDocumentView
+            model={printModel}
+            variant="print"
+            className="quote-print-document"
+          />
+        </div>
+      ) : null}
     </>,
     document.body,
   );

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Node CJS sample helpers (require) — not app runtime
+    "scripts/**/*.cjs",
   ]),
 ]);
 

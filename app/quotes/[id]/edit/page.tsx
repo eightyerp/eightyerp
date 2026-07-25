@@ -18,10 +18,16 @@ type WizardCustomer = {
 
 type EditQuotePageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ saved?: string }>;
 };
 
-export default async function EditQuotePage({ params }: EditQuotePageProps) {
+export default async function EditQuotePage({
+  params,
+  searchParams,
+}: EditQuotePageProps) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const initialSaveNotice = sp.saved === "1";
 
   let quote: ErpQuote | null = null;
   let customers: WizardCustomer[] = [];
@@ -104,6 +110,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
             customers={customers}
             initialQuote={quote}
             brand={brand}
+            initialSaveNotice={initialSaveNotice}
           />
         )}
       </div>

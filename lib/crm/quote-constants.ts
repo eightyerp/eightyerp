@@ -22,24 +22,24 @@ export const ERP_QUOTE_STATUS_BADGE: Record<string, string> = {
   취소: "bg-slate-100 text-slate-500",
 };
 
-/** 창호·인테리어·기타 공통 공종 빠른 추가 목록 */
+/** 상세견적 기본 대표공종 (작성 화면 기본 표시·순서) */
 export const TRADE_SUGGESTIONS = [
-  "철거",
-  "설비",
-  "창호",
-  "목공",
-  "전기",
-  "타일",
-  "욕실",
-  "주방",
-  "필름",
-  "도배",
-  "바닥재",
-  "도어",
-  "중문",
-  "가구",
-  "조명",
-  "기타",
+  "준비공사",
+  "확장공사",
+  "철거공사",
+  "창호공사",
+  "설비공사",
+  "목공사",
+  "도어·중문공사",
+  "도장·필름공사",
+  "욕실공사",
+  "도배공사",
+  "바닥공사",
+  "타일공사",
+  "주방·가구공사",
+  "전기·조명공사",
+  "기타공사",
+  "공과잡비",
 ] as const;
 
 /** @deprecated TRADE_SUGGESTIONS 사용 */
@@ -107,6 +107,7 @@ export const QUOTE_UNITS = [
   { value: "식", label: "식" },
   { value: "m", label: "m" },
   { value: "세트", label: "세트" },
+  { value: "SET", label: "SET" },
   { value: "회", label: "회" },
 ] as const;
 
@@ -117,6 +118,162 @@ export function formatQuoteUnit(unit?: string | null): string {
   if (!raw) return "";
   const found = QUOTE_UNITS.find((u) => u.value === raw);
   return found ? found.label : raw;
+}
+
+/**
+ * 견적 금액은 항상 원(won) 정수.
+ * 만원 입력·×10000 변환은 하지 않는다. (경쟁사 UX와 같이 단위를 명시하고 상한으로 실수 방지)
+ */
+export const QUOTE_MONEY_UNIT_LABEL = "원";
+
+/** 항목 단가·금액 경고 (10억 원) — 저장은 허용, UI 경고 */
+export const QUOTE_LINE_AMOUNT_WARN = 1_000_000_000;
+/** 항목 단가·금액 거부 (100억 원) */
+export const QUOTE_LINE_AMOUNT_MAX = 10_000_000_000;
+/** 견적 총액 경고 (50억 원) */
+export const QUOTE_TOTAL_AMOUNT_WARN = 5_000_000_000;
+/** 견적 총액·최종·고객최종 거부 (1,000억 원) */
+export const QUOTE_TOTAL_AMOUNT_MAX = 100_000_000_000;
+
+export function parseQuoteMoneyInput(value: string | number | null | undefined): number {
+  const n = Number(String(value ?? "").replace(/,/g, "").trim() || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n));
+}
+
+export function formatQuoteMoneyWon(value: number | null | undefined): string {
+  const n = Math.max(0, Math.round(Number(value) || 0));
+  return `${n.toLocaleString("ko-KR")}${QUOTE_MONEY_UNIT_LABEL}`;
+}
+
+export type QuoteMoneyIssue = {
+  level: "warn" | "error";
+  code:
+    | "line_amount_high"
+    | "line_amount_max"
+    | "unit_price_high"
+    | "unit_price_max"
+    | "total_high"
+    | "total_max"
+    | "qty_unit_price_suspect"
+    | "header_items_mismatch";
+  message: string;
+};
+
+/** 저장 직전·화면 공통 금액 가드 (기존 정상 견적 수억~수십억 호환) */
+export function collectQuoteMoneyIssues(input: {
+  items: Array<{
+    item_name?: string | null;
+    trade_name?: string | null;
+    quantity?: number | null;
+    unit_price?: number | null;
+    amount: number;
+  }>;
+  totalAmount: number;
+  finalAmount?: number;
+  customerTotalAmount?: number;
+}): QuoteMoneyIssue[] {
+  const issues: QuoteMoneyIssue[] = [];
+  const total = Math.max(0, Math.round(Number(input.totalAmount) || 0));
+  const finalAmount =
+    input.finalAmount == null
+      ? null
+      : Math.max(0, Math.round(Number(input.finalAmount) || 0));
+  const customerTotal =
+    input.customerTotalAmount == null
+      ? null
+      : Math.max(0, Math.round(Number(input.customerTotalAmount) || 0));
+
+  input.items.forEach((row, index) => {
+    const label =
+      (row.item_name || row.trade_name || "").trim() || `항목 ${index + 1}`;
+    const amount = Math.max(0, Math.round(Number(row.amount) || 0));
+    const unitPrice = Math.max(0, Math.round(Number(row.unit_price) || 0));
+    const qty =
+      row.quantity == null || !Number.isFinite(Number(row.quantity))
+        ? null
+        : Number(row.quantity);
+
+    if (amount > QUOTE_LINE_AMOUNT_MAX) {
+      issues.push({
+        level: "error",
+        code: "line_amount_max",
+        message: `${label} 금액이 허용 한도(${formatQuoteMoneyWon(QUOTE_LINE_AMOUNT_MAX)})를 초과합니다. 원 단위로 다시 확인해 주세요.`,
+      });
+    } else if (amount >= QUOTE_LINE_AMOUNT_WARN) {
+      issues.push({
+        level: "warn",
+        code: "line_amount_high",
+        message: `${label} 금액이 ${formatQuoteMoneyWon(amount)}입니다. 만원 단위가 아닌 원 단위 입력인지 확인해 주세요.`,
+      });
+    }
+
+    if (unitPrice > QUOTE_LINE_AMOUNT_MAX) {
+      issues.push({
+        level: "error",
+        code: "unit_price_max",
+        message: `${label} 단가가 허용 한도를 초과합니다. 원 단위 단가인지 확인해 주세요.`,
+      });
+    } else if (unitPrice >= QUOTE_LINE_AMOUNT_WARN) {
+      issues.push({
+        level: "warn",
+        code: "unit_price_high",
+        message: `${label} 단가가 ${formatQuoteMoneyWon(unitPrice)}입니다. 항목 총액을 단가에 넣은 것은 아닌지 확인해 주세요.`,
+      });
+    }
+
+    if (
+      qty != null &&
+      qty >= 2 &&
+      unitPrice >= QUOTE_LINE_AMOUNT_WARN &&
+      amount === Math.round(qty * unitPrice)
+    ) {
+      issues.push({
+        level: "warn",
+        code: "qty_unit_price_suspect",
+        message: `${label}: 수량(${qty}) × 고액 단가로 금액이 커졌습니다. 단가에 총액을 넣고 수량을 올린 실수는 아닌지 확인해 주세요.`,
+      });
+    }
+  });
+
+  const itemsSum = input.items.reduce(
+    (sum, row) => sum + Math.max(0, Math.round(Number(row.amount) || 0)),
+    0,
+  );
+  if (input.items.length > 0 && total !== itemsSum) {
+    issues.push({
+      level: "error",
+      code: "header_items_mismatch",
+      message: `총견적금액(${formatQuoteMoneyWon(total)})과 품목 합계(${formatQuoteMoneyWon(itemsSum)})가 일치하지 않습니다. 저장 전 금액을 다시 계산해 주세요.`,
+    });
+  }
+
+  const peaks = [total, finalAmount ?? 0, customerTotal ?? 0];
+  const peak = Math.max(...peaks);
+  if (peak > QUOTE_TOTAL_AMOUNT_MAX) {
+    issues.push({
+      level: "error",
+      code: "total_max",
+      message: `견적 합계가 허용 한도(${formatQuoteMoneyWon(QUOTE_TOTAL_AMOUNT_MAX)})를 초과합니다. 원 단위 입력·수량·단가를 확인해 주세요.`,
+    });
+  } else if (peak >= QUOTE_TOTAL_AMOUNT_WARN) {
+    issues.push({
+      level: "warn",
+      code: "total_high",
+      message: `견적 합계가 ${formatQuoteMoneyWon(peak)}로 큽니다. 만원 단위 오입력 여부를 확인해 주세요.`,
+    });
+  }
+
+  return issues;
+}
+
+export function assertQuoteMoneyBounds(
+  input: Parameters<typeof collectQuoteMoneyIssues>[0],
+): void {
+  const errors = collectQuoteMoneyIssues(input).filter((i) => i.level === "error");
+  if (errors.length > 0) {
+    throw new Error(errors[0]!.message);
+  }
 }
 
 export const LX_DISCOUNT_TYPES = ["none", "rate", "fixed"] as const;

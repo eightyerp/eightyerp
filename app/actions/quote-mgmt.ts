@@ -6,8 +6,11 @@ import {
   createQuote,
   createQuoteVersion,
   createSignedQuoteFileUrl,
+  buildQuoteShareViewUrl,
   ensureQuoteShareToken,
   getQuoteById,
+  regenerateQuoteShareToken,
+  revokeQuoteShareToken,
   markQuoteSent,
   parseQuoteForm,
   parseQuoteItemsJson,
@@ -27,6 +30,10 @@ export type QuoteActionResult = {
   guideMessage?: string;
   signedUrl?: string;
   viewUrl?: string;
+  /** 신규 생성 직후 (클라이언트가 edit 경로로 전환) */
+  created?: boolean;
+  /** update 후 항목 ID 동기화 (JSON ErpQuoteItem[]) */
+  itemsSnapshotJson?: string;
 };
 
 function collectFiles(formData: FormData, key: string): File[] {
@@ -47,18 +54,68 @@ function revalidateQuotes(customerId?: string | null, quoteId?: string | null) {
   }
 }
 
-export async function createQuoteAction(
+function parseRemovedItemIds(formData: FormData): string[] {
+  try {
+    const raw = String(formData.get("removed_item_ids_json") ?? "[]");
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((x) => String(x ?? "").trim()).filter(Boolean);
+  } catch {
+    throw new Error("삭제 항목 형식이 올바르지 않습니다.");
+  }
+}
+
+function parseOriginalItemIds(formData: FormData): string[] {
+  try {
+    const raw = String(formData.get("original_item_ids_json") ?? "[]");
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((x) => String(x ?? "").trim()).filter(Boolean);
+  } catch {
+    throw new Error("기존 항목 ID 형식이 올바르지 않습니다.");
+  }
+}
+
+/**
+ * 견적 위저드 명시적 저장 — redirect 없음.
+ * quote_id 없으면 create(request_id 멱등), 있으면 update.
+ */
+export async function saveQuoteWizardAction(
   _prev: QuoteActionResult,
   formData: FormData,
 ): Promise<QuoteActionResult> {
   try {
+    const existingId = String(formData.get("quote_id") ?? "").trim();
     const form = parseQuoteForm(formData);
     const items = parseQuoteItemsJson(
       String(formData.get("items_json") ?? ""),
     );
+
+    if (existingId) {
+      const quote = await updateQuote({
+        id: existingId,
+        form,
+        items,
+        removedItemIds: parseRemovedItemIds(formData),
+        originalExistingItemIds: parseOriginalItemIds(formData),
+        files: collectFiles(formData, "files"),
+      });
+      revalidateQuotes(form.customer_id, quote.id);
+      return {
+        success: true,
+        message: "저장되었습니다",
+        quoteId: quote.id,
+        created: false,
+        itemsSnapshotJson: JSON.stringify(quote.quote_items ?? []),
+      };
+    }
+
     const requestId = String(formData.get("request_id") ?? "").trim();
-    // 서버에서 randomUUID fallback 금지 — 멱등성 무력화 방지
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        requestId,
+      )
+    ) {
       return {
         success: false,
         error:
@@ -73,65 +130,40 @@ export async function createQuoteAction(
     });
     const quoteId = quote.quote_id || quote.id;
     revalidateQuotes(form.customer_id, quoteId);
-    redirect(`/quotes/${quoteId}`);
+    return {
+      success: true,
+      message: "저장되었습니다",
+      quoteId,
+      created: true,
+    };
   } catch (error) {
-    if (typeof error === "object" && error && "digest" in error) throw error;
     return {
       success: false,
-      error: toQuoteSafeError(error, "견적 등록에 실패했습니다."),
+      error: toQuoteSafeError(error, "견적 저장에 실패했습니다."),
     };
   }
+}
+
+export async function createQuoteAction(
+  _prev: QuoteActionResult,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  const result = await saveQuoteWizardAction(_prev, formData);
+  if (result.success && result.quoteId) {
+    redirect(`/quotes/${result.quoteId}`);
+  }
+  return result;
 }
 
 export async function updateQuoteAction(
   _prev: QuoteActionResult,
   formData: FormData,
 ): Promise<QuoteActionResult> {
-  try {
-    const id = String(formData.get("quote_id") ?? "").trim();
-    if (!id) return { success: false, error: "견적 ID가 없습니다." };
-    const form = parseQuoteForm(formData);
-    const items = parseQuoteItemsJson(
-      String(formData.get("items_json") ?? ""),
-    );
-    let removedItemIds: string[] = [];
-    try {
-      const raw = String(formData.get("removed_item_ids_json") ?? "[]");
-      const parsed = JSON.parse(raw || "[]") as unknown;
-      if (Array.isArray(parsed)) {
-        removedItemIds = parsed.map((x) => String(x ?? "").trim()).filter(Boolean);
-      }
-    } catch {
-      throw new Error("삭제 항목 형식이 올바르지 않습니다.");
-    }
-    let originalExistingItemIds: string[] = [];
-    try {
-      const raw = String(formData.get("original_item_ids_json") ?? "[]");
-      const parsed = JSON.parse(raw || "[]") as unknown;
-      if (Array.isArray(parsed)) {
-        originalExistingItemIds = parsed
-          .map((x) => String(x ?? "").trim())
-          .filter(Boolean);
-      }
-    } catch {
-      throw new Error("기존 항목 ID 형식이 올바르지 않습니다.");
-    }
-    const quote = await updateQuote({
-      id,
-      form,
-      items,
-      removedItemIds,
-      originalExistingItemIds,
-      files: collectFiles(formData, "files"),
-    });
-    revalidateQuotes(form.customer_id, quote.id);
-    return { success: true, message: "견적이 수정되었습니다.", quoteId: id };
-  } catch (error) {
-    return {
-      success: false,
-      error: toQuoteSafeError(error, "견적 수정에 실패했습니다."),
-    };
+  const result = await saveQuoteWizardAction(_prev, formData);
+  if (result.success && !result.message) {
+    return { ...result, message: "견적이 수정되었습니다." };
   }
+  return result;
 }
 
 export async function createQuoteVersionAction(
@@ -186,11 +218,12 @@ export async function prepareQuoteSendAction(
 ): Promise<QuoteActionResult> {
   try {
     const id = String(formData.get("quote_id") ?? "").trim();
-    const origin = String(formData.get("origin") ?? "").trim().replace(/\/$/, "");
+    if (!id) return { success: false, error: "견적 ID가 없습니다." };
+    const origin = String(formData.get("origin") ?? "").trim();
     const quote = await getQuoteById(id);
     if (!quote) return { success: false, error: "견적을 찾을 수 없습니다." };
     const token = await ensureQuoteShareToken(id);
-    const viewUrl = `${origin || ""}/customer/quotes/${token}`;
+    const viewUrl = buildQuoteShareViewUrl(token, origin);
     const guideMessage = buildQuoteGuideMessage({
       customerName: quote.customers?.name || "고객",
       title: quote.title,
@@ -203,7 +236,65 @@ export async function prepareQuoteSendAction(
   } catch (error) {
     return {
       success: false,
-      error: toQuoteSafeError(error, "발송 안내 준비에 실패했습니다."),
+      error: toQuoteSafeError(error, "고객전송 링크 준비에 실패했습니다."),
+    };
+  }
+}
+
+export async function regenerateQuoteShareLinkAction(
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  try {
+    const id = String(formData.get("quote_id") ?? "").trim();
+    if (!id) return { success: false, error: "견적 ID가 없습니다." };
+    const origin = String(formData.get("origin") ?? "").trim();
+    const token = await regenerateQuoteShareToken(id);
+    const viewUrl = buildQuoteShareViewUrl(token, origin);
+    const quote = await getQuoteById(id);
+    revalidateQuotes(quote?.customer_id, id);
+    return {
+      success: true,
+      message: "새 고객전송 링크가 발급되었습니다. 이전 링크는 사용할 수 없습니다.",
+      viewUrl,
+      quoteId: id,
+      guideMessage: quote
+        ? buildQuoteGuideMessage({
+            customerName: quote.customers?.name || "고객",
+            title: quote.title,
+            validUntil: quote.valid_until,
+            finalAmount: quote.final_amount,
+            viewUrl,
+            customerMessage: quote.customer_message,
+          })
+        : undefined,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: toQuoteSafeError(error, "링크 재발급에 실패했습니다."),
+    };
+  }
+}
+
+export async function revokeQuoteShareLinkAction(
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  try {
+    const id = String(formData.get("quote_id") ?? "").trim();
+    if (!id) return { success: false, error: "견적 ID가 없습니다." };
+    const quote = await getQuoteById(id);
+    await revokeQuoteShareToken(id);
+    revalidateQuotes(quote?.customer_id, id);
+    return {
+      success: true,
+      message: "고객전송 링크가 비활성화되었습니다.",
+      quoteId: id,
+      viewUrl: undefined,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: toQuoteSafeError(error, "링크 비활성화에 실패했습니다."),
     };
   }
 }
@@ -214,11 +305,10 @@ export async function markQuoteSentAction(
   try {
     const id = String(formData.get("quote_id") ?? "").trim();
     const note = String(formData.get("note") ?? "").trim();
-    const origin = String(formData.get("origin") ?? "").trim().replace(/\/$/, "");
+    const origin = String(formData.get("origin") ?? "").trim();
     const token = await ensureQuoteShareToken(id);
     const fromForm = String(formData.get("view_url") ?? "").trim();
-    const viewUrl =
-      fromForm || (origin ? `${origin}/customer/quotes/${token}` : null);
+    const viewUrl = fromForm || buildQuoteShareViewUrl(token, origin);
     const { quote, guideMessage, viewUrl: resolved } = await markQuoteSent({
       id,
       note: note || null,

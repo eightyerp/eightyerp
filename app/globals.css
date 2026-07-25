@@ -116,6 +116,61 @@ body {
   display: inline-block;
 }
 
+/*
+ * A4 본문 페이지 공통 박스 (측정 offscreen 포함).
+ * 상·좌우 15mm.
+ * 하단 25mm = 푸터(하단 8mm+6mm) + 본문·푸터 사이 안전간격 11mm.
+ * 실제 분할 한도는 QuotePrintBodyPager 의 FOOTER_ZONE_MM 과 동일 기준.
+ */
+.quote-body-page,
+.quote-body-page--measure {
+  position: relative;
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
+  max-height: 297mm;
+  margin: 0;
+  padding: 15mm 15mm 25mm;
+  overflow: hidden;
+}
+
+.quote-body-page-inner {
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.quote-print-page-footer {
+  position: absolute;
+  left: 15mm;
+  right: 15mm;
+  bottom: 8mm;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 6mm;
+  margin: 0;
+  pointer-events: none;
+  font-size: 9px;
+  line-height: 1.2;
+  color: #475569;
+}
+
+.quote-print-page-footer-company {
+  grid-column: 2;
+  justify-self: center;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.quote-print-page-footer-pages {
+  grid-column: 3;
+  justify-self: end;
+  white-space: nowrap;
+}
+
 @media print {
   @page {
     size: A4 portrait;
@@ -174,7 +229,7 @@ body {
 
   /*
    * 각 논리 페이지 = 물리 A4 1장 (210×297mm).
-   * 페이지 높이를 calc()로 줄이지 않음 → shrink-to-fit / 하단 과대 여백 방지.
+   * 마지막 페이지를 제외하고 page-break-after.
    */
   .quote-print-cover-wrap,
   .quote-body-page {
@@ -185,7 +240,6 @@ body {
     min-height: 297mm !important;
     max-height: 297mm !important;
     margin: 0 !important;
-    padding: 0 !important;
     overflow: hidden !important;
     transform: none !important;
     break-after: page;
@@ -194,52 +248,27 @@ body {
     page-break-inside: avoid;
   }
 
+  .quote-print-cover-wrap {
+    padding: 0 !important;
+  }
+
+  .quote-body-page {
+    padding: 15mm 15mm 25mm !important;
+  }
+
   .quote-print-root > .quote-body-page:last-child {
     break-after: auto;
     page-break-after: auto;
   }
 
-  /*
-   * 푸터: 페이지 박스 상단 기준 top 고정.
-   * 용지 하단 8mm = 297mm - 6mm(높이) - 8mm → top: 283mm.
-   */
   .quote-print-page-footer {
-    position: absolute !important;
-    left: 12mm !important;
-    right: 12mm !important;
-    top: 283mm !important;
-    bottom: auto !important;
-    z-index: 50;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    height: 6mm !important;
-    margin: 0 !important;
-    pointer-events: none;
-    font-size: 9px;
-    line-height: 1.2;
-    color: #475569;
+    left: 15mm !important;
+    right: 15mm !important;
+    top: auto !important;
+    bottom: 8mm !important;
     transform: none !important;
   }
 
-  .quote-print-page-footer-company {
-    grid-column: 2;
-    justify-self: center;
-    font-weight: 600;
-    color: #0f172a;
-    white-space: nowrap;
-  }
-
-  .quote-print-page-footer-pages {
-    grid-column: 3;
-    justify-self: end;
-    white-space: nowrap;
-  }
-
-  /*
-   * 표지: Tailwind h-[279mm] 이 하단 18mm 공백을 만들어 상·하 불균형 유발.
-   * 푸터 안전영역(~14mm)만 남기고 표지 셸을 채움. 내부 패딩·명함 구조는 유지.
-   */
   .quote-print-has-cover .quote-cover-page {
     box-sizing: border-box !important;
     width: 210mm !important;
@@ -262,28 +291,37 @@ body {
     print-color-adjust: exact !important;
   }
 
-  /*
-   * 본문: 상·하 균형 여백 (상 12mm / 하 14mm 푸터 안전).
-   * 페이지 높이 297mm 유지, padding 은 border-box 내부에서만 소비.
-   */
-  .quote-body-page {
-    padding: 12mm 12mm 14mm !important;
-  }
-
-  .quote-body-page-inner {
-    box-sizing: border-box;
-    min-height: 0;
-  }
-
-  .quote-print-group-title {
+  .quote-print-group-title,
+  .quote-print-continuation {
     break-after: avoid;
     page-break-after: avoid;
   }
 
   .quote-print-line,
-  .quote-print-totals {
+  .quote-print-totals,
+  .quote-print-block,
+  .quote-detail-line-group,
+  .quote-detail-line-card {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .quote-detail-lines-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse;
+  }
+
+  .quote-detail-lines-thead {
+    display: table-header-group;
+  }
+
+  .quote-detail-mobile-cards {
+    display: none !important;
+  }
+
+  .quote-detail-print-tables {
+    display: block !important;
   }
 
   .quote-print-root table {
@@ -309,7 +347,7 @@ body {
   }
 }
 
-/* A4 화면 미리보기: 페이지별 용지 하단 푸터 (인쇄와 동일 JSX 번호) */
+/* A4 화면 미리보기 (내부 미리보기 · 고객전송 링크 공통) */
 @media screen {
   .quote-preview-sheet .quote-print-root {
     display: flex;
@@ -323,48 +361,35 @@ body {
     position: relative;
     box-sizing: border-box;
     width: 210mm;
+    height: 297mm;
     min-height: 297mm;
+    max-height: 297mm;
     margin: 0 auto;
-    padding: 12mm 12mm 14mm;
+    overflow: hidden;
     background: #fff;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
   }
 
-  .quote-preview-sheet .quote-print-has-cover .quote-cover-page {
-    width: 100%;
-    height: auto;
-    min-height: calc(297mm - 26mm);
-    max-height: none;
+  .quote-preview-sheet .quote-print-cover-wrap {
     padding: 0;
   }
 
+  .quote-preview-sheet .quote-body-page {
+    padding: 15mm 15mm 25mm;
+  }
+
+  .quote-preview-sheet .quote-print-has-cover .quote-cover-page {
+    width: 100%;
+    height: 283mm;
+    min-height: 283mm;
+    max-height: 283mm;
+    padding: 0;
+    overflow: hidden;
+  }
+
   .quote-preview-sheet .quote-print-page-footer {
-    position: absolute;
-    left: 12mm;
-    right: 12mm;
+    left: 15mm;
+    right: 15mm;
     bottom: 8mm;
-    z-index: 5;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    height: 6mm;
-    pointer-events: none;
-    font-size: 9px;
-    line-height: 1.2;
-    color: #475569;
-  }
-
-  .quote-preview-sheet .quote-print-page-footer-company {
-    grid-column: 2;
-    justify-self: center;
-    font-weight: 600;
-    color: #0f172a;
-    white-space: nowrap;
-  }
-
-  .quote-preview-sheet .quote-print-page-footer-pages {
-    grid-column: 3;
-    justify-self: end;
-    white-space: nowrap;
   }
 }

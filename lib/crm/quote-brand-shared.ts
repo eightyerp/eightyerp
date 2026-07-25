@@ -22,6 +22,8 @@ export type QuoteBrandProfile = {
   certImages: QuoteBrandImage[];
   siteImages: QuoteBrandImage[];
   coverStyle: "premium" | "simple";
+  /** 에잇티 기본 마크(SVG) 사용 여부 — 다른 회사·커스텀 업로드와 분리 */
+  useEightyMark?: boolean;
 };
 
 export type CompanyBrandRow = {
@@ -38,15 +40,36 @@ export type CompanyBrandRow = {
   brand_site_image_paths?: unknown;
 };
 
-/** 표지 전용 최적화 로고 (원본 PWA 아이콘은 유지) */
+/** 에잇티 기본 로고 센티널 — CoverHeader에서 EightyLogo SVG로 렌더 */
+export const EIGHTY_LOGO_MARK_SRC = "eighty:mark" as const;
+
+export function isEightyMarkSrc(src: string | null | undefined): boolean {
+  return String(src ?? "").trim() === EIGHTY_LOGO_MARK_SRC;
+}
+
+/** 에잇티 기본 로고 — 센티널 src (렌더 시 EightyLogo SVG) */
 const EIGHTY_LOGO: QuoteBrandImage = {
-  src: "/pwa/eighty-logo-96.webp",
-  alt: "에잇티 로고",
-  width: 96,
-  height: 96,
+  src: EIGHTY_LOGO_MARK_SRC,
+  alt: "EIGHTY",
+  width: 260,
+  height: 58,
 };
 
 const EIGHTY_BUSINESS_NUMBER = "5328102974";
+
+export function isEightyCompanyBrand(
+  row: Pick<
+    CompanyBrandRow,
+    "brand_preset" | "business_number_normalized"
+  > | null | undefined,
+): boolean {
+  if (!row) return false;
+  const preset = (row.brand_preset ?? "").trim();
+  return (
+    preset === "eighty" ||
+    row.business_number_normalized === EIGHTY_BUSINESS_NUMBER
+  );
+}
 
 const EIGHTY_ADVANTAGES = [
   "LX 전국 최우수대리점",
@@ -112,6 +135,7 @@ export function buildEightyQuoteBrand(
     certImages: [],
     siteImages: [],
     coverStyle: "premium",
+    useEightyMark: true,
   };
 }
 
@@ -124,9 +148,7 @@ export function resolveQuoteBrandFromCompany(
 
   const name = row.name.trim();
   const preset = (row.brand_preset ?? "").trim();
-  const isEightySeed =
-    preset === "eighty" ||
-    row.business_number_normalized === EIGHTY_BUSINESS_NUMBER;
+  const isEightySeed = isEightyCompanyBrand(row);
 
   const customAdvantages = parseStringList(row.brand_advantages);
   const hasCustomCopy = Boolean(
@@ -171,7 +193,9 @@ export function resolveQuoteBrandFromCompany(
       ...eighty,
       phone: row.brand_phone?.trim() || eighty.phone,
       trustLine: row.brand_trust_line?.trim() || eighty.trustLine,
+      // 커스텀 업로드가 있을 때만 이미지 — 없으면 에잇티 SVG 마크
       logo: logo ?? eighty.logo,
+      useEightyMark: !logo,
     };
   }
 

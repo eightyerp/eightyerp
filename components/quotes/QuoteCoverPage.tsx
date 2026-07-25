@@ -1,9 +1,17 @@
-import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
+import EightyLogo from "@/components/brand/EightyLogo";
+import QuoteAssigneeContactBlock from "@/components/quotes/QuoteAssigneeContactBlock";
+import {
+  isEightyMarkSrc,
+  type QuoteBrandProfile,
+} from "@/lib/crm/quote-brand-shared";
 import type { QuoteVatMode } from "@/lib/crm/quote-constants";
+import { formatSpecialDiscountLabel } from "@/lib/crm/quote-document";
 
 export type QuoteCoverAmountSummary = {
   totalAmount: number;
   discountAmount: number;
+  /** 특별할인 메모 (금액>0일 때만 라벨에 사용) */
+  specialDiscountMemo?: string | null;
   lxDiscountAmount: number;
   supplyAmount: number;
   vatAmount: number;
@@ -17,8 +25,9 @@ export type QuoteCoverContact = {
   assigneeTitle?: string | null;
   assigneePhone?: string | null;
   assigneeEmail?: string | null;
-  /** 명함 표시 + 이미지 URL이 있을 때만 카드 렌더 */
+  /** @deprecated 명함 UI 제거 — 데이터 필드는 호환용으로만 유지 */
   assigneeShowBusinessCard?: boolean | null;
+  /** @deprecated 명함 UI 제거 — 데이터 필드는 호환용으로만 유지 */
   assigneeCardImageUrl?: string | null;
 };
 
@@ -34,6 +43,8 @@ type Props = {
   /** 공통 뷰모델 totals 기반 표지 금액 요약 */
   amountSummary?: QuoteCoverAmountSummary | null;
   contact?: QuoteCoverContact | null;
+  /** 견적유형 — 창호일 때 공사 절차 대신 체크·주의사항 표시 */
+  quoteType?: string | null;
 };
 
 const PROJECT_PROCESS = [
@@ -91,7 +102,9 @@ const EIGHTY_TRUST_MARKS = [
   {
     key: "grade-s",
     eyebrow: "S",
-    label: "창호 S등급 시공",
+    /** 고객용 메인 문구 — 내부 S등급 인증 근거는 보조로 유지 */
+    label: "프리미엄 시공관리",
+    sublabel: "LX 본사 인증 S등급 시공사",
     Icon: IconShieldS,
   },
   {
@@ -281,20 +294,14 @@ function AmountSummaryCard({
       </div>
 
       <dl className={`space-y-1.5 px-3.5 py-2.5 ${isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"}`}>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-slate-500">공급가액</dt>
-          <dd className="font-semibold tabular-nums text-slate-900">
-            {formatWon(summary.supplyAmount)}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-slate-500">
-            부가세{vatRateLabel ? ` (${vatRateLabel})` : ""}
-          </dt>
-          <dd className="font-semibold tabular-nums text-slate-900">
-            {formatWon(summary.vatAmount)}
-          </dd>
-        </div>
+        {summary.totalAmount > 0 ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-slate-500">견적 합계</dt>
+            <dd className="font-semibold tabular-nums text-slate-900">
+              {formatWon(summary.totalAmount)}
+            </dd>
+          </div>
+        ) : null}
         {showLx ? (
           <div className="flex items-baseline justify-between gap-3">
             <dt className="text-slate-500">LX 자재 할인</dt>
@@ -305,8 +312,13 @@ function AmountSummaryCard({
         ) : null}
         {showDiscount ? (
           <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-slate-500">특별할인</dt>
-            <dd className="font-semibold tabular-nums text-rose-600">
+            <dt
+              className="min-w-0 flex-1 truncate text-slate-500"
+              title={formatSpecialDiscountLabel(summary.specialDiscountMemo)}
+            >
+              {formatSpecialDiscountLabel(summary.specialDiscountMemo)}
+            </dt>
+            <dd className="shrink-0 font-semibold tabular-nums text-rose-600">
               {formatDiscountWon(summary.discountAmount)}
             </dd>
           </div>
@@ -341,7 +353,111 @@ function AmountSummaryCard({
           {formatWon(summary.customerTotalAmount)}
         </p>
       </div>
+
+      <dl
+        className={`space-y-1 border-t border-slate-200/80 px-3.5 py-2 ${
+          isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
+        }`}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-slate-500">공급가액</dt>
+          <dd className="font-medium tabular-nums text-slate-800">
+            {formatWon(summary.supplyAmount)}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-slate-500">
+            부가세{vatRateLabel ? ` (${vatRateLabel})` : ""}
+          </dt>
+          <dd className="font-medium tabular-nums text-slate-800">
+            {formatWon(summary.vatAmount)}
+          </dd>
+        </div>
+      </dl>
     </div>
+  );
+}
+
+const WINDOW_QUOTE_CHECKS = [
+  "제품·유리 사양·방충망·색상이 현장 요구와 일치하는지 확인",
+  "창호 수량(SET)·규격·설치 위치가 누락·중복 없는지 확인",
+  "철거·양중·부가시공·표준시공비 등 공사 범위가 포함됐는지 확인",
+  "특별할인·프로모션 적용 금액과 고객 최종금액을 확인",
+] as const;
+
+const WINDOW_QUOTE_CAUTIONS = [
+  "본 견적은 실측 전 기준이며, 현장 실측 후 규격·사양·금액이 조정될 수 있습니다.",
+  "발주·생산 착수 이후 제품·유리·색상 변경 시 추가 비용과 일정이 발생할 수 있습니다.",
+  "확장·양중·폐기·안전관리 등 현장 특수 조건은 계약 전 별도 협의가 필요합니다.",
+  "공사 범위·자재·일정은 고객 확인 후 계약서에서 최종 확정됩니다.",
+] as const;
+
+function WindowQuoteNotes({ isPrint }: { isPrint: boolean }) {
+  return (
+    <section
+      className="quote-cover-window-notes"
+      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+    >
+      <div className="border-b border-navy-900/15 pb-1.5">
+        <p
+          className={`font-semibold tracking-[0.18em] text-navy-800 ${
+            isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+          }`}
+        >
+          WINDOW QUOTE GUIDE
+        </p>
+        <h2
+          className={`mt-0.5 font-bold text-navy-900 ${
+            isPrint ? "text-[13px]" : "text-[14px] sm:text-[15px]"
+          }`}
+        >
+          창호 견적 체크사항 · 주의사항
+        </h2>
+      </div>
+
+      <div
+        className={`mt-2.5 grid gap-3 ${
+          isPrint ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2"
+        }`}
+      >
+        <div>
+          <p
+            className={`font-semibold text-navy-900 ${
+              isPrint ? "text-[11px]" : "text-[12px]"
+            }`}
+          >
+            체크사항
+          </p>
+          <ol
+            className={`mt-1.5 list-decimal space-y-1 pl-4 leading-snug text-slate-600 ${
+              isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
+            }`}
+          >
+            {WINDOW_QUOTE_CHECKS.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ol>
+        </div>
+        <div>
+          <p
+            className={`font-semibold text-navy-900 ${
+              isPrint ? "text-[11px]" : "text-[12px]"
+            }`}
+          >
+            주의사항
+          </p>
+          <ul
+            className={`mt-1.5 list-disc space-y-1 pl-4 leading-snug text-slate-600 ${
+              isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
+            }`}
+          >
+            {WINDOW_QUOTE_CAUTIONS.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -474,11 +590,20 @@ function EightyTrustMarks({ isPrint }: { isPrint: boolean }) {
               </p>
               <p
                 className={`font-bold leading-snug text-navy-900 ${
-                  isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
-                }`}
+                  mark.key === "grade-s" ? "whitespace-nowrap " : ""
+                }${isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"}`}
               >
                 {mark.label}
               </p>
+              {"sublabel" in mark && mark.sublabel ? (
+                <p
+                  className={`mt-0.5 font-medium leading-snug text-slate-600 ${
+                    isPrint ? "text-[8px]" : "text-[9px] sm:text-[10px]"
+                  }`}
+                >
+                  {mark.sublabel}
+                </p>
+              ) : null}
             </div>
           </li>
         ))}
@@ -498,11 +623,39 @@ function CoverHeader({
   issuedAt?: string | null;
   isPrint: boolean;
 }) {
+  const useEightyMark =
+    Boolean(brand.useEightyMark) || isEightyMarkSrc(brand.logo?.src);
+  // 표지 본문은 흰 배경 → 딥네이비 로고 (네이비 패널이 생기면 white로 분기)
+  const eightyVariant = "navy" as const;
+
   return (
     <header className="shrink-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          {brand.logo ? (
+      <div
+        className={`flex items-start justify-between gap-4 ${
+          isPrint ? "pt-1 pb-1" : "pt-1 pb-1.5"
+        }`}
+      >
+        <div
+          className={`flex min-w-0 items-center ${
+            isPrint ? "gap-3.5" : "gap-4"
+          }`}
+        >
+          {useEightyMark ? (
+            <div
+              className={`flex shrink-0 items-center justify-center ${
+                isPrint ? "px-1 py-1.5" : "px-1.5 py-2"
+              }`}
+            >
+              <EightyLogo
+                variant={eightyVariant}
+                layout="full"
+                className={`h-auto w-auto object-contain ${
+                  isPrint ? "h-7 max-w-[148px]" : "h-8 max-w-[168px] sm:h-9 sm:max-w-[188px]"
+                }`}
+                title="EIGHTY"
+              />
+            </div>
+          ) : brand.logo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={brand.logo.src}
@@ -510,7 +663,7 @@ function CoverHeader({
               width={brand.logo.width}
               height={brand.logo.height}
               className={`shrink-0 object-contain ${
-                isPrint ? "h-9 w-9" : "h-10 w-10 sm:h-11 sm:w-11"
+                isPrint ? "h-8 w-auto max-h-8" : "h-9 w-auto max-h-9 sm:h-10"
               }`}
               loading={isPrint ? "eager" : "lazy"}
               decoding="async"
@@ -518,7 +671,7 @@ function CoverHeader({
           ) : (
             <span
               className={`flex shrink-0 items-center justify-center rounded bg-navy-900 font-bold text-white ${
-                isPrint ? "h-9 w-9 text-sm" : "h-10 w-10 text-base"
+                isPrint ? "h-8 w-8 text-sm" : "h-9 w-9 text-base"
               }`}
             >
               80
@@ -527,7 +680,7 @@ function CoverHeader({
           <div className="min-w-0">
             <p
               className={`font-bold text-navy-900 ${
-                isPrint ? "text-[13px]" : "text-[14px] sm:text-[15px]"
+                isPrint ? "text-[12px]" : "text-[13px] sm:text-[14px]"
               }`}
             >
               {brand.companyName}
@@ -558,89 +711,31 @@ function CoverHeader({
           </p>
         </div>
       </div>
-      <div className="mt-2.5 h-px bg-navy-900" />
+      <div className={`h-px bg-navy-900 ${isPrint ? "mt-3" : "mt-3.5"}`} />
     </header>
   );
 }
 
-function formatDisplayPhone(value: string): string {
-  const raw = value.trim();
-  if (!raw) return "";
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 11) {
-    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
-  }
-  if (digits.length === 10 && digits.startsWith("02")) {
-    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 10) {
-    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  return raw;
-}
-
 function CoverContactFooter({
   contact,
+  companyPhone,
   isPrint,
 }: {
   contact?: QuoteCoverContact | null;
+  companyPhone?: string | null;
   isPrint: boolean;
 }) {
-  const assigneeName = contact?.assigneeName?.trim() || "";
-  const assigneeTitle = contact?.assigneeTitle?.trim() || "";
-  const assigneeLabel =
-    assigneeName && assigneeTitle
-      ? `${assigneeName} ${assigneeTitle}`
-      : assigneeName || assigneeTitle;
-  const assigneePhone = formatDisplayPhone(contact?.assigneePhone ?? "");
-  const assigneeEmail = contact?.assigneeEmail?.trim() || "";
-  const showCard =
-    Boolean(contact?.assigneeShowBusinessCard) &&
-    Boolean(contact?.assigneeCardImageUrl?.trim());
-  const cardUrl = contact?.assigneeCardImageUrl?.trim() || "";
-
-  const hasAssigneeBlock = Boolean(
-    assigneeLabel || assigneePhone || assigneeEmail || showCard,
-  );
-  if (!hasAssigneeBlock) return null;
-
   return (
-    <div
-      className={`border-t border-slate-200 pt-2 ${
-        isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 space-y-0.5 text-slate-800">
-          {assigneeLabel ? (
-            <p>
-              <span className="text-slate-500">담당자</span>
-              <span className="ml-2 font-semibold text-navy-900">
-                {assigneeLabel}
-              </span>
-            </p>
-          ) : null}
-          {assigneePhone ? (
-            <p className="text-slate-700">
-              <span className="text-slate-500">M.</span> {assigneePhone}
-            </p>
-          ) : null}
-          {assigneeEmail ? (
-            <p className="text-slate-700">
-              <span className="text-slate-500">E.</span> {assigneeEmail}
-            </p>
-          ) : null}
-        </div>
-        {showCard ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cardUrl}
-            alt="담당자 명함"
-            className="h-auto w-[55mm] max-h-[32mm] shrink-0 rounded border border-slate-200 object-contain"
-          />
-        ) : null}
-      </div>
-    </div>
+    <QuoteAssigneeContactBlock
+      contact={{
+        assigneeName: contact?.assigneeName,
+        assigneeTitle: contact?.assigneeTitle,
+        assigneePhone: contact?.assigneePhone,
+        assigneeEmail: contact?.assigneeEmail,
+        companyPhone,
+      }}
+      variant={isPrint ? "print" : "mobile"}
+    />
   );
 }
 
@@ -654,10 +749,12 @@ export default function QuoteCoverPage({
   variant = "mobile",
   amountSummary = null,
   contact = null,
+  quoteType = null,
 }: Props) {
   const isPrint = variant === "print";
   const name = customerName.trim() || "고객";
   const isPremium = brand.coverStyle === "premium";
+  const isWindowQuote = quoteType?.trim() === "창호";
   const siteTitle = title.trim() || "-";
   const quoteNumberDisplay =
     quoteNumberLabel?.trim() || quoteNumber?.trim() || "-";
@@ -758,7 +855,12 @@ export default function QuoteCoverPage({
           </dl>
         </div>
 
-        {isPremium ? <ProjectProcess isPrint={isPrint} /> : null}
+        {isPremium && isWindowQuote ? (
+          <WindowQuoteNotes isPrint={isPrint} />
+        ) : null}
+        {isPremium && !isWindowQuote ? (
+          <ProjectProcess isPrint={isPrint} />
+        ) : null}
 
         {amountSummary ? (
           <AmountSummaryCard summary={amountSummary} isPrint={isPrint} />
@@ -766,7 +868,11 @@ export default function QuoteCoverPage({
 
         {isPremium ? <EightyTrustMarks isPrint={isPrint} /> : null}
 
-        <CoverContactFooter contact={contact} isPrint={isPrint} />
+        <CoverContactFooter
+          contact={contact}
+          companyPhone={brand.phone}
+          isPrint={isPrint}
+        />
       </div>
     </section>
   );

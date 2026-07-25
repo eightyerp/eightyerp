@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Local QA temporary files
+.tmp-*
+_xlsx_unique_hits.json

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_STATUS_BADGE,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/crm/quote-constants";
 import { formatEmployeeLabel } from "@/lib/crm/constants";
 import { calcQuoteSummary, isQuoteExpired } from "@/lib/crm/quote-mgmt-client";
+import { consumeQuoteListFlash } from "@/lib/crm/quote-list-flash";
 import type { Employee, ErpQuote } from "@/types/database";
 
 type QuotesListProps = {
@@ -67,11 +69,43 @@ export default function QuotesList({
   emptyMessage = "등록된 견적이 없습니다.",
   lockEmployeeId = null,
 }: QuotesListProps) {
+  const router = useRouter();
   const [filters, setFilters] = useState<Filters>({
     ...EMPTY_FILTERS,
     employeeId: lockEmployeeId ?? "",
   });
   const [sort, setSort] = useState<SortKey>("recent");
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [highlightQuoteId, setHighlightQuoteId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const flash = consumeQuoteListFlash();
+    if (!flash) return;
+
+    router.refresh();
+
+    const applyFlash = window.setTimeout(() => {
+      setSaveToast("견적이 저장되었습니다");
+      setHighlightQuoteId(flash.quoteId);
+      document
+        .getElementById(`quote-row-${flash.quoteId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightQuoteId(null);
+    }, 4500);
+    const toastTimer = window.setTimeout(() => setSaveToast(null), 4000);
+
+    return () => {
+      window.clearTimeout(applyFlash);
+      window.clearTimeout(toastTimer);
+      if (highlightTimerRef.current) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+    };
+  }, [router]);
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -145,6 +179,14 @@ export default function QuotesList({
 
   return (
     <div className="space-y-4">
+      {saveToast ? (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900"
+        >
+          {saveToast}
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <SummaryCard label="전체 견적" value={`${summary.totalCount}건`} />
         <SummaryCard label="작성중" value={`${summary.drafting}건`} />
@@ -381,13 +423,16 @@ export default function QuotesList({
 
                   return (
                     <tr
+                      id={`quote-row-${quote.id}`}
                       key={quote.id}
-                      className={`border-b border-slate-100 ${
-                        isContract
-                          ? "border-l-4 border-l-emerald-500 bg-emerald-50/50 hover:bg-emerald-50/80"
-                          : expired
-                            ? "bg-red-50/40 hover:bg-red-50/60"
-                            : "hover:bg-slate-50/80"
+                      className={`border-b border-slate-100 transition-colors ${
+                        highlightQuoteId === quote.id
+                          ? "bg-amber-50 ring-2 ring-inset ring-amber-300"
+                          : isContract
+                            ? "border-l-4 border-l-emerald-500 bg-emerald-50/50 hover:bg-emerald-50/80"
+                            : expired
+                              ? "bg-red-50/40 hover:bg-red-50/60"
+                              : "hover:bg-slate-50/80"
                       }`}
                     >
                       <td className="whitespace-nowrap px-3 py-2.5 text-[13px] text-slate-600 break-keep">

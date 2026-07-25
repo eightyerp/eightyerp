@@ -3,12 +3,18 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useMemo, useState } from "react";
 import {
-  createQuoteAction,
-  updateQuoteAction,
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  saveQuoteWizardAction,
   type QuoteActionResult,
 } from "@/app/actions/quote-mgmt";
+import type { ErpQuoteItem } from "@/types/database";
 import { formatEmployeeAssigneeOption, formatEmployeeLabel } from "@/lib/crm/constants";
 import { resolveLiveEmployeeAssigneeContact } from "@/lib/crm/quote-assignee-contact";
 import { getEmployeeCardSignedUrlAction } from "@/app/actions/employee-contacts";
@@ -16,12 +22,15 @@ import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_TYPES,
   QUOTE_DOCUMENT_TITLES,
+  QUOTE_LINE_AMOUNT_WARN,
   QUOTE_MODE_LABELS,
   DEFAULT_QUOTE_VAT_MODE,
   DEFAULT_QUOTE_VAT_RATE,
   canCostTypeHaveLx,
+  collectQuoteMoneyIssues,
   computeQuoteAmounts,
   formatLxDiscountSummaryLabel,
+  formatQuoteMoneyWon,
   normalizeQuoteCostType,
   isActiveQuoteVatMode,
   normalizeQuoteVatMode,
@@ -41,6 +50,11 @@ import QuoteTradeItemsPanel, {
   initialTradeOrderFromItems,
   type QuoteLineRow,
 } from "@/components/quotes/QuoteTradeItemsPanel";
+import { writeQuoteListFlash } from "@/lib/crm/quote-list-flash";
+import {
+  templateItemDedupeKey,
+  type QuoteTemplate,
+} from "@/lib/crm/quote-template-shared";
 import type { Employee, ErpQuote, ErpQuoteType } from "@/types/database";
 
 type CompanyVatSettingsProp = {
@@ -50,6 +64,27 @@ type CompanyVatSettingsProp = {
 
 const QuotePreviewModal = dynamic(
   () => import("@/components/quotes/QuotePreviewModal"),
+  { ssr: false },
+);
+
+const QuoteCustomerShareModal = dynamic(
+  () => import("@/components/quotes/QuoteCustomerShareModal"),
+  { ssr: false },
+);
+
+const QuoteTemplateSaveModal = dynamic(
+  () =>
+    import("@/components/quotes/QuoteTemplateModals").then(
+      (m) => m.QuoteTemplateSaveModal,
+    ),
+  { ssr: false },
+);
+
+const QuoteTemplateLoadModal = dynamic(
+  () =>
+    import("@/components/quotes/QuoteTemplateModals").then(
+      (m) => m.QuoteTemplateLoadModal,
+    ),
   { ssr: false },
 );
 
@@ -71,6 +106,8 @@ type QuoteWizardFormProps = {
   brand?: QuoteBrandProfile | null;
   /** 신규 작성 시 회사 VAT 기본값 (페이지 1회 조회) */
   companyVatSettings?: CompanyVatSettingsProp | null;
+  /** 저장 직후 edit 진입 시 안내 배너 */
+  initialSaveNotice?: boolean;
 };
 
 type TradeItemRow = QuoteLineRow;
@@ -126,7 +163,11 @@ function toNumber(value: string): number {
 }
 
 function formatMoney(value: number): string {
-  return `${Math.max(0, Math.round(value)).toLocaleString("ko-KR")}원`;
+  return formatQuoteMoneyWon(value);
+}
+
+function digitsOnlyMoney(value: string): string {
+  return String(value ?? "").replace(/[^\d]/g, "");
 }
 
 function resolveInitialMode(quote?: ErpQuote | null): QuoteMode {
@@ -189,6 +230,17 @@ function mapQuoteItemsToRows(
   });
 }
 
+const DRAFT_STORAGE_PREFIX = "eighty-erp.quote-wizard.draft.";
+
+function formatSavedAt(date: Date): string {
+  return date.toLocaleString("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function QuoteWizardForm({
   mode,
   employees,
@@ -197,13 +249,32 @@ export default function QuoteWizardForm({
   initialQuote,
   brand = null,
   companyVatSettings = null,
+  initialSaveNotice = false,
 }: QuoteWizardFormProps) {
   const router = useRouter();
-  const action = mode === "create" ? createQuoteAction : updateQuoteAction;
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction, pending] = useActionState(
+    saveQuoteWizardAction,
+    initialState,
+  );
 
   const [step, setStep] = useState(mode === "edit" ? 4 : 1);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [persistedQuoteId, setPersistedQuoteId] = useState<string | null>(
+    initialQuote?.id ?? null,
+  );
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() =>
+    initialSaveNotice || initialQuote?.updated_at
+      ? new Date(initialQuote?.updated_at ?? Date.now())
+      : null,
+  );
+  const [saveBanner, setSaveBanner] = useState<string | null>(
+    initialSaveNotice ? "저장되었습니다" : null,
+  );
+  const [isDirty, setIsDirty] = useState(false);
+  const baselineRef = useRef<string>("");
+  const skipDirtyRef = useRef(true);
+  const handledSaveTokenRef = useRef<string | null>(null);
+  const saveInFlightRef = useRef(false);
 
   const [customerId, setCustomerId] = useState(
     initialQuote?.customer_id ?? initialCustomerId ?? "",
@@ -250,6 +321,9 @@ export default function QuoteWizardForm({
   const [discountAmount, setDiscountAmount] = useState(
     String(initialQuote?.discount_amount ?? 0),
   );
+  const [specialDiscountMemo, setSpecialDiscountMemo] = useState(
+    String(initialQuote?.special_discount_memo ?? ""),
+  );
   const [lxDiscountRate, setLxDiscountRate] = useState(
     String(initialQuote?.lx_discount_rate ?? 0),
   );
@@ -276,8 +350,10 @@ export default function QuoteWizardForm({
   const [removedExistingItemIds, setRemovedExistingItemIds] = useState<
     string[]
   >([]);
-  /** 편집 시작 시 활성 item ID (변경되지 않음, 저장 사전 가드용) */
-  const [originalExistingItemIds] = useState<string[]>(() =>
+  /** 활성 item ID (저장 후 서버 스냅샷으로 갱신) */
+  const [originalExistingItemIds, setOriginalExistingItemIds] = useState<
+    string[]
+  >(() =>
     mapQuoteItemsToRows(
       initialQuote,
       resolveInitialMode(initialQuote),
@@ -287,7 +363,12 @@ export default function QuoteWizardForm({
   );
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [autoPrintPreview, setAutoPrintPreview] = useState(false);
   const [includeCover, setIncludeCover] = useState(true);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [templateLoadOpen, setTemplateLoadOpen] = useState(false);
+  const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
 
   const isInterior = quoteType === "인테리어";
   const isSimple = quoteMode === "simple";
@@ -335,6 +416,36 @@ export default function QuoteWizardForm({
   const lxDiscount = amounts.lx_discount_amount;
   const finalAmount = amounts.final_amount;
 
+  const moneyIssues = useMemo(() => {
+    const lineItems = savableItems.map((row) => {
+      const qty = row.quantity !== "" ? toNumber(row.quantity) : 0;
+      const unitPrice = toNumber(row.unit_price);
+      const amount =
+        qty > 0 ? Math.round(qty * unitPrice) : toNumber(row.amount);
+      return {
+        item_name: row.item_name,
+        trade_name: row.trade_name,
+        quantity: row.quantity !== "" ? qty : null,
+        unit_price: unitPrice,
+        amount,
+      };
+    });
+    return collectQuoteMoneyIssues({
+      items: isSimple || hasItems ? lineItems : [],
+      totalAmount: isSimple || hasItems ? total : toNumber(totalAmount),
+      finalAmount,
+    });
+  }, [
+    savableItems,
+    isSimple,
+    hasItems,
+    total,
+    totalAmount,
+    finalAmount,
+  ]);
+  const moneyErrors = moneyIssues.filter((i) => i.level === "error");
+  const moneyWarnings = moneyIssues.filter((i) => i.level === "warn");
+
   const wizardVatMode: QuoteVatMode | null =
     mode === "edit"
       ? normalizeQuoteVatMode(initialQuote?.vat_mode)
@@ -379,14 +490,261 @@ export default function QuoteWizardForm({
     [savableItems, lxDiscountRate, lxDiscount],
   );
 
-  useEffect(() => {
-    if (state.success && mode === "edit" && state.quoteId) {
-      router.push(`/quotes/${state.quoteId}`);
-    }
-  }, [state, mode, router]);
+  const draftStorageKey = useMemo(() => {
+    if (persistedQuoteId) return `${DRAFT_STORAGE_PREFIX}id:${persistedQuoteId}`;
+    return `${DRAFT_STORAGE_PREFIX}new:${createRequestId}`;
+  }, [persistedQuoteId, createRequestId]);
 
-  /** 생성 모드: 확인(6) 단계에서만 DB 제출 허용 */
-  const canSubmitCreate = mode !== "create" || step === 6;
+  const formSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        customerId,
+        quoteType,
+        quoteMode,
+        title,
+        status,
+        validUntil,
+        issuedAt,
+        assignedEmployeeId,
+        memo,
+        customerMessage,
+        totalAmount,
+        discountAmount,
+        specialDiscountMemo,
+        lxDiscountRate,
+        items,
+        tradeOrder,
+        removedExistingItemIds,
+      }),
+    [
+      customerId,
+      quoteType,
+      quoteMode,
+      title,
+      status,
+      validUntil,
+      issuedAt,
+      assignedEmployeeId,
+      memo,
+      customerMessage,
+      totalAmount,
+      discountAmount,
+      specialDiscountMemo,
+      lxDiscountRate,
+      items,
+      tradeOrder,
+      removedExistingItemIds,
+    ],
+  );
+
+  useEffect(() => {
+    if (skipDirtyRef.current) {
+      baselineRef.current = formSnapshot;
+      skipDirtyRef.current = false;
+      setIsDirty(false);
+      return;
+    }
+    setIsDirty(formSnapshot !== baselineRef.current);
+  }, [formSnapshot]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    try {
+      window.localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({ savedAt: Date.now(), snapshot: formSnapshot }),
+      );
+    } catch {
+      /* ignore quota */
+    }
+  }, [isDirty, draftStorageKey, formSnapshot]);
+
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!isDirty || pending) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty, pending]);
+
+  useEffect(() => {
+    if (!state.success || !state.quoteId) {
+      // 저장 실패·미성공이면 잠금 해제 (작성 화면 유지)
+      if (state.error || state.success === false) {
+        saveInFlightRef.current = false;
+      }
+      return;
+    }
+    const token = [
+      state.quoteId,
+      state.created ? "c" : "u",
+      state.message ?? "",
+      String(state.itemsSnapshotJson?.length ?? 0),
+    ].join("|");
+    if (handledSaveTokenRef.current === token) return;
+    handledSaveTokenRef.current = token;
+
+    try {
+      window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      /* ignore */
+    }
+
+    writeQuoteListFlash({
+      quoteId: state.quoteId,
+      mode: state.created ? "create" : "update",
+      savedAt: Date.now(),
+    });
+
+    // 실제 견적 저장 성공 시에만 목록으로 이동 (임시저장·템플릿 저장과 무관)
+    router.replace("/quotes");
+  }, [state, router, draftStorageKey]);
+
+  // pending 종료 후 실패 시 잠금 해제
+  useEffect(() => {
+    if (!pending) {
+      if (!state.success) {
+        saveInFlightRef.current = false;
+      }
+    }
+  }, [pending, state.success]);
+
+  function confirmLeave(): boolean {
+    if (!isDirty || pending) return true;
+    return window.confirm(
+      "저장되지 않은 변경사항이 있습니다. 이 화면을 나가시겠습니까?",
+    );
+  }
+
+  /** 인쇄·고객전송은 저장된 내용 기준 — 미저장이면 안내 후 중단 */
+  function ensureSavedForOutput(actionLabel: string): boolean {
+    if (pending) {
+      setShareNotice("저장이 끝날 때까지 기다려 주세요.");
+      return false;
+    }
+    if (!persistedQuoteId) {
+      setShareNotice(`${actionLabel} 전에 먼저 저장해 주세요.`);
+      return false;
+    }
+    if (isDirty) {
+      setShareNotice(
+        `저장되지 않은 변경사항이 있습니다. ${actionLabel} 전에 저장해 주세요.`,
+      );
+      return false;
+    }
+    setShareNotice(null);
+    return true;
+  }
+
+  function openPreview() {
+    setShareNotice(null);
+    setAutoPrintPreview(false);
+    setPreviewOpen(true);
+  }
+
+  function openPrintPdf() {
+    if (!ensureSavedForOutput("인쇄·PDF 저장")) return;
+    setAutoPrintPreview(true);
+    setPreviewOpen(true);
+  }
+
+  function openCustomerShare() {
+    if (!ensureSavedForOutput("고객전송")) return;
+    setShareOpen(true);
+  }
+
+  function applyQuoteTemplate(
+    template: QuoteTemplate,
+    mode: "replace" | "append",
+  ) {
+    const mapped = template.items.map((item) =>
+      toRow({
+        id: null,
+        trade_name: item.trade_name,
+        item_name: item.item_name,
+        description: item.description,
+        remark: item.remark,
+        quantity: item.quantity,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        amount: item.amount,
+        cost_type: item.cost_type,
+        is_lx_material: item.is_lx_material,
+        lx_discount_base_amount: item.lx_discount_base_amount,
+        lx_discount_type: item.lx_discount_type,
+        lx_discount_value: item.lx_discount_value,
+      }),
+    );
+
+    if (mode === "replace") {
+      // 화면 작성 항목만 교체 — 저장된 원본 견적/템플릿 삭제 금지
+      const existingIds = items
+        .map((row) => row.id)
+        .filter((id): id is string => Boolean(id));
+      if (existingIds.length > 0) {
+        setRemovedExistingItemIds((prev) => [
+          ...new Set([...prev, ...existingIds]),
+        ]);
+      }
+      setItems(mapped);
+      setTradeOrder(
+        template.trade_order.length > 0
+          ? template.trade_order
+          : initialTradeOrderFromItems(mapped, quoteMode),
+      );
+    } else {
+      const existingKeys = new Set(
+        items
+          .filter((row) => !row.isPlaceholder)
+          .map((row) => templateItemDedupeKey(row)),
+      );
+      const toAdd = mapped.filter(
+        (row) => !existingKeys.has(templateItemDedupeKey(row)),
+      );
+      const nextItems = [...items.filter((r) => !r.isPlaceholder), ...toAdd];
+      setItems(nextItems);
+      const nextOrder = [...tradeOrder];
+      for (const label of template.trade_order) {
+        if (!nextOrder.includes(label)) nextOrder.push(label);
+      }
+      for (const row of toAdd) {
+        const label = row.trade_name.trim() || "미분류";
+        if (!nextOrder.includes(label)) nextOrder.push(label);
+      }
+      setTradeOrder(nextOrder);
+    }
+
+    // 고객별 특별할인·메모는 템플릿에서 복사하지 않음
+    setDiscountAmount("0");
+    setSpecialDiscountMemo("");
+    setShareNotice(
+      mode === "replace"
+        ? "템플릿 항목으로 교체했습니다. 특별할인은 직접 입력해 주세요."
+        : "템플릿 항목을 추가했습니다. 특별할인은 직접 입력해 주세요.",
+    );
+  }
+
+  function validateBeforeSave(): string | null {
+    if (!customerId) return "고객을 선택해 주세요.";
+    if (!quoteType) return "견적유형을 선택해 주세요.";
+    if (!title.trim()) return "견적명을 입력해 주세요.";
+    if (isSimple) {
+      if (savableItems.length === 0) {
+        return "간편견적은 항목을 1개 이상 입력해 주세요.";
+      }
+    } else if (isInterior && savableItems.length === 0) {
+      return "공종 내역을 1개 이상 추가해 주세요.";
+    } else if (savableItems.length === 0) {
+      return "견적 항목을 1개 이상 입력해 주세요.";
+    }
+    const rate = toNumber(lxDiscountRate);
+    if (rate < 0 || rate > 100) {
+      return "LX 자재 할인율은 0~100 사이여야 합니다.";
+    }
+    return validateLxBaseBeforeSave();
+  }
 
   /** 신규 작성: 고객 선택/해제 시 담당자를 고객 담당자로 맞춘다 (수동 변경 가능) */
   function applyCustomerSelection(nextCustomerId: string) {
@@ -504,6 +862,10 @@ export default function QuoteWizardForm({
         setStepError("LX 자재 할인율은 0~100 사이여야 합니다.");
         return;
       }
+      if (moneyErrors.length > 0) {
+        setStepError(moneyErrors[0]!.message);
+        return;
+      }
     }
     setStepError(null);
     setStep((s) => Math.min(6, s + 1));
@@ -530,6 +892,9 @@ export default function QuoteWizardForm({
       if (base > amount) {
         return "LX 자재금액은 항목 총금액 이하로 입력해주세요.";
       }
+    }
+    if (moneyErrors.length > 0) {
+      return moneyErrors[0]!.message;
     }
     return null;
   }
@@ -585,6 +950,7 @@ export default function QuoteWizardForm({
       issuedAt: issuedAt || null,
       customerMessage: customerMessage || null,
       discountAmount: discount,
+      specialDiscountMemo: specialDiscountMemo.trim() || null,
       lxDiscountRate: toNumber(lxDiscountRate),
       vatMode: wizardVatMode,
       vatRate: wizardVatRate,
@@ -647,6 +1013,7 @@ export default function QuoteWizardForm({
       issuedAt,
       customerMessage,
       discount,
+      specialDiscountMemo,
       lxDiscountRate,
       wizardVatMode,
       wizardVatRate,
@@ -665,22 +1032,21 @@ export default function QuoteWizardForm({
 
   return (
     <form
-      action={canSubmitCreate ? formAction : undefined}
+      action={formAction}
       className="space-y-5"
       onSubmit={(e) => {
-        if (!canSubmitCreate) {
+        if (saveInFlightRef.current || pending) {
           e.preventDefault();
           return;
         }
-        if (pending) {
-          e.preventDefault();
-          return;
-        }
-        const err = validateLxBaseBeforeSave();
+        const err = validateBeforeSave();
         if (err) {
           e.preventDefault();
           setStepError(err);
+          return;
         }
+        saveInFlightRef.current = true;
+        setStepError(null);
       }}
     >
       <input type="hidden" name="customer_id" value={customerId} />
@@ -700,15 +1066,16 @@ export default function QuoteWizardForm({
       <input type="hidden" name="customer_message" value={customerMessage} />
       <input type="hidden" name="total_amount" value={String(total)} />
       <input type="hidden" name="discount_amount" value={String(discount)} />
+      <input
+        type="hidden"
+        name="special_discount_memo"
+        value={specialDiscountMemo.slice(0, 40)}
+      />
       <input type="hidden" name="lx_discount_rate" value={lxDiscountRate} />
       <input type="hidden" name="final_amount" value={String(finalAmount)} />
       <input type="hidden" name="items_json" value={itemsJson} />
-      {mode === "create" ? (
-        <input
-          type="hidden"
-          name="request_id"
-          value={createRequestId}
-        />
+      {!persistedQuoteId ? (
+        <input type="hidden" name="request_id" value={createRequestId} />
       ) : null}
       <input
         type="hidden"
@@ -720,9 +1087,88 @@ export default function QuoteWizardForm({
         name="original_item_ids_json"
         value={originalItemIdsJson}
       />
-      {mode === "edit" && initialQuote && (
-        <input type="hidden" name="quote_id" value={initialQuote.id} />
-      )}
+      {persistedQuoteId ? (
+        <input type="hidden" name="quote_id" value={persistedQuoteId} />
+      ) : null}
+
+      <div className="sticky top-0 z-30 -mx-1 mb-1 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-600 shadow-sm backdrop-blur">
+        <div className="min-w-0 flex-1">
+          {pending ? (
+            <span className="font-medium text-navy-800">저장 중…</span>
+          ) : state.error ? (
+            <span className="font-medium text-red-600">
+              저장 실패
+              {state.error ? ` · ${state.error}` : ""}
+            </span>
+          ) : isDirty ? (
+            <span className="font-medium text-amber-800">
+              저장되지 않은 변경사항
+            </span>
+          ) : saveBanner || lastSavedAt ? (
+            <span className="font-medium text-emerald-700">
+              {saveBanner ?? "저장되었습니다"}
+              {lastSavedAt ? ` · ${formatSavedAt(lastSavedAt)}` : ""}
+            </span>
+          ) : (
+            <span>저장 버튼을 눌러 서버에 저장하세요</span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setTemplateLoadOpen(true)}
+            className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-900 hover:bg-violet-100"
+          >
+            템플릿 불러오기
+          </button>
+          <button
+            type="button"
+            onClick={() => setTemplateSaveOpen(true)}
+            className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-medium text-violet-900 hover:bg-violet-50"
+          >
+            템플릿으로 저장
+          </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex shrink-0 rounded-lg bg-navy-800 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-60"
+          >
+            {pending ? "저장 중…" : "저장"}
+          </button>
+          <button
+            type="button"
+            onClick={openPreview}
+            className="rounded-lg border border-navy-800/20 bg-white px-2.5 py-1.5 text-xs font-medium text-navy-800 hover:bg-navy-800/5"
+          >
+            미리보기
+          </button>
+          <button
+            type="button"
+            onClick={openPrintPdf}
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
+          >
+            인쇄·PDF
+          </button>
+          <button
+            type="button"
+            onClick={openCustomerShare}
+            className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"
+          >
+            고객전송
+          </button>
+          <Link
+            href={
+              persistedQuoteId ? `/quotes/${persistedQuoteId}` : "/quotes"
+            }
+            onClick={(e) => {
+              if (!confirmLeave()) e.preventDefault();
+            }}
+            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+          >
+            {persistedQuoteId ? "상세로" : "목록으로"}
+          </Link>
+        </div>
+      </div>
 
       {mode === "edit" && initialQuote ? (
         <div className="dashboard-card space-y-3 p-4">
@@ -1020,6 +1466,10 @@ export default function QuoteWizardForm({
                       if (m === "simple" && items.length === 0) {
                         setItems([toRow({ cost_type: "자재" })]);
                         setTradeOrder(["미분류"]);
+                      } else if (m === "detailed") {
+                        setTradeOrder(
+                          initialTradeOrderFromItems(items, "detailed"),
+                        );
                       }
                     }}
                     className={`rounded-lg border-2 px-4 py-2.5 text-sm font-semibold transition ${
@@ -1058,6 +1508,14 @@ export default function QuoteWizardForm({
               }}
               createRow={(partial) => toRow({ ...partial, id: null })}
               isInterior={isInterior}
+              isWindowQuote={quoteType === "창호"}
+              onApplyPromotionDiscount={(amount, memo) => {
+                const current = toNumber(discountAmount);
+                setDiscountAmount(String(current + Math.max(0, amount)));
+                if (memo && !specialDiscountMemo.trim()) {
+                  setSpecialDiscountMemo(memo.slice(0, 40));
+                }
+              }}
             />
 
             <div className="flex flex-wrap gap-2">
@@ -1078,26 +1536,49 @@ export default function QuoteWizardForm({
                       {formatMoney(total)}
                     </p>
                     <p className="mt-0.5 text-[11px] text-gray-500">
-                      {isSimple ? "항목 합계" : "공종 합계"}
+                      {isSimple ? "항목 합계 · 원 단위" : "공종 합계 · 원 단위"}
                     </p>
                   </div>
                 ) : (
                   <input
                     inputMode="numeric"
                     value={totalAmount}
-                    onChange={(e) => setTotalAmount(e.target.value)}
+                    onChange={(e) =>
+                      setTotalAmount(digitsOnlyMoney(e.target.value))
+                    }
                     className={inputClass}
+                    placeholder="예: 35000000 (=3,500만원)"
                   />
                 )}
               </Field>
-              <Field label="특별할인금액(원)">
-                <input
-                  inputMode="numeric"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="견적 전체 특별할인(원)">
+                  <input
+                    inputMode="numeric"
+                    value={discountAmount}
+                    onChange={(e) =>
+                      setDiscountAmount(digitsOnlyMoney(e.target.value))
+                    }
+                    className={inputClass}
+                    placeholder="원 단위"
+                  />
+                </Field>
+                <Field label="할인 메모">
+                  <input
+                    value={specialDiscountMemo}
+                    onChange={(e) =>
+                      setSpecialDiscountMemo(e.target.value.slice(0, 40))
+                    }
+                    maxLength={40}
+                    className={inputClass}
+                    placeholder="예: 7월 계약 프로모션"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    최대 40자 · 금액이 있을 때만 고객 출력에 표시 ·{" "}
+                    {specialDiscountMemo.length}/40
+                  </p>
+                </Field>
+              </div>
               <Field label="LX 자재 할인율(%) · 견적단위(기존)">
                 <input
                   inputMode="decimal"
@@ -1129,6 +1610,29 @@ export default function QuoteWizardForm({
                 </p>
               </div>
             </div>
+            <p className="text-[11px] text-slate-500">
+              금액·단가는 모두 <strong className="font-medium text-slate-700">원</strong> 단위입니다.
+              만원으로 생각하지 마세요. 예: 3,500만원 → <span className="tabular-nums">35000000</span>
+              {total >= QUOTE_LINE_AMOUNT_WARN ? (
+                <span className="ml-1 text-amber-700">
+                  · 현재 합계 {formatMoney(total)}
+                </span>
+              ) : null}
+            </p>
+            {moneyWarnings.length > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {moneyWarnings.slice(0, 3).map((w) => (
+                  <p key={`${w.code}-${w.message}`}>{w.message}</p>
+                ))}
+              </div>
+            ) : null}
+            {moneyErrors.length > 0 ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {moneyErrors.slice(0, 3).map((w) => (
+                  <p key={`${w.code}-${w.message}`}>{w.message}</p>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1213,7 +1717,10 @@ export default function QuoteWizardForm({
               <SummaryItem label="발행일" value={issuedAt || "-"} />
               <SummaryItem label="유효기간" value={validUntil || "-"} />
               <SummaryItem label="총금액" value={formatMoney(total)} />
-              <SummaryItem label="특별할인" value={formatMoney(discount)} />
+              <SummaryItem
+                label="견적 전체 특별할인(원)"
+                value={formatMoney(discount)}
+              />
               <SummaryItem label="LX 자재 할인" value={lxDiscountLabel} />
               <SummaryItem
                 label="공급가액"
@@ -1260,10 +1767,24 @@ export default function QuoteWizardForm({
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => setPreviewOpen(true)}
+                onClick={openPreview}
                 className="rounded-lg border border-navy-800/20 bg-white px-4 py-2 text-sm font-medium text-navy-800 hover:bg-navy-800/5"
               >
                 견적서 미리보기
+              </button>
+              <button
+                type="button"
+                onClick={openPrintPdf}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+              >
+                인쇄·PDF 저장
+              </button>
+              <button
+                type="button"
+                onClick={openCustomerShare}
+                className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-800 hover:bg-sky-100"
+              >
+                고객전송 링크
               </button>
               <label className="flex items-center gap-1.5 text-xs text-slate-700">
                 <input
@@ -1280,84 +1801,94 @@ export default function QuoteWizardForm({
       </div>
 
       {stepError && <p className="text-sm text-red-600">{stepError}</p>}
-      {state.error && isEdit && (
-        <p className="text-sm text-red-600">{state.error}</p>
-      )}
-      {state.message && isEdit && (
-        <p className="text-sm text-green-700">{state.message}</p>
-      )}
+      {shareNotice ? (
+        <p className="text-sm text-amber-800">{shareNotice}</p>
+      ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Link
-            href={
-              isEdit && initialQuote
-                ? `/quotes/${initialQuote.id}`
-                : "/quotes"
-            }
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-          >
-            취소
-          </Link>
+      {!isEdit ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {step > 1 ? (
+            <button
+              type="button"
+              onClick={goPrev}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              이전 단계
+            </button>
+          ) : null}
+          {step < 6 ? (
+            <button
+              type="button"
+              onClick={goNext}
+              className="rounded-lg border border-navy-800 bg-white px-5 py-2 text-sm font-medium text-navy-800 hover:bg-navy-800/5"
+            >
+              다음 단계
+            </button>
+          ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {isEdit ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setPreviewOpen(true)}
-                className="rounded-lg border border-navy-800/20 bg-white px-4 py-2 text-sm font-medium text-navy-800 hover:bg-navy-800/5"
-              >
-                미리보기
-              </button>
-              <button
-                type="submit"
-                disabled={pending}
-                className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
-              >
-                {pending ? "저장 중..." : "변경사항 저장"}
-              </button>
-            </>
-          ) : (
-            <>
-              {step > 1 && (
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-                >
-                  이전
-                </button>
-              )}
-              {step < 6 ? (
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700"
-                >
-                  다음
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={pending || !canSubmitCreate}
-                  className="rounded-lg bg-navy-800 px-5 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
-                >
-                  {pending ? "저장 중..." : "최종 저장"}
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      ) : null}
 
       {previewOpen ? (
         <QuotePreviewModal
           open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
+          onClose={() => {
+            setPreviewOpen(false);
+            setAutoPrintPreview(false);
+          }}
           model={previewModel}
           includeCover={includeCover}
           onIncludeCoverChange={setIncludeCover}
+          autoPrint={autoPrintPreview}
+        />
+      ) : null}
+
+      <QuoteCustomerShareModal
+        key={shareOpen ? `share-${persistedQuoteId ?? "new"}` : "share-closed"}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        quoteId={persistedQuoteId}
+        customerName={selectedCustomer?.name || "고객"}
+        title={title || "견적서"}
+        validUntil={validUntil || null}
+        finalAmount={finalAmount}
+        customerMessage={customerMessage || null}
+        customerPhone={selectedCustomer?.phone ?? null}
+        onToast={(msg) => setShareNotice(msg)}
+      />
+
+      {templateSaveOpen ? (
+        <QuoteTemplateSaveModal
+          open
+          onClose={() => setTemplateSaveOpen(false)}
+          defaultQuoteType={quoteType || "공통"}
+          quoteMode={quoteMode}
+          tradeOrder={tradeOrder}
+          items={savableItems.map((row) => ({
+            trade_name: row.trade_name || "미분류",
+            item_name: row.item_name || "",
+            description: row.description || "",
+            remark: row.remark || "",
+            quantity: row.quantity,
+            unit: row.unit,
+            unit_price: row.unit_price,
+            amount: row.amount,
+            cost_type: row.cost_type,
+            is_lx_material: row.is_lx_material,
+            lx_discount_base_amount: row.lx_discount_base_amount,
+            lx_discount_type: row.lx_discount_type,
+            lx_discount_value: row.lx_discount_value,
+          }))}
+          onToast={(msg) => setShareNotice(msg)}
+        />
+      ) : null}
+
+      {templateLoadOpen ? (
+        <QuoteTemplateLoadModal
+          open
+          onClose={() => setTemplateLoadOpen(false)}
+          hasExistingItems={savableItems.length > 0}
+          onApply={applyQuoteTemplate}
+          onToast={(msg) => setShareNotice(msg)}
         />
       ) : null}
     </form>

@@ -14,12 +14,14 @@ import {
   QUOTE_FILE_MAX_BYTES,
   QUOTE_FILES_BUCKET,
   QUOTE_MODES,
+  assertQuoteMoneyBounds,
   buildQuoteGuideMessage,
   canCostTypeHaveLx,
   computeQuoteAmounts,
   computeQuoteVatAmounts,
   isActiveQuoteVatMode,
   normalizeQuoteCostType,
+  normalizeQuoteVatMode,
   type QuoteCostType,
   type QuoteMode,
 } from "@/lib/crm/quote-constants";
@@ -128,9 +130,12 @@ export type QuoteFormInput = {
   is_contract_quote: boolean;
   customer_message: string | null;
   memo: string | null;
+  /** 특별할인 메모. migration 42. null/미적용 환경 호환 */
+  special_discount_memo?: string | null;
 };
 
 const QUOTE_ITEM_REMARK_MAX = 500;
+export const SPECIAL_DISCOUNT_MEMO_MAX = 40;
 
 /** 항목 비고: trim 후 공백-only → null, 최대 500자 */
 export function normalizeQuoteItemRemark(
@@ -140,6 +145,17 @@ export function normalizeQuoteItemRemark(
   if (!text) return null;
   return text.length > QUOTE_ITEM_REMARK_MAX
     ? text.slice(0, QUOTE_ITEM_REMARK_MAX)
+    : text;
+}
+
+/** 특별할인 메모: 최대 40자, 빈값 null. 금액 계산과 무관 */
+export function normalizeSpecialDiscountMemo(
+  value: unknown,
+): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  return text.length > SPECIAL_DISCOUNT_MEMO_MAX
+    ? text.slice(0, SPECIAL_DISCOUNT_MEMO_MAX)
     : text;
 }
 
@@ -199,6 +215,9 @@ export function parseQuoteForm(formData: FormData): QuoteFormInput {
   const total = parseMoney(formData.get("total_amount"), "총견적금액");
   const discount = parseMoney(formData.get("discount_amount"), "특별할인금액");
   const lxDiscountRate = parseLxDiscountRate(formData.get("lx_discount_rate"));
+  const specialDiscountMemo = normalizeSpecialDiscountMemo(
+    formData.get("special_discount_memo"),
+  );
 
   return {
     customer_id: customerId,
@@ -224,6 +243,7 @@ export function parseQuoteForm(formData: FormData): QuoteFormInput {
       String(formData.get("customer_message") ?? ""),
     ),
     memo: emptyToNull(String(formData.get("memo") ?? "")),
+    special_discount_memo: specialDiscountMemo,
   };
 }
 
@@ -377,6 +397,19 @@ function resolveQuoteAmounts(
     fallbackTotal: form.total_amount,
     discountAmount: form.discount_amount,
     lxDiscountRate: form.lx_discount_rate,
+  });
+
+  // 저장 헤더는 항상 품목 기반 단일 계산 결과만 사용 (클라이언트 total 불신)
+  assertQuoteMoneyBounds({
+    items: items.map((item) => ({
+      item_name: item.item_name,
+      trade_name: item.trade_name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      amount: item.amount,
+    })),
+    totalAmount: amounts.total_amount,
+    finalAmount: amounts.final_amount,
   });
 
   if (amounts.discount_amount + amounts.lx_discount_amount > amounts.total_amount) {
@@ -797,6 +830,36 @@ async function uploadQuoteFiles(input: {
   }
 }
 
+/**
+ * 특별할인 메모는 금액 RPC와 분리해 저장 (계산 영향 없음).
+ * migration 42 미적용 시 명확한 안내.
+ */
+async function persistSpecialDiscountMemo(
+  quoteId: string,
+  memo: string | null,
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("quotes")
+    .update({ special_discount_memo: memo })
+    .eq("id", quoteId)
+    .is("deleted_at", null);
+  if (!error) return;
+  const msg = String(error.message ?? "");
+  if (
+    /special_discount_memo/i.test(msg) ||
+    /column .* does not exist/i.test(msg) ||
+    error.code === "PGRST204"
+  ) {
+    // migration 42 미적용: 메모가 비어 있으면 견적 본문 저장은 유지
+    if (memo == null || String(memo).trim() === "") return;
+    throw new Error(
+      "특별할인 메모 컬럼이 아직 없습니다. migration 42를 적용한 뒤 다시 저장해 주세요.",
+    );
+  }
+  throw new Error("특별할인 메모 저장에 실패했습니다.");
+}
+
 export async function createQuote(input: {
   form: QuoteFormInput;
   items?: QuoteItemInput[];
@@ -895,6 +958,11 @@ export async function createQuote(input: {
       setPrimaryFirst: true,
     });
   }
+
+  await persistSpecialDiscountMemo(
+    quoteId,
+    input.form.special_discount_memo ?? null,
+  );
 
   return {
     id: quoteId,
@@ -1011,6 +1079,11 @@ export async function updateQuote(input: {
     );
   }
 
+  await persistSpecialDiscountMemo(
+    input.id,
+    input.form.special_discount_memo ?? null,
+  );
+
   await uploadQuoteFiles({
     customerId: existing.customer_id,
     quoteId: input.id,
@@ -1085,34 +1158,101 @@ export async function createQuoteVersion(input: {
     throw new Error("새 버전 생성에 실패했습니다.");
   }
 
-  if (input.copyItems && source.quote_items?.length) {
-    await replaceQuoteItems(
+  try {
+    await persistSpecialDiscountMemo(
       data.id,
-      source.quote_items.map((i) => ({
-        id: null,
-        client_key: null,
-        trade_name: i.trade_name,
-        item_name: i.item_name,
-        description: i.description,
-        remark: normalizeQuoteItemRemark(i.remark),
-        quantity: i.quantity,
-        unit: i.unit,
-        unit_price: i.unit_price,
-        amount: i.amount,
-        cost_type: normalizeQuoteCostType(i.cost_type),
-        is_lx_material:
-          canCostTypeHaveLx(i.cost_type) && Boolean(i.is_lx_material),
-        lx_discount_base_amount: Math.max(
-          0,
-          Math.round(Number(i.lx_discount_base_amount ?? 0) || 0),
-        ),
-        lx_discount_type: i.lx_discount_type ?? null,
-        lx_discount_value:
-          i.lx_discount_value == null
-            ? null
-            : Number(i.lx_discount_value),
-      })),
+      normalizeSpecialDiscountMemo(source.special_discount_memo),
     );
+  } catch {
+    // migration 미적용 시 버전 생성은 유지 (메모만 생략)
+  }
+
+  if (input.copyItems && source.quote_items?.length) {
+    const copiedItems = source.quote_items.map((i) => ({
+      id: null as string | null,
+      client_key: null as string | null,
+      trade_name: i.trade_name,
+      item_name: i.item_name,
+      description: i.description,
+      remark: normalizeQuoteItemRemark(i.remark),
+      quantity: i.quantity,
+      unit: i.unit,
+      unit_price: i.unit_price,
+      amount: i.amount,
+      cost_type: normalizeQuoteCostType(i.cost_type),
+      is_lx_material:
+        canCostTypeHaveLx(i.cost_type) && Boolean(i.is_lx_material),
+      lx_discount_base_amount: Math.max(
+        0,
+        Math.round(Number(i.lx_discount_base_amount ?? 0) || 0),
+      ),
+      lx_discount_type: i.lx_discount_type ?? null,
+      lx_discount_value:
+        i.lx_discount_value == null ? null : Number(i.lx_discount_value),
+    }));
+    await replaceQuoteItems(data.id, copiedItems);
+
+    // 버전 복사 시 헤더를 품목 합계로 재동기화 (구 경로 헤더/품목 불일치 전파 방지)
+    const recomputed = computeQuoteAmounts({
+      items: copiedItems,
+      discountAmount: source.discount_amount ?? 0,
+      lxDiscountRate: source.lx_discount_rate ?? 0,
+    });
+    const vat = computeQuoteVatAmounts({
+      discountedAmount: recomputed.final_amount,
+      vatMode: normalizeQuoteVatMode(source.vat_mode),
+      vatRate: source.vat_rate,
+    });
+    try {
+      assertQuoteMoneyBounds({
+        items: copiedItems,
+        totalAmount: recomputed.total_amount,
+        finalAmount: recomputed.final_amount,
+        customerTotalAmount: vat.customer_total_amount,
+      });
+    } catch (boundError) {
+      // 원본이 이미 비정상 금액이어도 버전 골격은 만들되, 헤더는 재계산 값으로 맞춤
+      console.warn(
+        "[createQuoteVersion] amount bounds:",
+        boundError instanceof Error ? boundError.message : boundError,
+      );
+    }
+    const { error: headerSyncError } = await supabase
+      .from("quotes")
+      .update({
+        total_amount: recomputed.total_amount,
+        discount_amount: recomputed.discount_amount,
+        lx_discount_amount: recomputed.lx_discount_amount,
+        final_amount: recomputed.final_amount,
+        is_lx_material: recomputed.is_lx_material,
+        supply_amount: vat.supply_amount,
+        vat_amount: vat.vat_amount,
+        customer_total_amount: vat.customer_total_amount,
+        updated_by: access.userId,
+      })
+      .eq("id", data.id);
+    if (headerSyncError) {
+      throw new Error("새 버전 금액 동기화에 실패했습니다.");
+    }
+  } else if (!input.copyItems) {
+    // 항목 미복사 시 헤더 금액도 0으로 맞춰 불일치 방지
+    const { error: clearAmtError } = await supabase
+      .from("quotes")
+      .update({
+        total_amount: 0,
+        discount_amount: 0,
+        lx_discount_amount: 0,
+        final_amount: 0,
+        supply_amount: 0,
+        vat_amount: 0,
+        customer_total_amount: 0,
+        is_lx_material: false,
+        updated_by: access.userId,
+      })
+      .eq("id", data.id);
+    if (clearAmtError) {
+      throw new Error("새 버전 금액 초기화에 실패했습니다.");
+    }
   }
 
   if (input.copyFiles && source.quote_files?.length) {
@@ -1216,26 +1356,105 @@ export async function softDeleteQuoteFile(input: {
   if (error) throw new Error("파일 삭제에 실패했습니다.");
 }
 
+/** 공개 고객 링크 origin (서버). env 우선, 없으면 운영 기본 호스트. */
+export function resolveQuoteShareOrigin(clientOrigin?: string | null): string {
+  const env = String(process.env.NEXT_PUBLIC_SITE_URL ?? "")
+    .trim()
+    .replace(/\/$/, "");
+  if (env) return env;
+  const fromClient = String(clientOrigin ?? "")
+    .trim()
+    .replace(/\/$/, "");
+  if (fromClient) return fromClient;
+  return "https://eightyerp.vercel.app";
+}
+
+export function buildQuoteShareViewUrl(
+  token: string,
+  origin?: string | null,
+): string {
+  const base = resolveQuoteShareOrigin(origin);
+  return `${base}/customer/quotes/${token}`;
+}
+
+/**
+ * 고유 share_token 보장 — 유효 토큰이 있으면 재사용 (중복 생성 금지).
+ * getQuoteById 로 회사·권한 스코프를 먼저 확인한다.
+ */
+function requireQuoteCompanyId(quote: ErpQuote): string {
+  const companyId = String(quote.company_id ?? "").trim();
+  if (!companyId || !UUID_RE.test(companyId)) {
+    throw new Error("견적의 회사 정보를 확인할 수 없습니다.");
+  }
+  return companyId;
+}
+
 export async function ensureQuoteShareToken(quoteId: string): Promise<string> {
   await requireAuthenticatedAccess();
-  const supabase = await createClient();
-  const { data: existing, error: readError } = await supabase
-    .from("quotes")
-    .select("id, share_token")
-    .eq("id", quoteId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (readError || !existing) throw new Error("견적을 찾을 수 없습니다.");
-  if (existing.share_token) return existing.share_token as string;
+  const quote = await getQuoteById(quoteId);
+  if (!quote) throw new Error("견적을 찾을 수 없습니다.");
+  const companyId = requireQuoteCompanyId(quote);
+  const existing = String(quote.share_token ?? "").trim();
+  if (existing && UUID_RE.test(existing)) return existing;
 
   const token = randomUUID();
-  const { error } = await supabase
+  const supabase = await createClient();
+  const { data, error } = await supabase
     .from("quotes")
     .update({ share_token: token })
     .eq("id", quoteId)
-    .is("deleted_at", null);
+    .eq("company_id", companyId)
+    .is("deleted_at", null)
+    .select("share_token")
+    .maybeSingle();
   if (error) throw new Error("공유 링크 생성에 실패했습니다.");
-  return token;
+  const created = String(data?.share_token ?? "").trim();
+  if (created && UUID_RE.test(created)) return created;
+
+  const again = await getQuoteById(quoteId);
+  const reused = String(again?.share_token ?? "").trim();
+  if (reused && UUID_RE.test(reused)) return reused;
+  throw new Error("공유 링크 생성에 실패했습니다.");
+}
+
+/** 기존 링크 무효화 후 새 토큰 발급 */
+export async function regenerateQuoteShareToken(
+  quoteId: string,
+): Promise<string> {
+  await requireAuthenticatedAccess();
+  const quote = await getQuoteById(quoteId);
+  if (!quote) throw new Error("견적을 찾을 수 없습니다.");
+  const companyId = requireQuoteCompanyId(quote);
+  const token = randomUUID();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("quotes")
+    .update({ share_token: token })
+    .eq("id", quoteId)
+    .eq("company_id", companyId)
+    .is("deleted_at", null)
+    .select("share_token")
+    .maybeSingle();
+  if (error || !data?.share_token) {
+    throw new Error("공유 링크 재발급에 실패했습니다.");
+  }
+  return String(data.share_token);
+}
+
+/** 고객 링크 비활성화 (토큰 null) */
+export async function revokeQuoteShareToken(quoteId: string): Promise<void> {
+  await requireAuthenticatedAccess();
+  const quote = await getQuoteById(quoteId);
+  if (!quote) throw new Error("견적을 찾을 수 없습니다.");
+  const companyId = requireQuoteCompanyId(quote);
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("quotes")
+    .update({ share_token: null })
+    .eq("id", quoteId)
+    .eq("company_id", companyId)
+    .is("deleted_at", null);
+  if (error) throw new Error("공유 링크 비활성화에 실패했습니다.");
 }
 
 export type QuoteSharePayload = {
@@ -1248,6 +1467,7 @@ export type QuoteSharePayload = {
   status: string;
   total_amount?: number;
   discount_amount?: number;
+  special_discount_memo?: string | null;
   lx_discount_rate?: number;
   lx_discount_amount?: number;
   final_amount: number;
@@ -1286,6 +1506,7 @@ export type QuoteSharePayload = {
     remark?: string | null;
     quantity: number | null;
     unit: string | null;
+    unit_price?: number | null;
     amount: number;
     cost_type?: string;
     is_lx_material?: boolean;
@@ -1306,9 +1527,11 @@ export type QuoteSharePayload = {
 /** 동일 요청 내 generateMetadata + page 중복 RPC 방지 */
 export const getQuoteShareByToken = cache(
   async (token: string): Promise<QuoteSharePayload | null> => {
+    const normalized = String(token ?? "").trim();
+    if (!UUID_RE.test(normalized)) return null;
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("get_quote_share_by_token", {
-      p_token: token,
+      p_token: normalized,
     });
     if (error) throw new Error("견적 공유 정보를 불러오지 못했습니다.");
     if (!data) return null;
@@ -1327,11 +1550,7 @@ export async function markQuoteSent(input: {
 
   const token = await ensureQuoteShareToken(input.id);
   const viewUrl =
-    input.viewUrl ||
-    `${process.env.NEXT_PUBLIC_SITE_URL || ""}/customer/quotes/${token}`.replace(
-      /([^:]\/)\/+/g,
-      "$1",
-    );
+    input.viewUrl || buildQuoteShareViewUrl(token);
 
   const guideMessage = buildQuoteGuideMessage({
     customerName: quote.customers?.name || "고객",

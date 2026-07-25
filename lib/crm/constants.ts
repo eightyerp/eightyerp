@@ -18,7 +18,26 @@ export const CONSULT_TYPES: ConsultType[] = [
 
 export const CUSTOMER_PAGE_SIZE = 20;
 
+/** DB·레거시 호환 (과거 '홈씨씨'/KCC 값 조회·표시용). 스키마 CHECK와 동일. */
 export const QUOTE_BRANDS = ["LX하우시스", "홈씨씨", "기타"] as const;
+
+/** 신규 견적 UI 선택지 — KCC/홈씨씨 제외, LX·기타만 */
+export const QUOTE_BRANDS_FOR_NEW = ["LX하우시스", "기타"] as const;
+
+/** 신규 작성은 FOR_NEW, 과거 홈씨씨 견적 수정 시에만 기존값 옵션 유지 */
+export function quoteBrandSelectOptions(
+  currentBrand?: string | null,
+): readonly string[] {
+  const current = (currentBrand ?? "").trim();
+  if (
+    current &&
+    !(QUOTE_BRANDS_FOR_NEW as readonly string[]).includes(current) &&
+    (QUOTE_BRANDS as readonly string[]).includes(current)
+  ) {
+    return [...QUOTE_BRANDS_FOR_NEW, current];
+  }
+  return QUOTE_BRANDS_FOR_NEW;
+}
 
 export const QUOTE_STATUSES = [
   "작성중",

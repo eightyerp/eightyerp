@@ -2,7 +2,7 @@ export const menuItems = [
   { label: "대시보드", href: "/dashboard" },
   { label: "고객관리(CRM)", href: "/customers" },
   { label: "견적관리", href: "/quotes" },
-  { label: "계약관리", href: "#" },
+  { label: "계약관리", href: "/contracts" },
   { label: "현장관리", href: "#" },
   { label: "수금관리", href: "#" },
   { label: "지출관리", href: "#" },

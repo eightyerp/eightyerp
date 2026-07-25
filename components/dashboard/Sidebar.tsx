@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import EightyLogo from "@/components/brand/EightyLogo";
 import { menuItems } from "@/lib/sample-data";
 import { createClient } from "@/lib/supabase";
 import { isAdminRole } from "@/lib/crm/constants";
@@ -54,9 +55,9 @@ function buildNav(isAdmin: boolean): MenuItem[] {
           ? [
               { label: "가입 승인 관리", href: "/system/approvals" },
               { label: "직원 초대 관리", href: "/system/invitations" },
-              { label: "직원 연락처·명함", href: "/system/employees" },
+              { label: "직원 연락처", href: "/system/employees" },
             ]
-          : [{ label: "내 연락처·명함", href: "/system/employees" }],
+          : [{ label: "내 연락처", href: "/system/employees" }],
       };
     }
     return { label, href };
@@ -109,7 +110,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
   const NAV = buildNav(isAdmin).filter((item) => {
     if (item.label === "시스템관리") {
-      // 관리자: 전체 / 일반: 내 연락처·명함만
+      // 관리자: 전체 / 일반: 내 연락처만
       return true;
     }
     return true;
@@ -129,7 +130,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         }`}
       >
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
-          <span className="text-2xl font-bold text-gold-500">80</span>
+          <EightyLogo
+            variant="white"
+            layout="symbol"
+            className="h-9 w-auto shrink-0"
+            title="EIGHTY"
+          />
           <div>
             <p className="text-sm font-semibold tracking-wider text-white">
               EIGHTY ERP

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   approveSignupAction,
   deactivateUserAction,
@@ -42,29 +42,29 @@ export default function StaffApprovalsWorkspace({
   );
   const [rejectTarget, setRejectTarget] = useState<PendingSignup | null>(null);
   const [approveState, approveAction, approvePending] = useActionState(
-    approveSignupAction,
+    async (prev: StaffApprovalResult, formData: FormData) => {
+      const result = await approveSignupAction(prev, formData);
+      if (result.success && result.message) {
+        setApproveTarget(null);
+      }
+      return result;
+    },
     initial,
   );
   const [rejectState, rejectAction, rejectPending] = useActionState(
-    rejectSignupAction,
+    async (prev: StaffApprovalResult, formData: FormData) => {
+      const result = await rejectSignupAction(prev, formData);
+      if (result.success && result.message) {
+        setRejectTarget(null);
+      }
+      return result;
+    },
     initial,
   );
   const [deactivateState, deactivateAction, deactivatePending] = useActionState(
     deactivateUserAction,
     initial,
   );
-
-  useEffect(() => {
-    if (approveState.success && approveState.message) {
-      setApproveTarget(null);
-    }
-  }, [approveState]);
-
-  useEffect(() => {
-    if (rejectState.success && rejectState.message) {
-      setRejectTarget(null);
-    }
-  }, [rejectState]);
 
   const feedback =
     approveState.message ||
