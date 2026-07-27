@@ -52,6 +52,11 @@ import QuoteTradeItemsPanel, {
 } from "@/components/quotes/QuoteTradeItemsPanel";
 import { writeQuoteListFlash } from "@/lib/crm/quote-list-flash";
 import {
+  isLxWindowProductLine,
+  parseLxWindowEditorRemark,
+  type LxWindowEditorItemKind,
+} from "@/lib/crm/lx-window-meta";
+import {
   templateItemDedupeKey,
   type QuoteTemplate,
 } from "@/lib/crm/quote-template-shared";
@@ -137,6 +142,16 @@ function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
     canCostTypeHaveLx(costType) && Boolean(source?.is_lx_material);
   const dbId =
     typeof source?.id === "string" && source.id.trim() ? source.id.trim() : null;
+  const windowItemKind: LxWindowEditorItemKind | undefined =
+    source?.window_item_kind ??
+    (isLxWindowProductLine(source ?? {})
+      ? "product"
+      : costType === "자재" && /통바/.test(String(source?.item_name ?? ""))
+        ? "material"
+        : undefined);
+  const windowEditor = windowItemKind
+    ? parseLxWindowEditorRemark(source?.remark, windowItemKind)
+    : null;
   return {
     key: source?.key ?? dbId ?? rowKey(),
     id: dbId,
@@ -153,6 +168,11 @@ function toRow(source?: Partial<TradeItemRow>): TradeItemRow {
     lx_discount_base_amount: source?.lx_discount_base_amount ?? "",
     lx_discount_type: source?.lx_discount_type ?? "",
     lx_discount_value: source?.lx_discount_value ?? "0",
+    window_item_kind: windowItemKind,
+    window_location:
+      source?.window_location ?? windowEditor?.location ?? "",
+    window_extra_remark:
+      source?.window_extra_remark ?? windowEditor?.extraRemark ?? "",
     isPlaceholder: source?.isPlaceholder,
   };
 }
@@ -447,13 +467,17 @@ export default function QuoteWizardForm({
   const moneyWarnings = moneyIssues.filter((i) => i.level === "warn");
 
   const wizardVatMode: QuoteVatMode | null =
-    mode === "edit"
-      ? normalizeQuoteVatMode(initialQuote?.vat_mode)
-      : (companyVatSettings?.quote_vat_input_mode ??
-        normalizeQuoteVatMode(initialQuote?.vat_mode) ??
-        DEFAULT_QUOTE_VAT_MODE);
+    quoteType === "창호"
+      ? "inclusive"
+      : mode === "edit"
+        ? normalizeQuoteVatMode(initialQuote?.vat_mode)
+        : (companyVatSettings?.quote_vat_input_mode ??
+          normalizeQuoteVatMode(initialQuote?.vat_mode) ??
+          DEFAULT_QUOTE_VAT_MODE);
   const wizardVatRate =
-    mode === "edit" && isActiveQuoteVatMode(initialQuote?.vat_mode)
+    quoteType === "창호"
+      ? DEFAULT_QUOTE_VAT_RATE
+      : mode === "edit" && isActiveQuoteVatMode(initialQuote?.vat_mode)
       ? normalizeQuoteVatRate(initialQuote?.vat_rate)
       : normalizeQuoteVatRate(
           companyVatSettings?.quote_vat_rate ??
@@ -465,10 +489,11 @@ export default function QuoteWizardForm({
     () =>
       resolveQuoteVatDisplayAmounts({
         discountedAmount: finalAmount,
+        quoteType,
         vatMode: wizardVatMode,
         vatRate: wizardVatRate,
       }),
-    [finalAmount, wizardVatMode, wizardVatRate],
+    [finalAmount, quoteType, wizardVatMode, wizardVatRate],
   );
 
   const lxDiscountLabel = useMemo(

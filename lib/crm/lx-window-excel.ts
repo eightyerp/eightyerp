@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import {
   encodeLxWindowRemark,
   formatQuantitySetDisplay,
+  type LxWindowEditorItemKind,
   type LxWindowItemMeta,
 } from "@/lib/crm/lx-window-meta";
 
@@ -1526,6 +1527,9 @@ export type LxImportApplyLine = {
   amount: string;
   cost_type: "자재" | "시공" | "시공+자재" | "기타";
   is_lx_material: boolean;
+  window_item_kind?: LxWindowEditorItemKind;
+  window_location?: string;
+  window_extra_remark?: string;
 };
 
 export type LxImportApplyResult = {
@@ -1575,6 +1579,9 @@ export function buildQuoteLinesFromLxImport(
         amount: String(amount),
         cost_type: "자재",
         is_lx_material: true,
+        window_item_kind: "product",
+        window_location: row.location,
+        window_extra_remark: "",
       });
       continue;
     }
@@ -1586,6 +1593,7 @@ export function buildQuoteLinesFromLxImport(
         qty != null && qty > 0
           ? Math.round(amount / qty)
           : Math.max(0, Math.round(row.unitPrice ?? amount));
+      const isWindowBar = /통바/.test(row.product);
       lines.push({
         trade_name: WINDOW_TRADE,
         item_name: row.product || "부자재",
@@ -1597,6 +1605,9 @@ export function buildQuoteLinesFromLxImport(
         amount: String(amount),
         cost_type: "자재",
         is_lx_material: false,
+        window_item_kind: isWindowBar ? "material" : undefined,
+        window_location: isWindowBar ? row.location : undefined,
+        window_extra_remark: isWindowBar ? "" : undefined,
       });
       continue;
     }

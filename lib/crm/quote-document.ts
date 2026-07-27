@@ -8,6 +8,7 @@ import {
   resolveTradeDisplayName,
   type QuoteVatMode,
 } from "@/lib/crm/quote-constants";
+import { isLxWindowProductLine } from "@/lib/crm/lx-window-meta";
 
 export type QuoteDocumentItem = {
   trade_name: string;
@@ -76,6 +77,69 @@ export type QuoteDocumentLine = QuoteDocumentItem & {
   lxBase: number;
   lxDiscount: number;
   netAmount: number;
+};
+
+export type WindowQuoteLineOutputKind =
+  | "product"
+  | "window-material"
+  | "standard-labor"
+  | "additional-labor"
+  | "other";
+
+function quoteLineSearchText(line: QuoteDocumentLine): string {
+  return [line.item_name, line.lineTitle, line.description]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function isWindowBarMaterialLine(
+  line: QuoteDocumentLine,
+  quoteType?: string | null,
+): boolean {
+  if (String(quoteType ?? "").trim() !== "창호") return false;
+  if (String(line.cost_type ?? "").trim() !== "자재") return false;
+  return /통바/.test(
+    [line.item_name, line.lineTitle]
+      .map((value) => String(value ?? "").trim())
+      .join(" "),
+  );
+}
+
+export function isWindowAdditionalLaborLine(
+  line: QuoteDocumentLine,
+  quoteType?: string | null,
+): boolean {
+  if (String(quoteType ?? "").trim() !== "창호") return false;
+  return /철거|양중|확장부\s*사춤|기타\s*안전관리비/.test(
+    quoteLineSearchText(line),
+  );
+}
+
+export function getWindowQuoteLineOutputKind(
+  line: QuoteDocumentLine,
+  quoteType?: string | null,
+): WindowQuoteLineOutputKind {
+  if (String(quoteType ?? "").trim() !== "창호") return "other";
+  if (isLxWindowProductLine(line)) return "product";
+  if (String(line.cost_type ?? "").trim() === "자재") {
+    return "window-material";
+  }
+  if (/표준\s*시공비/.test(quoteLineSearchText(line))) {
+    return "standard-labor";
+  }
+  if (isWindowAdditionalLaborLine(line, quoteType)) {
+    return "additional-labor";
+  }
+  return "other";
+}
+
+const WINDOW_QUOTE_OUTPUT_ORDER: Record<WindowQuoteLineOutputKind, number> = {
+  product: 0,
+  "window-material": 1,
+  "standard-labor": 2,
+  "additional-labor": 3,
+  other: 4,
 };
 
 export type QuoteDocumentViewModel = {
@@ -176,6 +240,19 @@ export function buildQuoteDocumentViewModel(
         );
         return named || line.listAmount > 0 || line.netAmount > 0;
       });
+      if (String(model.quoteType ?? "").trim() === "창호") {
+        groupLines.sort((a, b) => {
+          const rankDiff =
+            WINDOW_QUOTE_OUTPUT_ORDER[
+              getWindowQuoteLineOutputKind(a, model.quoteType)
+            ] -
+            WINDOW_QUOTE_OUTPUT_ORDER[
+              getWindowQuoteLineOutputKind(b, model.quoteType)
+            ];
+          if (rankDiff !== 0) return rankDiff;
+          return Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0);
+        });
+      }
       return {
         tradeLabel: g.tradeLabel,
         lines: groupLines,
@@ -189,6 +266,7 @@ export function buildQuoteDocumentViewModel(
 
   const vat = resolveQuoteVatDisplayAmounts({
     discountedAmount: amounts.final_amount,
+    quoteType: model.quoteType,
     vatMode: model.vatMode,
     vatRate: model.vatRate,
     supplyAmount: model.supplyAmount,

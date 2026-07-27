@@ -302,6 +302,9 @@ export default function LxWindowExcelImportModal({
           amount: line.amount,
           cost_type: line.cost_type,
           is_lx_material: line.is_lx_material,
+          window_item_kind: line.window_item_kind,
+          window_location: line.window_location,
+          window_extra_remark: line.window_extra_remark,
           isPlaceholder: false,
         }),
       );

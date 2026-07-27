@@ -884,7 +884,17 @@ export async function createQuote(input: {
 
   const amounts = resolveQuoteAmounts(input.form, items);
 
-  // VAT 키 0개 → RPC가 회사 기본값 상속·계산. 계약 지정은 RPC 내 원자 처리.
+  const windowVat =
+    input.form.quote_type === "창호"
+      ? computeQuoteVatAmounts({
+          discountedAmount: amounts.final_amount,
+          vatMode: "inclusive",
+          vatRate: DEFAULT_QUOTE_VAT_RATE,
+        })
+      : null;
+
+  // 창호는 엑셀 최종금액이 VAT 포함 금액이므로 inclusive 스냅샷을 명시한다.
+  // 다른 견적은 VAT 키를 생략해 기존처럼 회사 기본값을 상속한다.
   const { data, error } = await supabase.rpc("create_quote_with_items", {
     p_header: {
       request_id: requestId,
@@ -907,6 +917,15 @@ export async function createQuote(input: {
       is_contract_quote: input.form.is_contract_quote,
       memo: input.form.memo,
       customer_message: input.form.customer_message,
+      ...(windowVat
+        ? {
+            vat_mode: windowVat.vat_mode,
+            vat_rate: windowVat.vat_rate,
+            supply_amount: windowVat.supply_amount,
+            vat_amount: windowVat.vat_amount,
+            customer_total_amount: windowVat.customer_total_amount,
+          }
+        : {}),
     },
     p_items: buildQuoteItemsRpcPayload(items),
   });
@@ -1034,10 +1053,18 @@ export async function updateQuote(input: {
   // (키 0개여도 RPC가 기존 mode로 재계산하지만, 앱·서버 일치 검증을 위해 항상 전송)
   const vat = computeQuoteVatAmounts({
     discountedAmount: amounts.final_amount,
-    vatMode: isActiveQuoteVatMode(existing.vat_mode) ? existing.vat_mode : null,
-    vatRate: isActiveQuoteVatMode(existing.vat_mode)
-      ? (existing.vat_rate ?? DEFAULT_QUOTE_VAT_RATE)
-      : null,
+    vatMode:
+      input.form.quote_type === "창호"
+        ? "inclusive"
+        : isActiveQuoteVatMode(existing.vat_mode)
+          ? existing.vat_mode
+          : null,
+    vatRate:
+      input.form.quote_type === "창호"
+        ? DEFAULT_QUOTE_VAT_RATE
+        : isActiveQuoteVatMode(existing.vat_mode)
+          ? (existing.vat_rate ?? DEFAULT_QUOTE_VAT_RATE)
+          : null,
   });
 
   const header: Record<string, unknown> = {
@@ -1110,6 +1137,17 @@ export async function createQuoteVersion(input: {
     Math.max(...versions.map((v) => v.version_number), 0) + 1;
 
   const supabase = await createClient();
+  const versionVat = computeQuoteVatAmounts({
+    discountedAmount: source.final_amount,
+    vatMode:
+      source.quote_type === "창호"
+        ? "inclusive"
+        : normalizeQuoteVatMode(source.vat_mode),
+    vatRate:
+      source.quote_type === "창호"
+        ? DEFAULT_QUOTE_VAT_RATE
+        : source.vat_rate,
+  });
   const { data, error } = await supabase
     .from("quotes")
     .insert({
@@ -1130,12 +1168,11 @@ export async function createQuoteVersion(input: {
       lx_discount_rate: source.lx_discount_rate ?? 0,
       lx_discount_amount: source.lx_discount_amount ?? 0,
       final_amount: source.final_amount,
-      vat_mode: source.vat_mode ?? null,
-      vat_rate: source.vat_rate ?? null,
-      supply_amount: source.supply_amount ?? source.final_amount,
-      vat_amount: source.vat_amount ?? 0,
-      customer_total_amount:
-        source.customer_total_amount ?? source.final_amount,
+      vat_mode: versionVat.vat_mode,
+      vat_rate: versionVat.vat_rate,
+      supply_amount: versionVat.supply_amount,
+      vat_amount: versionVat.vat_amount,
+      customer_total_amount: versionVat.customer_total_amount,
       valid_until: source.valid_until,
       issued_at: new Date().toISOString().slice(0, 10),
       assigned_employee_id: source.assigned_employee_id,
@@ -1200,8 +1237,14 @@ export async function createQuoteVersion(input: {
     });
     const vat = computeQuoteVatAmounts({
       discountedAmount: recomputed.final_amount,
-      vatMode: normalizeQuoteVatMode(source.vat_mode),
-      vatRate: source.vat_rate,
+      vatMode:
+        source.quote_type === "창호"
+          ? "inclusive"
+          : normalizeQuoteVatMode(source.vat_mode),
+      vatRate:
+        source.quote_type === "창호"
+          ? DEFAULT_QUOTE_VAT_RATE
+          : source.vat_rate,
     });
     try {
       assertQuoteMoneyBounds({
