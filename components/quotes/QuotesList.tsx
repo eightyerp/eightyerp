@@ -7,6 +7,7 @@ import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_STATUS_BADGE,
   ERP_QUOTE_TYPES,
+  resolveQuoteVatDisplayAmounts,
 } from "@/lib/crm/quote-constants";
 import { formatEmployeeLabel } from "@/lib/crm/constants";
 import { calcQuoteSummary, isQuoteExpired } from "@/lib/crm/quote-mgmt-client";
@@ -409,6 +410,15 @@ export default function QuotesList({
               </thead>
               <tbody className="text-sm">
                 {filtered.map((quote) => {
+                  const customerTotalAmount = resolveQuoteVatDisplayAmounts({
+                    discountedAmount: quote.final_amount,
+                    quoteType: quote.quote_type,
+                    vatMode: quote.vat_mode,
+                    vatRate: quote.vat_rate,
+                    supplyAmount: quote.supply_amount,
+                    vatAmount: quote.vat_amount,
+                    customerTotalAmount: quote.customer_total_amount,
+                  }).customer_total_amount;
                   const expired = isQuoteExpired(quote);
                   const isContract = Boolean(quote.is_contract_quote);
                   const customerName = quote.customers?.name ?? "-";
@@ -502,9 +512,7 @@ export default function QuotesList({
                           : "-"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 pr-5 text-right text-[15px] font-bold tabular-nums text-navy-900 break-keep">
-                        {formatMoney(
-                          quote.customer_total_amount ?? quote.final_amount,
-                        )}
+                        {formatMoney(customerTotalAmount)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 pl-5 break-keep">
                         <span

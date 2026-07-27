@@ -5,9 +5,15 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import {
+  buildQuoteLinesFromLxImport,
   parseLxWindowExcelBuffer,
   sumLxImportRows,
 } from "../lib/crm/lx-window-excel";
+import {
+  composeLxWindowEditorRemark,
+  parseLxWindowEditorRemark,
+} from "../lib/crm/lx-window-meta";
+import { resolveQuoteVatDisplayAmounts } from "../lib/crm/quote-constants";
 
 function assertEq(
   label: string,
@@ -26,6 +32,21 @@ function parseSample(relativePath: string) {
   const buf = readFileSync(file);
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   return parseLxWindowExcelBuffer(ab);
+}
+
+function testWindowVatIncluded() {
+  const vat = resolveQuoteVatDisplayAmounts({
+    discountedAmount: 15_300_000,
+    quoteType: "창호",
+    vatMode: "exclusive",
+    vatRate: 10,
+    supplyAmount: 15_300_000,
+    vatAmount: 1_530_000,
+    customerTotalAmount: 16_830_000,
+  });
+  assertEq("창호 고객 최종금액", vat.customer_total_amount, 15_300_000);
+  assertEq("창호 공급가액", vat.supply_amount, 13_909_091);
+  assertEq("창호 부가세", vat.vat_amount, 1_390_909);
 }
 
 function testYeongdeungpo() {
@@ -52,6 +73,28 @@ function testYeongdeungpo() {
       throw new Error("부자재 단위 경고가 남아 있습니다.");
     }
   }
+
+  const built = buildQuoteLinesFromLxImport(parsed.rows);
+  const windowBars = built.lines.filter((line) =>
+    /통바/.test(line.item_name),
+  );
+  assertEq("통바 창호자재 분류 수", windowBars.length, 3);
+  for (const bar of windowBars) {
+    assertEq("통바 편집 분류", bar.window_item_kind, "material");
+    assertEq("통바 위치 보존", bar.window_location, "PL내창");
+  }
+
+  const editedBar = windowBars[0]!;
+  const editedRemark = composeLxWindowEditorRemark({
+    kind: "material",
+    currentRemark: editedBar.remark,
+    location: "PL외창",
+    extraRemark: "현장 확인",
+  });
+  const reopened = parseLxWindowEditorRemark(editedRemark, "material");
+  assertEq("통바 수정 위치 재초기화", reopened.location, "PL외창");
+  assertEq("통바 수정 비고 재초기화", reopened.extraRemark, "현장 확인");
+  assertEq("통바 수량×단가 즉시 합계", 3 * 40_000, 120_000);
   console.log("PASS: lx-yeongdeungpo-prugio");
 }
 
@@ -76,6 +119,7 @@ function testSample() {
 }
 
 function main() {
+  testWindowVatIncluded();
   testYeongdeungpo();
   testYonginHq();
   testSample();

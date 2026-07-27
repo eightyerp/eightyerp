@@ -10,6 +10,8 @@ import {
   buildQuoteDocumentViewModel,
   formatQuoteQuantityDisplay,
   formatSpecialDiscountLabel,
+  isWindowAdditionalLaborLine,
+  isWindowBarMaterialLine,
   type QuoteDocumentLine,
   type QuoteDocumentModel,
 } from "@/lib/crm/quote-document";
@@ -18,6 +20,7 @@ import { buildSimpleQuoteBrand } from "@/lib/crm/quote-brand-shared";
 import {
   formatQuantitySetDisplay,
   isLxWindowProductLine,
+  parseLxWindowEditorRemark,
   parseLxWindowRemark,
   stripLxWindowRemarkBlock,
 } from "@/lib/crm/lx-window-meta";
@@ -42,6 +45,16 @@ function formatUnitPriceDisplay(value: number | null | undefined): string {
 function formatSpecDisplay(description?: string | null): string {
   const text = String(description ?? "").trim();
   return text || "-";
+}
+
+function isWindowMaterialDisplayLine(
+  line: QuoteDocumentLine,
+  quoteType?: string | null,
+): boolean {
+  return (
+    isLxWindowProductLine(line) ||
+    isWindowBarMaterialLine(line, quoteType)
+  );
 }
 
 function DetailColgroup() {
@@ -90,20 +103,36 @@ function DetailThead({ isPrint }: { isPrint: boolean }) {
 function LineItemBadges({
   line,
   isPrint,
+  isWindowQuote,
+  location,
 }: {
   line: QuoteDocumentLine;
   isPrint: boolean;
+  isWindowQuote: boolean;
+  location?: string | null;
 }) {
-  const costLabel = quoteCostTypeLabel(line.cost_type);
+  const costLabel = isWindowBarMaterialLine(
+    line,
+    isWindowQuote ? "창호" : null,
+  )
+    ? "창호자재"
+    : isWindowAdditionalLaborLine(line, isWindowQuote ? "창호" : null)
+      ? "부가시공비"
+      : quoteCostTypeLabel(line.cost_type);
   return (
     <div
-      className={`mt-0.5 flex flex-wrap items-center gap-1 ${
+      className={`mt-0.5 flex flex-nowrap items-center gap-1 ${
         isPrint ? "text-[10px]" : "text-[11px]"
       }`}
     >
       {costLabel ? (
         <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200">
           {costLabel}
+        </span>
+      ) : null}
+      {location ? (
+        <span className="inline-flex min-w-0 truncate text-left text-slate-500">
+          위치: {location}
         </span>
       ) : null}
       {line.is_lx_material ? (
@@ -115,18 +144,54 @@ function LineItemBadges({
   );
 }
 
+function resolveWindowBarRemark(
+  line: QuoteDocumentLine,
+  isWindowQuote: boolean,
+): { location: string | null; remainingRemark: string } {
+  const remark = stripLxWindowRemarkBlock(line.remark ?? "").trim();
+  const isWindowBarMaterial = isWindowBarMaterialLine(
+    line,
+    isWindowQuote ? "창호" : null,
+  );
+
+  if (!isWindowBarMaterial || !remark) {
+    return { location: null, remainingRemark: remark };
+  }
+
+  let location: string | null = null;
+  const remainingLines = remark.split(/\r?\n/).filter((rawLine) => {
+    const match = rawLine
+      .trim()
+      .match(/^(?:비고\s*)?위치\s*[:：]\s*(.+)$/);
+    if (!match || location) return true;
+    location = match[1]!.trim();
+    return false;
+  });
+
+  return {
+    location,
+    remainingRemark: remainingLines.join("\n").trim(),
+  };
+}
+
 /** 인쇄·미리보기용 6열 표 (항목 그룹 = 본문+비고+LX) */
 function LineTable({
   line,
   isPrint,
+  isWindowQuote = false,
   includeHeader = false,
 }: {
   line: QuoteDocumentLine;
   isPrint: boolean;
+  isWindowQuote?: boolean;
   includeHeader?: boolean;
 }) {
-  const cell = isPrint ? "px-1.5 py-1.5 align-top text-[11px]" : "px-2 py-2 align-top text-sm";
-  const remark = stripLxWindowRemarkBlock(line.remark ?? "").trim();
+  const windowBarRemark = resolveWindowBarRemark(line, isWindowQuote);
+  const isCompactWindowBar = windowBarRemark.location != null;
+  const cell = isPrint
+    ? `px-1.5 ${isCompactWindowBar ? "py-1" : "py-1.5"} align-top text-[11px]`
+    : `px-2 ${isCompactWindowBar ? "py-1.5" : "py-2"} align-top text-sm`;
+  const remark = windowBarRemark.remainingRemark;
   const showLxBreakdown = line.lxDiscount > 0;
   const meta = parseLxWindowRemark(line.remark);
   const itemTitle = meta?.location
@@ -152,7 +217,12 @@ function LineTable({
                 위치 {meta.location}
               </p>
             ) : null}
-            <LineItemBadges line={line} isPrint={isPrint} />
+            <LineItemBadges
+              line={line}
+              isPrint={isPrint}
+              isWindowQuote={isWindowQuote}
+              location={windowBarRemark.location}
+            />
           </td>
           <td className={`${cell} break-words text-left text-slate-700`}>
             {formatSpecDisplay(line.description)}
@@ -261,14 +331,23 @@ function WindowProductTable({
       ) : null}
       {lines.map((line, idx) => {
         const meta = parseLxWindowRemark(line.remark);
+        const editorRemark = parseLxWindowEditorRemark(
+          line.remark,
+          meta ? "product" : "material",
+        );
         return (
           <tbody key={`win-${idx}`} className="quote-detail-line-group">
             <tr className="border-b border-slate-100">
               <td className={`${cell} break-words text-left text-slate-800`}>
-                {meta?.location || "-"}
+                {editorRemark.location || "-"}
               </td>
               <td className={`${cell} break-words text-left font-semibold text-slate-900`}>
                 {line.lineTitle}
+                {editorRemark.extraRemark ? (
+                  <p className="mt-0.5 font-normal whitespace-pre-wrap text-slate-500">
+                    {editorRemark.extraRemark}
+                  </p>
+                ) : null}
               </td>
               <td className={`${cell} break-words text-left text-slate-700`}>
                 {formatSpecDisplay(line.description)}
@@ -277,7 +356,11 @@ function WindowProductTable({
                 {meta?.glassSpec || "-"}
               </td>
               <td className={`${cell} whitespace-nowrap text-right tabular-nums font-medium text-slate-900`}>
-                {formatQuantitySetDisplay(line.quantity)}
+                {meta
+                  ? formatQuantitySetDisplay(line.quantity)
+                  : `${formatQuoteQuantityDisplay(line.quantity)} ${
+                      line.unitLabel || ""
+                    }`.trim()}
               </td>
               <td className={`${cell} whitespace-nowrap text-center text-slate-700`}>
                 {meta?.mosquitoNet || "-"}
@@ -295,13 +378,24 @@ function WindowProductTable({
 
 function WindowProductCard({ line }: { line: QuoteDocumentLine }) {
   const meta = parseLxWindowRemark(line.remark);
+  const editorRemark = parseLxWindowEditorRemark(
+    line.remark,
+    meta ? "product" : "material",
+  );
   return (
     <article className="quote-detail-line-card rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-slate-900">{line.lineTitle}</p>
-          {meta?.location ? (
-            <p className="mt-0.5 text-xs text-slate-500">위치 {meta.location}</p>
+          {editorRemark.location ? (
+            <p className="mt-0.5 text-xs text-slate-500">
+              위치 {editorRemark.location}
+            </p>
+          ) : null}
+          {editorRemark.extraRemark ? (
+            <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-500">
+              {editorRemark.extraRemark}
+            </p>
           ) : null}
         </div>
         <p className="shrink-0 text-sm font-bold tabular-nums text-navy-900">
@@ -318,7 +412,11 @@ function WindowProductCard({ line }: { line: QuoteDocumentLine }) {
         <div>
           <dt className="text-[11px] text-slate-500">수량</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">
-            {formatQuantitySetDisplay(line.quantity)}
+            {meta
+              ? formatQuantitySetDisplay(line.quantity)
+              : `${formatQuoteQuantityDisplay(line.quantity)} ${
+                  line.unitLabel || ""
+                }`.trim()}
           </dd>
         </div>
         <div>
@@ -335,25 +433,46 @@ function WindowProductCard({ line }: { line: QuoteDocumentLine }) {
 }
 
 /** 모바일 고객 화면용 카드 */
-function LineCard({ line }: { line: QuoteDocumentLine }) {
-  const remark = stripLxWindowRemarkBlock(line.remark ?? "").trim();
+function LineCard({
+  line,
+  isWindowQuote = false,
+}: {
+  line: QuoteDocumentLine;
+  isWindowQuote?: boolean;
+}) {
+  const windowBarRemark = resolveWindowBarRemark(line, isWindowQuote);
+  const remark = windowBarRemark.remainingRemark;
   const showLxBreakdown = line.lxDiscount > 0;
   const isSet = String(line.unit ?? "").trim().toUpperCase() === "SET";
+  const isCompactWindowBar = windowBarRemark.location != null;
 
   return (
-    <article className="quote-detail-line-card rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
+    <article
+      className={`quote-detail-line-card rounded-xl border border-slate-200 bg-white shadow-sm ${
+        isCompactWindowBar ? "p-3" : "p-3.5"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold leading-snug text-slate-900">
             {line.lineTitle}
           </p>
-          <LineItemBadges line={line} isPrint={false} />
+          <LineItemBadges
+            line={line}
+            isPrint={false}
+            isWindowQuote={isWindowQuote}
+            location={windowBarRemark.location}
+          />
         </div>
         <p className="shrink-0 text-sm font-bold tabular-nums text-navy-900">
           {formatMoney(line.netAmount)}
         </p>
       </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-slate-700 sm:grid-cols-4">
+      <dl
+        className={`grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-slate-700 sm:grid-cols-4 ${
+          isCompactWindowBar ? "mt-2" : "mt-3"
+        }`}
+      >
         <div>
           <dt className="text-[11px] text-slate-500" data-label="규격">
             규격
@@ -437,10 +556,10 @@ export default function QuoteDocumentView({
       quoteNumber={model.isDraft ? null : model.quoteNumber}
       quoteNumberLabel={model.isDraft ? "저장 전 (미발급)" : null}
       issuedAt={model.issuedAt}
+      isWindowQuote={model.quoteType === "창호"}
       variant={variant}
-      quoteType={model.quoteType}
       amountSummary={{
-        totalAmount: view.totals.items_net_total,
+        totalAmount: view.totals.total_amount,
         discountAmount: view.totals.discount_amount,
         specialDiscountMemo: view.totals.special_discount_memo,
         lxDiscountAmount: view.totals.lx_discount_amount,
@@ -603,10 +722,15 @@ export default function QuoteDocumentView({
           model.quoteType === "창호" &&
           group.tradeLabel === LX_WINDOW_TRADE_NAME;
         const windowLines = isWindowTrade
-          ? group.lines.filter((line) => isLxWindowProductLine(line))
+          ? group.lines.filter((line) =>
+              isWindowMaterialDisplayLine(line, model.quoteType),
+            )
           : [];
         const otherLines = isWindowTrade
-          ? group.lines.filter((line) => !isLxWindowProductLine(line))
+          ? group.lines.filter(
+              (line) =>
+                !isWindowMaterialDisplayLine(line, model.quoteType),
+            )
           : group.lines;
 
         blocks.push({
@@ -663,7 +787,13 @@ export default function QuoteDocumentView({
             key: `line-${group.tradeLabel}-${idx}`,
             role: "line",
             groupLabel: group.tradeLabel,
-            node: <LineTable line={line} isPrint />,
+            node: (
+              <LineTable
+                line={line}
+                isPrint
+                isWindowQuote={model.quoteType === "창호"}
+              />
+            ),
           });
         });
       }
@@ -686,7 +816,7 @@ export default function QuoteDocumentView({
               </div>
             ) : null}
             <div className="flex justify-between text-slate-700">
-              <span>견적 합계</span>
+              <span>항목 합계</span>
               <span>{formatMoney(view.totals.items_net_total)}</span>
             </div>
             {view.totals.discount_amount > 0 ? (
@@ -855,10 +985,15 @@ export default function QuoteDocumentView({
                   model.quoteType === "창호" &&
                   group.tradeLabel === LX_WINDOW_TRADE_NAME;
                 const windowLines = isWindowTrade
-                  ? group.lines.filter((line) => isLxWindowProductLine(line))
+                  ? group.lines.filter((line) =>
+                      isWindowMaterialDisplayLine(line, model.quoteType),
+                    )
                   : [];
                 const otherLines = isWindowTrade
-                  ? group.lines.filter((line) => !isLxWindowProductLine(line))
+                  ? group.lines.filter(
+                      (line) =>
+                        !isWindowMaterialDisplayLine(line, model.quoteType),
+                    )
                   : group.lines;
                 return (
                   <div key={group.tradeLabel}>
@@ -881,6 +1016,7 @@ export default function QuoteDocumentView({
                         <LineCard
                           key={`${group.tradeLabel}-card-${idx}`}
                           line={line}
+                          isWindowQuote={model.quoteType === "창호"}
                         />
                       ))}
                     </div>
@@ -900,6 +1036,7 @@ export default function QuoteDocumentView({
                               key={`${group.tradeLabel}-table-${idx}`}
                               line={line}
                               isPrint={false}
+                              isWindowQuote={model.quoteType === "창호"}
                             />
                           ))}
                         </>
@@ -911,7 +1048,7 @@ export default function QuoteDocumentView({
             </div>
             <div className="quote-print-totals mt-5 space-y-1 border-t border-slate-200 pt-4 text-sm">
               <div className="flex justify-between text-slate-700">
-                <span>견적 합계</span>
+                <span>항목 합계</span>
                 <span>{formatMoney(view.totals.items_net_total)}</span>
               </div>
               <div className="flex justify-between pt-2 text-base font-bold text-navy-900">

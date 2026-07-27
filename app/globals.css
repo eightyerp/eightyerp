@@ -172,6 +172,13 @@ body {
 }
 
 @media print {
+  .quote-special-discount,
+  .quote-special-discount * {
+    color: #991b1b !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   @page {
     size: A4 portrait;
     margin: 0;

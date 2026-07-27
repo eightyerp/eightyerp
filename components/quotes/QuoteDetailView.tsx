@@ -118,6 +118,7 @@ export default function QuoteDetailView({
     () =>
       resolveQuoteVatDisplayAmounts({
         discountedAmount: quote.final_amount,
+        quoteType: quote.quote_type,
         vatMode: quote.vat_mode,
         vatRate: quote.vat_rate,
         supplyAmount: quote.supply_amount,
@@ -126,6 +127,7 @@ export default function QuoteDetailView({
       }),
     [
       quote.final_amount,
+      quote.quote_type,
       quote.vat_mode,
       quote.vat_rate,
       quote.supply_amount,

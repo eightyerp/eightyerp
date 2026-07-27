@@ -523,6 +523,12 @@ export type QuoteVatAmounts = {
   customer_total_amount: number;
 };
 
+export function isWindowQuoteType(
+  quoteType: string | null | undefined,
+): boolean {
+  return String(quoteType ?? "").trim() === "창호";
+}
+
 /**
  * 할인 후 금액(discountedAmount = computeQuoteAmounts.final_amount) 기준 VAT snapshot.
  * - exclusive: 공급가=할인후, 부가세=반올림(공급가×세율), 고객최종=공급가+부가세
@@ -585,12 +591,23 @@ export function computeQuoteVatAmounts(input: {
  */
 export function resolveQuoteVatDisplayAmounts(input: {
   discountedAmount: number;
+  quoteType?: string | null;
   vatMode?: string | null;
   vatRate?: number | null;
   supplyAmount?: number | null;
   vatAmount?: number | null;
   customerTotalAmount?: number | null;
 }): QuoteVatAmounts {
+  // LX 창호 엑셀의 최종금액은 VAT가 이미 포함된 고객 결제금액이다.
+  // 과거에 exclusive 스냅샷으로 잘못 저장된 창호 견적도 화면에서 바로잡는다.
+  if (isWindowQuoteType(input.quoteType)) {
+    return computeQuoteVatAmounts({
+      discountedAmount: input.discountedAmount,
+      vatMode: "inclusive",
+      vatRate: DEFAULT_QUOTE_VAT_RATE,
+    });
+  }
+
   const mode = normalizeQuoteVatMode(input.vatMode);
   if (
     mode != null &&

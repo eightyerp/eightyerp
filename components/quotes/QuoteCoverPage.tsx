@@ -39,12 +39,11 @@ type Props = {
   /** 견적번호 자리 대체 문구 (예: 저장 전 (미발급)) */
   quoteNumberLabel?: string | null;
   issuedAt?: string | null;
+  isWindowQuote?: boolean;
   variant?: "mobile" | "print";
   /** 공통 뷰모델 totals 기반 표지 금액 요약 */
   amountSummary?: QuoteCoverAmountSummary | null;
   contact?: QuoteCoverContact | null;
-  /** 견적유형 — 창호일 때 공사 절차 대신 체크·주의사항 표시 */
-  quoteType?: string | null;
 };
 
 const PROJECT_PROCESS = [
@@ -252,9 +251,11 @@ function IconEightyOn({ className }: { className?: string }) {
 function AmountSummaryCard({
   summary,
   isPrint,
+  isWindowQuote,
 }: {
   summary: QuoteCoverAmountSummary;
   isPrint: boolean;
+  isWindowQuote: boolean;
 }) {
   const badge = vatBadgeLabel(summary.vatMode);
   const showDiscount = summary.discountAmount > 0;
@@ -293,15 +294,75 @@ function AmountSummaryCard({
         ) : null}
       </div>
 
-      <dl className={`space-y-1.5 px-3.5 py-2.5 ${isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"}`}>
-        {summary.totalAmount > 0 ? (
+      {isWindowQuote ? (
+        <dl
+          className={`space-y-1.5 px-3.5 py-2.5 ${
+            isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"
+          }`}
+        >
           <div className="flex items-baseline justify-between gap-3">
-            <dt className="text-slate-500">견적 합계</dt>
+            <dt className="text-slate-500">할인 전 금액</dt>
             <dd className="font-semibold tabular-nums text-slate-900">
               {formatWon(summary.totalAmount)}
             </dd>
           </div>
-        ) : null}
+          <div className="quote-special-discount flex items-baseline justify-between gap-3 text-red-800">
+            <dt className="min-w-0 flex-1 truncate font-semibold text-red-800">
+              특별할인
+            </dt>
+            <dd className="shrink-0 font-bold tabular-nums text-red-800">
+              {formatDiscountWon(summary.discountAmount)}
+            </dd>
+          </div>
+          <div className="my-2 flex items-end justify-between gap-3 rounded-md bg-navy-900 px-3 py-2.5 text-white">
+            <dt
+              className={`font-semibold text-gold-300 ${
+                isPrint ? "text-[12px]" : "text-[13px]"
+              }`}
+            >
+              고객 최종금액
+            </dt>
+            <dd
+              className={`font-bold tabular-nums leading-none text-white ${
+                isPrint
+                  ? "text-[18px]"
+                  : "text-[clamp(1.15rem,4vw,1.5rem)] sm:text-[24px]"
+              }`}
+            >
+              {formatWon(summary.customerTotalAmount)}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-slate-500">최종금액의 공급가액</dt>
+            <dd className="font-semibold tabular-nums text-slate-900">
+              {formatWon(summary.supplyAmount)}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-slate-500">
+              최종금액의 부가세{vatRateLabel ? ` (${vatRateLabel})` : ""}
+            </dt>
+            <dd className="font-semibold tabular-nums text-slate-900">
+              {formatWon(summary.vatAmount)}
+            </dd>
+          </div>
+        </dl>
+      ) : (
+      <dl className={`space-y-1.5 px-3.5 py-2.5 ${isPrint ? "text-[11px]" : "text-[12px] sm:text-[13px]"}`}>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-slate-500">공급가액</dt>
+          <dd className="font-semibold tabular-nums text-slate-900">
+            {formatWon(summary.supplyAmount)}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-slate-500">
+            부가세{vatRateLabel ? ` (${vatRateLabel})` : ""}
+          </dt>
+          <dd className="font-semibold tabular-nums text-slate-900">
+            {formatWon(summary.vatAmount)}
+          </dd>
+        </div>
         {showLx ? (
           <div className="flex items-baseline justify-between gap-3">
             <dt className="text-slate-500">LX 자재 할인</dt>
@@ -311,20 +372,19 @@ function AmountSummaryCard({
           </div>
         ) : null}
         {showDiscount ? (
-          <div className="flex items-baseline justify-between gap-3">
-            <dt
-              className="min-w-0 flex-1 truncate text-slate-500"
-              title={formatSpecialDiscountLabel(summary.specialDiscountMemo)}
-            >
+          <div className="quote-special-discount flex items-baseline justify-between gap-3 text-red-800">
+            <dt className="min-w-0 flex-1 truncate font-semibold text-red-800" title={formatSpecialDiscountLabel(summary.specialDiscountMemo)}>
               {formatSpecialDiscountLabel(summary.specialDiscountMemo)}
             </dt>
-            <dd className="shrink-0 font-semibold tabular-nums text-rose-600">
+            <dd className="shrink-0 font-bold tabular-nums text-red-800">
               {formatDiscountWon(summary.discountAmount)}
             </dd>
           </div>
         ) : null}
       </dl>
 
+      )}
+      {!isWindowQuote ? (
       <div
         className="flex items-end justify-between gap-3 bg-navy-900 px-3.5 py-2.5 text-white"
         style={
@@ -353,115 +413,18 @@ function AmountSummaryCard({
           {formatWon(summary.customerTotalAmount)}
         </p>
       </div>
-
-      <dl
-        className={`space-y-1 border-t border-slate-200/80 px-3.5 py-2 ${
-          isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
-        }`}
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-slate-500">공급가액</dt>
-          <dd className="font-medium tabular-nums text-slate-800">
-            {formatWon(summary.supplyAmount)}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-slate-500">
-            부가세{vatRateLabel ? ` (${vatRateLabel})` : ""}
-          </dt>
-          <dd className="font-medium tabular-nums text-slate-800">
-            {formatWon(summary.vatAmount)}
-          </dd>
-        </div>
-      </dl>
+      ) : null}
     </div>
   );
 }
 
-const WINDOW_QUOTE_CHECKS = [
-  "제품·유리 사양·방충망·색상이 현장 요구와 일치하는지 확인",
-  "창호 수량(SET)·규격·설치 위치가 누락·중복 없는지 확인",
-  "철거·양중·부가시공·표준시공비 등 공사 범위가 포함됐는지 확인",
-  "특별할인·프로모션 적용 금액과 고객 최종금액을 확인",
-] as const;
-
-const WINDOW_QUOTE_CAUTIONS = [
-  "본 견적은 실측 전 기준이며, 현장 실측 후 규격·사양·금액이 조정될 수 있습니다.",
-  "발주·생산 착수 이후 제품·유리·색상 변경 시 추가 비용과 일정이 발생할 수 있습니다.",
-  "확장·양중·폐기·안전관리 등 현장 특수 조건은 계약 전 별도 협의가 필요합니다.",
-  "공사 범위·자재·일정은 고객 확인 후 계약서에서 최종 확정됩니다.",
-] as const;
-
-function WindowQuoteNotes({ isPrint }: { isPrint: boolean }) {
-  return (
-    <section
-      className="quote-cover-window-notes"
-      style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
-    >
-      <div className="border-b border-navy-900/15 pb-1.5">
-        <p
-          className={`font-semibold tracking-[0.18em] text-navy-800 ${
-            isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
-          }`}
-        >
-          WINDOW QUOTE GUIDE
-        </p>
-        <h2
-          className={`mt-0.5 font-bold text-navy-900 ${
-            isPrint ? "text-[13px]" : "text-[14px] sm:text-[15px]"
-          }`}
-        >
-          창호 견적 체크사항 · 주의사항
-        </h2>
-      </div>
-
-      <div
-        className={`mt-2.5 grid gap-3 ${
-          isPrint ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2"
-        }`}
-      >
-        <div>
-          <p
-            className={`font-semibold text-navy-900 ${
-              isPrint ? "text-[11px]" : "text-[12px]"
-            }`}
-          >
-            체크사항
-          </p>
-          <ol
-            className={`mt-1.5 list-decimal space-y-1 pl-4 leading-snug text-slate-600 ${
-              isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
-            }`}
-          >
-            {WINDOW_QUOTE_CHECKS.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ol>
-        </div>
-        <div>
-          <p
-            className={`font-semibold text-navy-900 ${
-              isPrint ? "text-[11px]" : "text-[12px]"
-            }`}
-          >
-            주의사항
-          </p>
-          <ul
-            className={`mt-1.5 list-disc space-y-1 pl-4 leading-snug text-slate-600 ${
-              isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
-            }`}
-          >
-            {WINDOW_QUOTE_CAUTIONS.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ProjectProcess({ isPrint }: { isPrint: boolean }) {
+function ProjectProcess({
+  isPrint,
+  hideNotice = false,
+}: {
+  isPrint: boolean;
+  hideNotice?: boolean;
+}) {
   return (
     <section
       className="quote-cover-process"
@@ -513,14 +476,16 @@ function ProjectProcess({ isPrint }: { isPrint: boolean }) {
         ))}
       </ol>
 
-      <p
-        className={`mt-2.5 border-t border-slate-200 pt-2 leading-snug text-slate-500 ${
-          isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
-        }`}
-      >
-        공사 범위·자재·일정은 고객 확인 후 계약서에서 최종 확정되며, 변경사항은
-        사전 협의 후 반영됩니다.
-      </p>
+      {!hideNotice ? (
+        <p
+          className={`mt-2.5 border-t border-slate-200 pt-2 leading-snug text-slate-500 ${
+            isPrint ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+          }`}
+        >
+          공사 범위·자재·일정은 고객 확인 후 계약서에서 최종 확정되며, 변경사항은
+          사전 협의 후 반영됩니다.
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -746,15 +711,14 @@ export default function QuoteCoverPage({
   quoteNumber,
   quoteNumberLabel,
   issuedAt,
+  isWindowQuote = false,
   variant = "mobile",
   amountSummary = null,
   contact = null,
-  quoteType = null,
 }: Props) {
   const isPrint = variant === "print";
   const name = customerName.trim() || "고객";
   const isPremium = brand.coverStyle === "premium";
-  const isWindowQuote = quoteType?.trim() === "창호";
   const siteTitle = title.trim() || "-";
   const quoteNumberDisplay =
     quoteNumberLabel?.trim() || quoteNumber?.trim() || "-";
@@ -855,15 +819,16 @@ export default function QuoteCoverPage({
           </dl>
         </div>
 
-        {isPremium && isWindowQuote ? (
-          <WindowQuoteNotes isPrint={isPrint} />
-        ) : null}
-        {isPremium && !isWindowQuote ? (
-          <ProjectProcess isPrint={isPrint} />
+        {isPremium ? (
+          <ProjectProcess isPrint={isPrint} hideNotice={isWindowQuote} />
         ) : null}
 
         {amountSummary ? (
-          <AmountSummaryCard summary={amountSummary} isPrint={isPrint} />
+          <AmountSummaryCard
+            summary={amountSummary}
+            isPrint={isPrint}
+            isWindowQuote={isWindowQuote}
+          />
         ) : null}
 
         {isPremium ? <EightyTrustMarks isPrint={isPrint} /> : null}

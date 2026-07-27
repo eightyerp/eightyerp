@@ -22,6 +22,10 @@ import {
   tradeKeyOf,
 } from "@/lib/crm/quote-trade-groups";
 import { LX_WINDOW_TRADE_NAME } from "@/lib/crm/lx-window-excel";
+import {
+  composeLxWindowEditorRemark,
+  type LxWindowEditorItemKind,
+} from "@/lib/crm/lx-window-meta";
 
 const LxWindowExcelImportModal = dynamic(
   () => import("@/components/quotes/LxWindowExcelImportModal"),
@@ -46,6 +50,12 @@ export type QuoteLineRow = {
   lx_discount_base_amount: string;
   lx_discount_type: "" | "none" | "rate" | "fixed";
   lx_discount_value: string;
+  /** DB 비저장: 창호 전용 편집 목록 분류 */
+  window_item_kind?: LxWindowEditorItemKind;
+  /** DB 비저장: remark와 동기화되는 창호 전용 위치 입력 */
+  window_location?: string;
+  /** DB 비저장: 위치 메타를 제외한 사용자 비고 */
+  window_extra_remark?: string;
   isPlaceholder?: boolean;
 };
 
@@ -158,6 +168,24 @@ export default function QuoteTradeItemsPanel({
 
   const showLxImport =
     isWindowQuote && !isSimple && !isInterior;
+  const showWindowMaterialEditor =
+    isWindowQuote && !isSimple && !isInterior;
+
+  const windowMaterialRows = useMemo(
+    () =>
+      showWindowMaterialEditor
+        ? items.filter((row) => Boolean(row.window_item_kind))
+        : [],
+    [items, showWindowMaterialEditor],
+  );
+
+  const generalItems = useMemo(
+    () =>
+      showWindowMaterialEditor
+        ? items.filter((row) => !row.window_item_kind)
+        : items,
+    [items, showWindowMaterialEditor],
+  );
 
   function openLxImportForTrade(tradeLabel: string) {
     if (tradeLabel !== LX_WINDOW_TRADE_NAME) return;
@@ -174,13 +202,13 @@ export default function QuoteTradeItemsPanel({
   }
 
   const groups = useMemo(() => {
-    const built = buildTradeGroups(items, tradeOrder, quoteMode, (row) =>
+    const built = buildTradeGroups(generalItems, tradeOrder, quoteMode, (row) =>
       rowAmount(row),
     );
     // 상세견적: 빈 대표공종도 화면에 표시. 간편: 항목 있는 공종만.
     if (!isSimple) return built;
     return built.filter((g) => g.items.some((row) => !row.isPlaceholder));
-  }, [items, tradeOrder, quoteMode, isSimple]);
+  }, [generalItems, tradeOrder, quoteMode, isSimple]);
 
   const flatRows = useMemo(() => {
     const ordered = flattenItemsByTradeOrder(items, tradeOrder, quoteMode);
@@ -208,6 +236,28 @@ export default function QuoteTradeItemsPanel({
       prev.map((row) => {
         if (row.key !== key) return row;
         const next = { ...row, ...patch, isPlaceholder: false };
+        if (
+          isWindowQuote &&
+          !next.window_item_kind &&
+          next.cost_type === "자재" &&
+          /통바/.test(next.item_name)
+        ) {
+          next.window_item_kind = "material";
+          next.window_location = "";
+          next.window_extra_remark = next.remark;
+        }
+        if (
+          next.window_item_kind &&
+          (patch.window_location !== undefined ||
+            patch.window_extra_remark !== undefined)
+        ) {
+          next.remark = composeLxWindowEditorRemark({
+            kind: next.window_item_kind,
+            currentRemark: next.remark,
+            location: next.window_location,
+            extraRemark: next.window_extra_remark,
+          });
+        }
         if (patch.cost_type !== undefined && !canCostTypeHaveLx(next.cost_type)) {
           next.is_lx_material = false;
           next.lx_discount_base_amount = "";
@@ -303,6 +353,36 @@ export default function QuoteTradeItemsPanel({
       if (tradeKeyOf(ordered[swapWith], quoteMode) !== label) return prev;
       const next = [...ordered];
       [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+      return next;
+    });
+  }
+
+  function moveWindowMaterialItem(
+    key: string,
+    direction: "up" | "down",
+  ) {
+    onItemsChange((prev) => {
+      const windowIndexes = prev
+        .map((row, index) => (row.window_item_kind ? index : -1))
+        .filter((index) => index >= 0);
+      const position = windowIndexes.findIndex(
+        (index) => prev[index]?.key === key,
+      );
+      const swapPosition = direction === "up" ? position - 1 : position + 1;
+      if (
+        position < 0 ||
+        swapPosition < 0 ||
+        swapPosition >= windowIndexes.length
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      const currentIndex = windowIndexes[position]!;
+      const swapIndex = windowIndexes[swapPosition]!;
+      [next[currentIndex], next[swapIndex]] = [
+        next[swapIndex]!,
+        next[currentIndex]!,
+      ];
       return next;
     });
   }
@@ -657,6 +737,208 @@ export default function QuoteTradeItemsPanel({
 
       {panelError ? (
         <p className="text-sm text-red-600">{panelError}</p>
+      ) : null}
+
+      {showWindowMaterialEditor ? (
+        <section className="rounded-lg border border-navy-200 bg-navy-50/30">
+          <div className="flex items-center justify-between border-b border-navy-100 px-3 py-2.5">
+            <div>
+              <h3 className="text-sm font-bold text-navy-900">
+                창호 자재항목
+              </h3>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                PL외창·PL내창·통바를 같은 목록에서 수정합니다.
+              </p>
+            </div>
+            <span className="text-xs font-semibold text-navy-800">
+              {windowMaterialRows.length}항목
+            </span>
+          </div>
+          {windowMaterialRows.length === 0 ? (
+            <p className="px-4 py-6 text-center text-xs text-slate-500">
+              LX 엑셀을 가져오면 창호 본품과 통바가 여기에 표시됩니다.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1320px] table-fixed text-left text-sm">
+                <thead>
+                  <tr className="border-b border-navy-100 bg-white/80 text-xs text-slate-600">
+                    <th className="w-[64px] px-2 py-2 text-center">순서</th>
+                    <th className="w-[92px] px-2 py-2">분류</th>
+                    <th className="w-[230px] px-2 py-2">제품명/항목명</th>
+                    <th className="w-[140px] px-2 py-2">규격</th>
+                    <th className="w-[70px] px-2 py-2">수량</th>
+                    <th className="w-[76px] px-2 py-2">단위</th>
+                    <th className="w-[120px] px-2 py-2 text-right">단가(원)</th>
+                    <th className="w-[130px] px-2 py-2">위치</th>
+                    <th className="w-[250px] px-2 py-2">비고</th>
+                    <th className="w-[100px] px-2 py-2 text-right">금액</th>
+                    <th className="w-[58px] px-2 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {windowMaterialRows.map((row, index) => {
+                    const amount = rowAmount(row);
+                    return (
+                      <tr
+                        key={row.key}
+                        className="border-b border-navy-100/70 bg-white align-top"
+                      >
+                        <td className="px-2 py-2">
+                          <div className="flex justify-center gap-1">
+                            <button
+                              type="button"
+                              aria-label="창호 자재항목 위로"
+                              disabled={index === 0}
+                              onClick={() =>
+                                moveWindowMaterialItem(row.key, "up")
+                              }
+                              className="rounded border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-30"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="창호 자재항목 아래로"
+                              disabled={index === windowMaterialRows.length - 1}
+                              onClick={() =>
+                                moveWindowMaterialItem(row.key, "down")
+                              }
+                              className="rounded border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-30"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          <span className="inline-flex rounded bg-navy-100 px-2 py-1 text-[11px] font-semibold text-navy-900">
+                            {row.window_item_kind === "product"
+                              ? "창호 본품"
+                              : "창호자재"}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={row.item_name}
+                            onChange={(e) =>
+                              updateRow(row.key, {
+                                item_name: e.target.value,
+                              })
+                            }
+                            className={cellInputClass}
+                            aria-label="창호 제품명 또는 항목명"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={row.description}
+                            onChange={(e) =>
+                              updateRow(row.key, {
+                                description: e.target.value,
+                              })
+                            }
+                            className={cellInputClass}
+                            aria-label="창호 규격"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={row.quantity}
+                            onChange={(e) =>
+                              updateRow(row.key, {
+                                quantity: e.target.value,
+                              })
+                            }
+                            inputMode="decimal"
+                            className={`${cellInputClass} tabular-nums`}
+                            aria-label="창호 수량"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <select
+                            value={row.unit}
+                            onChange={(e) =>
+                              updateRow(row.key, { unit: e.target.value })
+                            }
+                            className={cellInputClass}
+                            aria-label="창호 단위"
+                          >
+                            <option value="">-</option>
+                            {UNIT_OPTIONS.map((unit) => (
+                              <option key={unit.value} value={unit.value}>
+                                {unit.label}
+                              </option>
+                            ))}
+                            {row.unit &&
+                            !UNIT_OPTIONS.some(
+                              (unit) => unit.value === row.unit,
+                            ) ? (
+                              <option value={row.unit}>{row.unit}</option>
+                            ) : null}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={row.unit_price}
+                            onChange={(e) =>
+                              updateRow(row.key, {
+                                unit_price: digitsOnlyMoney(e.target.value),
+                              })
+                            }
+                            inputMode="numeric"
+                            className={`${cellInputClass} text-right tabular-nums`}
+                            aria-label="창호 단가"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={row.window_location ?? ""}
+                            onChange={(e) =>
+                              updateRow(row.key, {
+                                window_location: e.target.value,
+                              })
+                            }
+                            className={cellInputClass}
+                            aria-label="창호 위치"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <textarea
+                            value={row.window_extra_remark ?? ""}
+                            onChange={(e) =>
+                              updateRow(row.key, {
+                                window_extra_remark: e.target.value.slice(
+                                  0,
+                                  500,
+                                ),
+                              })
+                            }
+                            rows={2}
+                            maxLength={500}
+                            className={`${cellInputClass} min-h-[2.5rem] resize-y`}
+                            aria-label="창호 비고"
+                          />
+                        </td>
+                        <td className="px-2 py-2 text-right font-semibold tabular-nums text-slate-900">
+                          {formatMoney(amount)}
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeRow(row.key)}
+                            className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                          >
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       ) : null}
 
       {flatRows.length === 0 && isSimple ? (

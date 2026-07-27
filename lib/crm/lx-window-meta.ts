@@ -10,6 +10,8 @@ export type LxWindowItemMeta = {
   color?: string;
 };
 
+export type LxWindowEditorItemKind = "product" | "material";
+
 const BEGIN = "@@LXW";
 const END = "@@";
 
@@ -79,6 +81,58 @@ export function parseLxWindowRemark(
     return null;
   }
   return meta;
+}
+
+export function parseLxWindowEditorRemark(
+  remark: string | null | undefined,
+  kind: LxWindowEditorItemKind,
+): { location: string; extraRemark: string } {
+  const text = String(remark ?? "");
+  const meta = parseLxWindowRemark(text);
+  const cleaned = stripLxWindowRemarkBlock(text).trim();
+  if (kind === "product") {
+    return {
+      location: meta?.location ?? "",
+      extraRemark: cleaned,
+    };
+  }
+
+  let location = "";
+  const remaining = cleaned.split(/\r?\n/).filter((rawLine) => {
+    const match = rawLine
+      .trim()
+      .match(/^(?:비고\s*)?위치\s*[:：]\s*(.+)$/);
+    if (!match || location) return true;
+    location = match[1]!.trim();
+    return false;
+  });
+  return {
+    location,
+    extraRemark: remaining.join("\n").trim(),
+  };
+}
+
+export function composeLxWindowEditorRemark(input: {
+  kind: LxWindowEditorItemKind;
+  currentRemark?: string | null;
+  location?: string | null;
+  extraRemark?: string | null;
+}): string {
+  const location = String(input.location ?? "").trim();
+  const extraRemark = String(input.extraRemark ?? "").trim();
+  if (input.kind === "product") {
+    const currentMeta = parseLxWindowRemark(input.currentRemark) ?? {};
+    return encodeLxWindowRemark(
+      { ...currentMeta, location },
+      extraRemark,
+    );
+  }
+  return [
+    location ? `위치: ${location}` : "",
+    extraRemark,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** 창호 제품 행 여부 (고객용 창호 표 대상) */
