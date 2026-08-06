@@ -54,6 +54,8 @@ export default function EmployeeContactsWorkspace({
   const [keepProfileId, setKeepProfileId] = useState("");
   const [otherLoginAction, setOtherLoginAction] = useState<"unlink" | "deactivate">("unlink");
   const [mergeReport, setMergeReport] = useState<EmployeeMergeResult | null>(null);
+  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
+  const [mergeReportContext, setMergeReportContext] = useState<{ sourceName: string; targetName: string; businessTotal: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   const accessibleEmployees = canManageAll
@@ -242,17 +244,22 @@ export default function EmployeeContactsWorkspace({
       {mergeOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-5 text-slate-900 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">중복 직원 병합</h3>
-            <p className="mt-1 text-sm text-red-700">중복 직원 레코드는 삭제하지 않고 비활성화하며, 기준 직원 ID는 변경하지 않습니다.</p>
+            <h3 className="text-lg font-semibold text-slate-900">중복 직원 안전 병합</h3>
+            <p className="mt-1 text-sm text-slate-600">유지할 직원과 비활성화할 중복 직원을 구분해 선택한 뒤 영향 분석을 확인하세요.</p>
+            <div className="mt-3 rounded-lg border-2 border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-900">
+              주의: 병합 실행 후에는 이 화면에서 되돌릴 수 없습니다. 중복 직원은 삭제되지 않지만 비활성화되고 모든 업무 참조가 기준 직원으로 이전됩니다.
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">기준 직원(유지)
-                <select value={mergeTargetId} onChange={(e) => { setMergeTargetId(e.target.value); setMergeImpact(null); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">
+              <label className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3 text-sm font-semibold text-emerald-950">기준 직원 · 유지됨
+                <span className="mt-1 block text-xs font-normal text-emerald-800">직원 ID와 업무 데이터를 최종적으로 유지합니다.</span>
+                <select value={mergeTargetId} onChange={(e) => { setMergeTargetId(e.target.value); setMergeImpact(null); setMergeReport(null); }} className="mt-2 w-full rounded-lg border border-emerald-400 bg-white px-3 py-2 text-slate-900">
                   <option value="">선택</option>
                   {employees.filter((e) => e.is_active && !e.merged_into_employee_id).map((e) => <option key={e.id} value={e.id}>{e.name} · {e.title}</option>)}
                 </select>
               </label>
-              <label className="text-sm">중복 직원(병합)
-                <select value={mergeSourceId} onChange={(e) => { setMergeSourceId(e.target.value); setMergeImpact(null); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">
+              <label className="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-950">병합 직원 · 비활성화됨
+                <span className="mt-1 block text-xs font-normal text-rose-800">이 직원의 업무를 기준 직원에게 이전합니다.</span>
+                <select value={mergeSourceId} onChange={(e) => { setMergeSourceId(e.target.value); setMergeImpact(null); setMergeReport(null); }} className="mt-2 w-full rounded-lg border border-rose-400 bg-white px-3 py-2 text-slate-900">
                   <option value="">선택</option>
                   {employees.filter((e) => e.id !== mergeTargetId && !e.merged_into_employee_id).map((e) => <option key={e.id} value={e.id}>{e.name} · {e.title}{e.login_linked ? " · 로그인 연결" : ""}</option>)}
                 </select>
@@ -267,7 +274,7 @@ export default function EmployeeContactsWorkspace({
                   setKeepProfileId(result.impact.logins.length === 1 ? result.impact.logins[0].profile_id : "");
                 } else setError(result.error);
               });
-            }} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">병합 영향 분석</button>
+            }} className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">선택한 두 직원의 영향 분석하기</button>
 
             {mergeImpact ? (() => {
               const count = (table: string) => mergeImpact.references.find((r) => r.table === table && r.kind === "business")?.source_count ?? 0;
@@ -293,19 +300,28 @@ export default function EmployeeContactsWorkspace({
                   {mergeImpact.logins.length === 0 ? <p className="mt-1 text-sm text-slate-600">연결 계정 없음</p> : <div className="mt-2 space-y-2">{mergeImpact.logins.map((login) => <label key={login.profile_id} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900"><input type="radio" name="keep_profile" checked={keepProfileId === login.profile_id} onChange={() => setKeepProfileId(login.profile_id)} />{login.email ?? login.full_name ?? login.profile_id} · {login.employee_id === mergeImpact.target.id ? "기준 직원 계정" : "중복 직원 계정"}</label>)}</div>}
                   {bothHaveLogin ? <label className="mt-2 block text-sm font-medium">나머지 계정 처리<select value={otherLoginAction} onChange={(e) => setOtherLoginAction(e.target.value as "unlink" | "deactivate")} className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1 text-slate-900"><option value="unlink">직원 연결만 해제</option><option value="deactivate">연결 해제 및 비활성화</option></select></label> : null}
                 </div>
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">실행 전 확인: {confirmation}</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3"><p className="text-xs font-semibold text-emerald-700">유지되는 기준 직원</p><p className="mt-1 font-bold text-emerald-950">{mergeImpact.target.name}</p></div>
+                  <div className="rounded-lg border border-rose-300 bg-rose-50 p-3"><p className="text-xs font-semibold text-rose-700">비활성화되는 병합 직원</p><p className="mt-1 font-bold text-rose-950">{mergeImpact.source.name}</p></div>
+                </div>
+                <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-900">실행 전 확인: {confirmation}<br /><span className="mt-1 block">이 작업은 완료 후 되돌릴 수 없습니다.</span></div>
                 <button type="button" disabled={pending || (bothHaveLogin && !keepProfileId)} onClick={() => {
-                  if (!confirm(`${confirmation}\n이 작업은 모든 참조를 하나의 트랜잭션에서 변경합니다. 계속할까요?`)) return;
-                  setError(null);
-                  startTransition(async () => {
-                    const result = await mergeEmployeesAction({ sourceEmployeeId: mergeImpact.source.id, targetEmployeeId: mergeImpact.target.id, keepProfileId: keepProfileId || null, otherLoginAction });
-                    if (result.success) {
-                      setMergeReport(result.report);
-                      setMergeImpact(null);
-                      setMessage("직원 병합과 이전 전후 건수 검증을 완료했습니다.");
-                    } else setError(result.error);
-                  });
-                }} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">확인 후 직원 병합</button>
+                  setMergeConfirmOpen(true);
+                }} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">최종 병합 내용 확인하기</button>
+                {mergeConfirmOpen ? <div className="rounded-xl border-2 border-red-400 bg-white p-4 shadow-lg">
+                  <h4 className="font-bold text-red-900">정말 직원 병합을 실행하시겠습니까?</h4>
+                  <p className="mt-2 text-sm text-slate-900"><b className="text-rose-800">{mergeImpact.source.name}</b> 직원의 업무 <b>{businessTotal}건</b>을 <b className="text-emerald-800">{mergeImpact.target.name}</b> 직원에게 이전합니다.</p>
+                  <p className="mt-2 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-900">완료 후에는 되돌릴 수 없습니다. 선택한 직원과 이전 건수를 다시 확인해 주세요.</p>
+                  <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => setMergeConfirmOpen(false)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900">취소하고 다시 확인</button><button type="button" disabled={pending} onClick={() => {
+                    setMergeConfirmOpen(false); setError(null);
+                    const reportContext = { sourceName: mergeImpact.source.name, targetName: mergeImpact.target.name, businessTotal };
+                    startTransition(async () => {
+                      const result = await mergeEmployeesAction({ sourceEmployeeId: mergeImpact.source.id, targetEmployeeId: mergeImpact.target.id, keepProfileId: keepProfileId || null, otherLoginAction });
+                      if (result.success) { setMergeReport(result.report); setMergeReportContext(reportContext); setMergeImpact(null); setMessage("직원 병합과 이전 전후 건수 검증을 완료했습니다."); }
+                      else setError(result.error);
+                    });
+                  }} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-75">되돌릴 수 없음에 동의하고 병합 실행</button></div>
+                </div> : null}
               </div>;
             })() : null}
             {mergeReport ? (() => {
@@ -313,7 +329,8 @@ export default function EmployeeContactsWorkspace({
               const total = rows.reduce((sum, [, count]) => sum + Number(count), 0);
               const totalsMatch = JSON.stringify(mergeReport.before_totals) === JSON.stringify(mergeReport.after_totals);
               return <div className="mt-5 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <h4 className="font-semibold text-emerald-900">병합 완료 보고서</h4>
+                <div><h4 className="text-lg font-bold text-emerald-950">직원 병합 완료 보고서</h4><p className="mt-1 text-sm text-emerald-800">업무 이전과 병합 전후 건수 검증이 모두 완료되었습니다.</p></div>
+                {mergeReportContext ? <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-emerald-300 bg-white p-3"><p className="text-xs text-emerald-700">유지된 기준 직원</p><b className="text-emerald-950">{mergeReportContext.targetName}</b></div><div className="rounded-lg border border-rose-300 bg-white p-3"><p className="text-xs text-rose-700">비활성화된 병합 직원</p><b className="text-rose-950">{mergeReportContext.sourceName}</b></div></div> : null}
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
                   <div><dt className="text-slate-600">병합 로그 ID</dt><dd className="break-all font-mono text-xs text-slate-900">{mergeReport.merge_log_id}</dd></div>
                   <div><dt className="text-slate-600">총 이전 참조</dt><dd className="font-semibold text-slate-900">{total}건</dd></div>
@@ -329,7 +346,7 @@ export default function EmployeeContactsWorkspace({
               </div>;
             })() : null}
             {error ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-            <button type="button" onClick={() => { setMergeOpen(false); setMergeImpact(null); setError(null); }} className="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">닫기</button>
+            <button type="button" onClick={() => { setMergeOpen(false); setMergeImpact(null); setMergeConfirmOpen(false); setError(null); }} className="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">{mergeReport ? "완료 보고서 닫기" : "병합 창 닫기"}</button>
           </div>
         </div>
       ) : null}
