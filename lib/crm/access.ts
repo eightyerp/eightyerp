@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase-server";
+import { cache } from "react";
 import { isAdminRole } from "@/lib/crm/constants";
 import type {
   ApprovalStatus,
@@ -36,6 +37,7 @@ function resolveApproval(profile: ProfileWithEmployee | null): {
 
   const canAccessErp =
     profile.is_active === true &&
+    (profile.employee_id === null || profile.employees?.is_active === true) &&
     isApproved &&
     status === "approved";
 
@@ -46,7 +48,7 @@ function resolveApproval(profile: ProfileWithEmployee | null): {
   };
 }
 
-export async function getCurrentUserAccess(): Promise<CurrentUserAccess> {
+export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -67,7 +69,7 @@ export async function getCurrentUserAccess(): Promise<CurrentUserAccess> {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("*, employees ( id, name, title, team_id )")
+    .select("id, employee_id, role, permissions, is_active, email, full_name, phone, requested_team, requested_title, is_approved, approval_status, approved_at, approved_by, rejected_at, rejection_reason, created_at, updated_at, employees ( id, name, title, team_id, is_active )")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -97,7 +99,7 @@ export async function getCurrentUserAccess(): Promise<CurrentUserAccess> {
     approvalStatus: resolved.approvalStatus,
     permissions: typed?.permissions ?? {},
   };
-}
+});
 
 export async function requireAdminAccess() {
   const access = await getCurrentUserAccess();
