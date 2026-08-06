@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import * as XLSX from "xlsx";
-import { INTERIOR_EXCEL_EXTENSIONS, parseInteriorQuoteWorkbook } from "../lib/crm/interior-quote-excel";
+import {
+  INTERIOR_EXCEL_EXTENSIONS,
+  buildInteriorQuoteItemsPayload,
+  getInteriorImportBlockingReason,
+  isInteriorReferenceItem,
+  parseInteriorQuoteWorkbook,
+  recalculateInteriorCostItem,
+} from "../lib/crm/interior-quote-excel";
 
 function workbookBuffer(rows: unknown[][], options?: { extraSheet?: boolean; merge?: XLSX.Range; merges?: XLSX.Range[] }) {
   const workbook = XLSX.utils.book_new();
@@ -56,7 +64,14 @@ assert.equal(discounted.totals.discountAmount, 50000, "할인/조정금액");
 const missingPriceRows = rows.map((row) => [...row]);
 missingPriceRows[4][5] = ""; missingPriceRows[4][6] = "";
 const missingPrice = parseInteriorQuoteWorkbook(workbookBuffer(missingPriceRows));
-assert.ok(missingPrice.items[0].errors.includes("단가·금액 누락"), "단가 누락 강조");
+assert.equal(missingPrice.items[0].errors.length, 0, "0원 참고항목은 오류가 아님");
+assert.equal(isInteriorReferenceItem(missingPrice.items[0]), true, "0원 참고항목 분류");
+const referencePayload = buildInteriorQuoteItemsPayload([missingPrice.items[0]])[0];
+assert.equal(referencePayload.amount, 0, "0원 참고항목 저장 허용");
+assert.match(referencePayload.description ?? "", /30평/, "참고항목 설명 보존");
+const convertedPaid = recalculateInteriorCostItem(missingPrice.items[0], { quantity: 2, materialUnitPrice: 100000 });
+assert.equal(isInteriorReferenceItem(convertedPaid), false, "단가 입력 시 유상항목 전환");
+assert.equal(convertedPaid.amount, 200000, "유상항목 전환 금액 계산");
 
 const mismatchRows = rows.map((row) => [...row]);
 mismatchRows[4][6] = 250000;
@@ -102,5 +117,35 @@ assert.equal(layered.items[3].unitPrice,250000,"자재·인건비 금액만 있�
 assert.equal(layered.items[4].materialAmount,0,"명시적 0은 단가 계산으로 덮지 않음");
 assert.equal(layered.items[4].laborAmount,100000,"빈 금액은 수량×단가");
 assert.ok(layered.items[5].errors.some((error)=>error.includes("Excel 합계금액")),"명시 합계 차이 경고");
+
+assert.equal(getInteriorImportBlockingReason({customerId:"",employeeId:"employee",fileReady:true,items:normal.items,excelDifference:0}),"고객을 선택해 주세요.","고객 필수");
+assert.equal(getInteriorImportBlockingReason({customerId:"customer",employeeId:"",fileReady:true,items:normal.items,excelDifference:0}),"담당 직원을 선택해 주세요.","담당자 필수");
+assert.equal(getInteriorImportBlockingReason({customerId:"customer",employeeId:"employee",fileReady:true,items:[missingPrice.items[0]],excelDifference:0}),"유효한 유상 품목이 1개 이상 필요합니다.","유상 품목 필수");
+assert.equal(getInteriorImportBlockingReason({customerId:"customer",employeeId:"employee",fileReady:true,items:normal.items,excelDifference:10}),"Excel 총액과 ERP 계산 총액이 일치하지 않습니다.","총액 불일치 차단");
+assert.equal(getInteriorImportBlockingReason({customerId:"customer",employeeId:"employee",fileReady:true,items:normal.items,excelDifference:0}),null,"담당자 선택 후 저장 가능");
+
+const fixturePath = "fixtures/interior/양평삼성래미안103동1101호 견적서_251206.xlsx";
+if (fs.existsSync(fixturePath)) {
+  const fixtureBytes = fs.readFileSync(fixturePath);
+  const fixtureBuffer = fixtureBytes.buffer.slice(fixtureBytes.byteOffset, fixtureBytes.byteOffset + fixtureBytes.byteLength) as ArrayBuffer;
+  const fixture = parseInteriorQuoteWorkbook(fixtureBuffer);
+  for (const itemName of ["엘리베이터 이용료", "공사 예치금", "사용승인", "가스계량기 이동"]) {
+    const item = fixture.items.find((candidate) => candidate.itemName === itemName);
+    assert.ok(item, `양평 fixture 참고항목 보존: ${itemName}`);
+    assert.equal(item.errors.length, 0, `양평 fixture 참고항목 오류 없음: ${itemName}`);
+    assert.equal(isInteriorReferenceItem(item), true, `양평 fixture 참고항목 분류: ${itemName}`);
+  }
+  const fixturePayload = buildInteriorQuoteItemsPayload(fixture.items);
+  assert.equal(fixturePayload.length, fixture.items.length, "양평 fixture 참고항목 포함 전체 payload");
+  assert.equal(fixturePayload.reduce((sum, item) => sum + item.amount, 0), fixture.items.reduce((sum, item) => sum + item.amount, 0), "0원 참고항목 합계 제외");
+}
+
+const importActionSource = fs.readFileSync("app/actions/interior-quote-import.ts", "utf8");
+assert.match(importActionSource, /await createQuote\(/, "기존 createQuote 저장 경로 재사용");
+assert.doesNotMatch(importActionSource, /create_interior_quote_from_excel/, "미적용 전용 RPC 의존성 없음");
+assert.match(importActionSource, /\[interior-quote-import\] save-failed/, "서버 오류 원문 관리자 로그");
+const importUiSource = fs.readFileSync("components/quotes/InteriorQuoteExcelImportModal.tsx", "utf8");
+assert.match(importUiSource, /참고항목 · 금액 미반영/, "0원 참고항목 배지");
+assert.match(importUiSource, /disabled=\{pending \|\| Boolean\(saveBlockReason\)\}/, "저장 사유별 버튼 차단");
 
 console.log("PASS: interior quote Excel parser, design-eighty standard mapping, totals and validation tests");

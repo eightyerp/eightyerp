@@ -7,5 +7,5 @@ export default async function InteriorQuoteExcelImportPage() {
   const access = await getScheduleAccess();
   const [customers, employees] = await Promise.all([listInteriorImportCustomers(), listEmployeesInScope(access)]);
   const lockEmployeeId = !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
-  return <DashboardLayout><InteriorQuoteExcelImportWorkspace customers={customers} employees={employees} lockEmployeeId={lockEmployeeId} /></DashboardLayout>;
+  return <DashboardLayout><InteriorQuoteExcelImportWorkspace customers={customers} employees={employees} lockEmployeeId={lockEmployeeId} defaultEmployeeId={access.employeeId} /></DashboardLayout>;
 }
