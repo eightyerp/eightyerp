@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveInteriorQuoteImportAction } from "@/app/actions/interior-quote-import";
+import InteriorQuoteErrorReviewPanel from "./InteriorQuoteErrorReviewPanel";
 import {
   INTERIOR_EXCEL_MAX_BYTES,
   buildInteriorQuoteItemsPayload,
@@ -13,6 +14,13 @@ import {
   type InteriorExcelItem,
   type InteriorExcelParseResult,
 } from "@/lib/crm/interior-quote-excel";
+import {
+  applyInteriorResolution,
+  diagnoseInteriorWorkbook,
+  isUnresolvedDiagnostic,
+  type InteriorResolutionDraft,
+  type InteriorResolutionRecord,
+} from "@/lib/crm/interior-quote-diagnostics";
 import {
   recognizeQuoteWorkbook,
   type TemplateRecognition,
@@ -60,6 +68,10 @@ export default function InteriorQuoteExcelImportModal({
   const [discount, setDiscount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | "normal" | "reference" | "error">("all");
+  const [repairItemId, setRepairItemId] = useState<string | null>(null);
+  const [rowResolutions, setRowResolutions] = useState<Record<string, InteriorResolutionRecord>>({});
+  const [aggregateConfirmations, setAggregateConfirmations] = useState<Record<string, boolean>>({});
   const selectedCustomer =
     customers.find((customer) => customer.id === customerId) ?? null;
   const matches = useMemo(() => {
@@ -89,6 +101,25 @@ export default function InteriorQuoteExcelImportModal({
   const total = supply + vat;
   const excelDifference =
     parsed?.totals.totalAmount == null ? 0 : total - parsed.totals.totalAmount;
+  const diagnostics = useMemo(
+    () => (parsed ? diagnoseInteriorWorkbook(items, parsed, total) : []),
+    [items, parsed, total],
+  );
+  const unresolvedDiagnostics = diagnostics.filter((issue) =>
+    isUnresolvedDiagnostic(issue, rowResolutions, aggregateConfirmations),
+  );
+  const rowDiagnostics = diagnostics.filter((issue) => issue.scope === "row");
+  const aggregateDiagnostics = diagnostics.filter((issue) => issue.scope !== "row");
+  const visibleItems = items.filter((item) => {
+    const issues = rowDiagnostics.filter((issue) => issue.itemId === item.id);
+    const unresolved = issues.some((issue) =>
+      isUnresolvedDiagnostic(issue, rowResolutions, aggregateConfirmations),
+    );
+    if (statusFilter === "reference") return isInteriorReferenceItem(item);
+    if (statusFilter === "error") return unresolved;
+    if (statusFilter === "normal") return !isInteriorReferenceItem(item) && !unresolved;
+    return true;
+  });
   const referenceItemCount = items.filter(isInteriorReferenceItem).length;
   const saveBlockReason = getInteriorImportBlockingReason({
     customerId,
@@ -96,6 +127,10 @@ export default function InteriorQuoteExcelImportModal({
     fileReady: Boolean(file && parsed),
     items,
     excelDifference,
+    unresolvedDiagnosticCount: unresolvedDiagnostics.length,
+    totalMismatchConfirmed: aggregateDiagnostics
+      .filter((issue) => issue.code === "quote_total_mismatch")
+      .every((issue) => aggregateConfirmations[issue.id]),
   });
   const customerMismatch = Boolean(
     parsed &&
@@ -121,6 +156,10 @@ export default function InteriorQuoteExcelImportModal({
     setParsed(null);
     setRecognition(null);
     setItems([]);
+    setStatusFilter("all");
+    setRepairItemId(null);
+    setRowResolutions({});
+    setAggregateConfirmations({});
     if (!/\.(xlsx|xls)$/i.test(nextFile.name))
       return setError("xlsx 또는 xls 파일만 선택할 수 있습니다.");
     if (nextFile.size > INTERIOR_EXCEL_MAX_BYTES)
@@ -142,6 +181,12 @@ export default function InteriorQuoteExcelImportModal({
   }
 
   function updateItem(id: string, patch: Partial<InteriorExcelItem>) {
+    setRowResolutions((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setAggregateConfirmations({});
     setItems((current) =>
       current.map((item) =>
         item.id === id ? { ...item, ...patch, errors: [] } : item,
@@ -158,12 +203,43 @@ export default function InteriorQuoteExcelImportModal({
       >
     >,
   ) {
+    setRowResolutions((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setAggregateConfirmations({});
     setItems((current) =>
       current.map((item) => {
         if (item.id !== id) return item;
         return recalculateInteriorCostItem(item, patch);
       }),
     );
+  }
+
+  function applyResolution(item: InteriorExcelItem, draft: InteriorResolutionDraft) {
+    const resolved = applyInteriorResolution(item, draft);
+    setItems((current) => {
+      const next: InteriorExcelItem[] = [];
+      for (const candidate of current) {
+        next.push(candidate.id === item.id ? resolved.item : candidate);
+        if (candidate.id === item.id && resolved.adjustment) next.push(resolved.adjustment);
+      }
+      return next;
+    });
+    setRowResolutions((current) => ({ ...current, [item.id]: resolved.record }));
+    setAggregateConfirmations({});
+    setRepairItemId(null);
+  }
+
+  function openNextError() {
+    const currentIndex = unresolvedDiagnostics.findIndex((issue) => issue.itemId === repairItemId);
+    const rowIssues = unresolvedDiagnostics.filter((issue) => issue.itemId);
+    if (!rowIssues.length) return;
+    const next = rowIssues[(currentIndex + 1 + rowIssues.length) % rowIssues.length];
+    setRepairItemId(next.itemId ?? null);
+    setStatusFilter("error");
+    window.setTimeout(() => document.getElementById(`interior-item-${next.itemId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   }
 
   function moveTrade(trade: string, direction: -1 | 1) {
@@ -230,7 +306,7 @@ export default function InteriorQuoteExcelImportModal({
     });
   }
 
-  const grouped = [...new Set(items.map((item) => item.tradeName))];
+  const grouped = [...new Set(visibleItems.map((item) => item.tradeName))];
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3"
@@ -361,6 +437,43 @@ export default function InteriorQuoteExcelImportModal({
           </p>
         ))}
         {parsed ? (
+          <section className="mt-4 rounded-xl border border-slate-300 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ["all", "전체", items.length],
+                  ["normal", "정상", items.filter((item) => !isInteriorReferenceItem(item) && !unresolvedDiagnostics.some((issue) => issue.itemId === item.id)).length],
+                  ["reference", "참고항목", referenceItemCount],
+                  ["error", "오류", unresolvedDiagnostics.length],
+                ] as const).map(([value, label, count]) => (
+                  <button key={value} type="button" onClick={() => setStatusFilter(value)} className={`rounded-full px-3 py-1.5 text-sm font-semibold ${statusFilter === value ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>
+                    {label} {count}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" disabled={!unresolvedDiagnostics.some((issue) => issue.itemId)} onClick={openNextError} className="rounded-lg border border-amber-400 bg-amber-100 px-3 py-2 text-sm font-bold text-amber-900 disabled:opacity-60">다음 오류</button>
+                <button type="button" disabled={!unresolvedDiagnostics.some((issue) => issue.itemId)} onClick={openNextError} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">오류 일괄검토</button>
+              </div>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">각 오류는 개별 확인 후에만 반영됩니다. 일괄 자동수정은 제공하지 않습니다.</p>
+            {aggregateDiagnostics.length ? (
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {aggregateDiagnostics.map((issue) => (
+                  <div key={issue.id} className={`rounded-lg border p-3 text-sm ${aggregateConfirmations[issue.id] ? "border-emerald-300 bg-emerald-50" : "border-red-300 bg-red-50"}`}>
+                    <b>{issue.tradeName ?? "전체 견적"}</b>
+                    <p>{issue.message}</p>
+                    <p className="mt-1 text-xs text-slate-600">Excel {money(issue.excelAmount ?? 0)} · ERP {money(issue.erpAmount)} · 차이 {money(issue.difference)}</p>
+                    <button type="button" onClick={() => setAggregateConfirmations((current) => ({ ...current, [issue.id]: true }))} className="mt-2 rounded border border-slate-400 bg-white px-2 py-1 text-xs font-bold">
+                      {aggregateConfirmations[issue.id] ? "계산값 유지 확인됨" : "현재 계산값 유지 확인"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+        {parsed ? (
           <div className="mt-5 space-y-4">
             {grouped.map((trade, tradeIndex) => (
               <section
@@ -433,12 +546,16 @@ export default function InteriorQuoteExcelImportModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {items
+                      {visibleItems
                         .filter((item) => item.tradeName === trade)
-                        .map((item) => (
+                        .map((item) => {
+                          const issues = rowDiagnostics.filter((issue) => issue.itemId === item.id);
+                          const unresolved = issues.some((issue) => isUnresolvedDiagnostic(issue, rowResolutions, aggregateConfirmations));
+                          return (
                           <tr
+                            id={`interior-item-${item.id}`}
                             key={item.id}
-                            className={`border-t hover:bg-slate-100 ${item.errors.length ? "bg-red-50" : isInteriorReferenceItem(item) ? "bg-sky-50" : ""}`}
+                            className={`border-t hover:bg-slate-100 ${unresolved ? "bg-red-50" : isInteriorReferenceItem(item) ? "bg-sky-50" : ""}`}
                           >
                             <td className="p-1">
                               <input
@@ -459,6 +576,9 @@ export default function InteriorQuoteExcelImportModal({
                                 <span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">
                                   참고항목 · 금액 미반영
                                 </span>
+                              ) : null}
+                              {rowResolutions[item.id] ? (
+                                <span className="ml-1 mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">검토 완료</span>
                               ) : null}
                             </td>
                             <td className="p-1">
@@ -541,6 +661,9 @@ export default function InteriorQuoteExcelImportModal({
                               />
                             </td>
                             <td>
+                              {issues.some((issue) => issue.severity === "error") ? (
+                                <button type="button" onClick={() => setRepairItemId(item.id)} className="mr-2 whitespace-nowrap rounded border border-amber-500 bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900">오류수정</button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() =>
@@ -554,10 +677,27 @@ export default function InteriorQuoteExcelImportModal({
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
+                {repairItemId && items.some((item) => item.id === repairItemId && item.tradeName === trade) ? (() => {
+                  const repairItem = items.find((item) => item.id === repairItemId)!;
+                  return (
+                    <div className="p-3">
+                      <InteriorQuoteErrorReviewPanel
+                        key={repairItem.id}
+                        item={repairItem}
+                        issues={rowDiagnostics.filter((issue) => issue.itemId === repairItem.id)}
+                        tradeSubtotal={items.filter((item) => item.tradeName === trade).reduce((sum, item) => sum + item.amount, 0)}
+                        quoteTotal={itemSum}
+                        onApply={applyResolution}
+                        onClose={() => setRepairItemId(null)}
+                      />
+                    </div>
+                  );
+                })() : null}
               </section>
             ))}
             <button
@@ -581,6 +721,15 @@ export default function InteriorQuoteExcelImportModal({
                     laborAmount: 0,
                     remark: "",
                     errors: ["품목 누락"],
+                    excelOriginal: {
+                      quantity: null,
+                      materialUnitPrice: null,
+                      materialAmount: null,
+                      laborUnitPrice: null,
+                      laborAmount: null,
+                      amount: null,
+                      invalidFields: [],
+                    },
                   },
                 ])
               }
