@@ -1,9 +1,9 @@
 import { notifications } from "@/lib/sample-data";
 
 const typeIcon: Record<string, string> = {
-  info: "bg-blue-100 text-blue-600",
-  warning: "bg-amber-100 text-amber-600",
-  success: "bg-green-100 text-green-600",
+  info: "bg-sky-100 text-sky-900",
+  warning: "bg-amber-100 text-amber-900",
+  success: "bg-emerald-100 text-emerald-900",
 };
 
 export default function Notifications() {
@@ -23,8 +23,8 @@ export default function Notifications() {
               !
             </span>
             <div>
-              <p className="text-sm text-gray-700">{noti.message}</p>
-              <p className="mt-0.5 text-xs text-gray-400">{noti.time}</p>
+              <p className="text-sm text-slate-900">{noti.message}</p>
+              <p className="mt-0.5 text-xs text-slate-600">{noti.time}</p>
             </div>
           </div>
         ))}

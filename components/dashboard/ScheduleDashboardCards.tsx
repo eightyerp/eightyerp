@@ -39,7 +39,7 @@ export default function ScheduleDashboardCards({
           <Link href="/schedules/customers" className="text-navy-800 underline">
             고객상담 스케줄
           </Link>
-          <span className="text-gray-300">·</span>
+          <span className="text-slate-600">·</span>
           <Link href="/schedules/processes" className="text-navy-800 underline">
             공사 스케줄
           </Link>
@@ -55,7 +55,7 @@ export default function ScheduleDashboardCards({
         >
           {customerToday.slice(0, 4).map((s) => (
             <li key={s.id} className="truncate">
-              <span className="text-gray-400">{formatTime(s.start_at)}</span>{" "}
+              <span className="text-slate-600">{formatTime(s.start_at)}</span>{" "}
               {s.customers?.name ?? "-"} · {s.title}
             </li>
           ))}
@@ -82,7 +82,7 @@ export default function ScheduleDashboardCards({
         >
           {todaySurvey.slice(0, 4).map((s) => (
             <li key={s.id} className="truncate">
-              <span className="text-gray-400">{formatTime(s.start_at)}</span>{" "}
+              <span className="text-slate-600">{formatTime(s.start_at)}</span>{" "}
               {s.customers?.name ?? "-"}
             </li>
           ))}
@@ -96,7 +96,7 @@ export default function ScheduleDashboardCards({
         >
           {todayQuoteSend.slice(0, 4).map((s) => (
             <li key={s.id} className="truncate">
-              <span className="text-gray-400">{formatTime(s.start_at)}</span>{" "}
+              <span className="text-slate-600">{formatTime(s.start_at)}</span>{" "}
               {s.customers?.name ?? "-"}
             </li>
           ))}
@@ -154,7 +154,7 @@ export default function ScheduleDashboardCards({
           </div>
           <table className="w-full min-w-[520px] text-sm">
             <thead>
-              <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
+              <tr className="border-b border-gray-100 text-left text-xs text-slate-600">
                 <th className="px-3 py-2">담당자</th>
                 <th className="px-3 py-2">오늘 상담</th>
                 <th className="px-3 py-2">이번주 상담</th>
@@ -165,7 +165,7 @@ export default function ScheduleDashboardCards({
             <tbody>
               {byAssignee.map((a) => (
                 <tr key={a.employeeId} className="border-b border-gray-50">
-                  <td className="px-3 py-2 font-medium text-gray-800">
+                  <td className="px-3 py-2 font-medium text-slate-900">
                     {a.employeeName}
                   </td>
                   <td className="px-3 py-2">{a.todayCount}</td>
@@ -229,7 +229,7 @@ function SummaryCard({
       </div>
       <ul className="mt-3 space-y-1 text-xs text-gray-600">
         {children}
-        {count === 0 && <li className="text-gray-300">해당 일정이 없습니다.</li>}
+        {count === 0 && <li className="text-slate-600">해당 일정이 없습니다.</li>}
       </ul>
     </Link>
   );

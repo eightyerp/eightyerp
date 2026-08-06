@@ -176,7 +176,7 @@ export default function CustomerForm({
             }}
           />
           {checkingPhone && (
-            <p className="mt-1 text-xs text-gray-400">연락처 확인 중…</p>
+            <p className="mt-1 text-xs text-slate-600">연락처 확인 중…</p>
           )}
         </Field>
 
@@ -249,7 +249,7 @@ export default function CustomerForm({
             })}
           </div>
           {interestItems.length === 0 && (
-            <p className="mt-2 text-xs text-gray-400">
+            <p className="mt-2 text-xs text-slate-600">
               해당하는 공종을 복수로 선택할 수 있습니다.
             </p>
           )}
@@ -277,7 +277,7 @@ export default function CustomerForm({
                 name="assigned_employee_id"
                 value={defaultAssignee}
               />
-              <div className={`${inputClass} bg-gray-50 text-gray-700`}>
+              <div className={`${inputClass} bg-gray-50 text-slate-900`}>
                 {lockedAssignee
                   ? formatEmployeeLabel(
                       lockedAssignee.name,
@@ -285,7 +285,7 @@ export default function CustomerForm({
                     )
                   : "본인 담당"}
               </div>
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-slate-600">
                 {isEdit
                   ? "담당자 변경은 관리자만 할 수 있습니다."
                   : "신규 고객은 본인이 담당자로 등록됩니다."}
@@ -293,7 +293,7 @@ export default function CustomerForm({
             </>
           )}
           {!isEdit && canChangeAssignee && defaultAssignedEmployeeId && (
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-slate-600">
               로그인 직원으로 기본 선택되었습니다. 관리자는 다른 담당자로 변경할
               수 있습니다.
             </p>
@@ -372,13 +372,13 @@ export default function CustomerForm({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-lg bg-navy-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-navy-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-75"
         >
           {submitLabel}
         </button>
         <Link
           href="/customers"
-          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-slate-100"
         >
           목록으로
         </Link>
@@ -389,14 +389,14 @@ export default function CustomerForm({
         <div className="mx-auto flex max-w-4xl gap-2 pb-[env(safe-area-inset-bottom)]">
           <Link
             href="/customers"
-            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700"
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-slate-900"
           >
             목록
           </Link>
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex min-h-11 flex-[1.6] items-center justify-center rounded-lg bg-navy-800 px-3 text-sm font-semibold text-white disabled:opacity-60"
+            className="inline-flex min-h-11 flex-[1.6] items-center justify-center rounded-lg bg-navy-800 px-3 text-sm font-semibold text-white disabled:opacity-75"
           >
             {submitLabel}
           </button>
@@ -407,7 +407,7 @@ export default function CustomerForm({
 }
 
 const inputClass =
-  "min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500 md:min-h-10 md:py-2 md:text-sm";
+  "min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500 md:min-h-10 md:py-2 md:text-sm";
 const textareaClass = `${inputClass} resize-y min-h-[6.5rem]`;
 
 function Field({
@@ -423,7 +423,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700">
+      <label className="mb-1.5 block text-sm font-medium text-slate-900">
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>

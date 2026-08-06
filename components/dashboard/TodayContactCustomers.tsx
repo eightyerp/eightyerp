@@ -25,7 +25,7 @@ export default function TodayContactCustomers({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="dashboard-section-title">오늘 연락 고객</h2>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-slate-600">
             next_contact_at 기준 · CRM 고객관리와 자동 연동
           </p>
         </div>
@@ -38,7 +38,7 @@ export default function TodayContactCustomers({
       </div>
 
       {items.length === 0 ? (
-        <p className="mt-6 text-sm text-gray-400">
+        <p className="mt-6 text-sm text-slate-600">
           오늘 연락 예정인 고객이 없습니다.
         </p>
       ) : (
@@ -51,13 +51,13 @@ export default function TodayContactCustomers({
               <li key={item.id}>
                 <Link
                   href={`/customers/${item.id}`}
-                  className="flex flex-wrap items-center justify-between gap-2 py-3 hover:bg-gray-50/80"
+                  className="flex flex-wrap items-center justify-between gap-2 py-3 hover:bg-slate-100/80"
                 >
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-slate-900">
                       {item.name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-slate-600">
                       {item.phone}
                       {employee
                         ? ` · ${formatEmployeeLabel(employee.name, employee.title)}`
@@ -68,7 +68,7 @@ export default function TodayContactCustomers({
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                         STATUS_BADGE_CLASS[item.status] ??
-                        "bg-gray-100 text-gray-600"
+                        "bg-slate-100 text-slate-900"
                       }`}
                     >
                       {item.status}

@@ -60,10 +60,10 @@ export default function KpiCards({ stats }: KpiCardsProps) {
           key={card.label}
           className={`dashboard-card border-l-4 ${colorMap[card.color]} p-4`}
         >
-          <p className="text-xs text-gray-500">{card.label}</p>
-          <p className="mt-1 text-lg font-bold text-gray-900 lg:text-xl">
+          <p className="text-xs text-slate-600">{card.label}</p>
+          <p className="mt-1 text-lg font-bold text-slate-900 lg:text-xl">
             {card.value}
-            <span className="ml-0.5 text-sm font-normal text-gray-500">
+            <span className="ml-0.5 text-sm font-normal text-slate-600">
               {card.unit}
             </span>
           </p>

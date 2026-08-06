@@ -1156,7 +1156,7 @@ export default function QuoteWizardForm({
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex shrink-0 rounded-lg bg-navy-800 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-60"
+            className="inline-flex shrink-0 rounded-lg bg-navy-800 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-700 disabled:opacity-75"
           >
             {pending ? "저장 중…" : "저장"}
           </button>
@@ -1170,7 +1170,7 @@ export default function QuoteWizardForm({
           <button
             type="button"
             onClick={openPrintPdf}
-            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
+            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
           >
             인쇄·PDF
           </button>
@@ -1188,7 +1188,7 @@ export default function QuoteWizardForm({
             onClick={(e) => {
               if (!confirmLeave()) e.preventDefault();
             }}
-            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-slate-100"
           >
             {persistedQuoteId ? "상세로" : "목록으로"}
           </Link>
@@ -1207,24 +1207,24 @@ export default function QuoteWizardForm({
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-4">
               <div>
-                <dt className="text-slate-400">견적번호</dt>
-                <dd className="font-medium text-slate-800">
+                <dt className="text-slate-600">견적번호</dt>
+                <dd className="font-medium text-slate-900">
                   {quoteNumber || "-"}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">형식</dt>
-                <dd className="font-medium text-slate-800">
+                <dt className="text-slate-600">형식</dt>
+                <dd className="font-medium text-slate-900">
                   {quoteDocumentTitle(quoteMode)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">유형</dt>
-                <dd className="font-medium text-slate-800">{quoteType || "-"}</dd>
+                <dt className="text-slate-600">유형</dt>
+                <dd className="font-medium text-slate-900">{quoteType || "-"}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">상태</dt>
-                <dd className="font-medium text-slate-800">{status}</dd>
+                <dt className="text-slate-600">상태</dt>
+                <dd className="font-medium text-slate-900">{status}</dd>
               </div>
             </dl>
           </div>
@@ -1248,7 +1248,7 @@ export default function QuoteWizardForm({
                   ? "bg-navy-800 text-white"
                   : step > s.key
                     ? "text-navy-800 hover:bg-navy-800/5"
-                    : "text-gray-400"
+                    : "text-slate-600"
               }`}
             >
               <span
@@ -1257,14 +1257,14 @@ export default function QuoteWizardForm({
                     ? "bg-gold-500 text-navy-900"
                     : step > s.key
                       ? "bg-navy-800/10 text-navy-800"
-                      : "bg-gray-100 text-gray-400"
+                      : "bg-gray-100 text-slate-600"
                 }`}
               >
                 {s.key}
               </span>
               {s.label}
               {idx < STEPS.length - 1 && (
-                <span className="mx-1 hidden text-gray-300 sm:inline">›</span>
+                <span className="mx-1 hidden text-slate-600 sm:inline">›</span>
               )}
             </button>
           ))}
@@ -1274,7 +1274,7 @@ export default function QuoteWizardForm({
       <div className="dashboard-card p-5">
         {(mode === "create" ? step === 1 : false) && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-slate-900">
               1. 고객선택
             </h2>
             {selectedCustomer ? (
@@ -1294,7 +1294,7 @@ export default function QuoteWizardForm({
                   type="button"
                   onClick={() => applyCustomerSelection("")}
                   disabled={mode === "edit"}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-75"
                 >
                   변경
                 </button>
@@ -1309,7 +1309,7 @@ export default function QuoteWizardForm({
                 />
                 <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100">
                   {filteredCustomers.length === 0 ? (
-                    <p className="px-4 py-8 text-center text-sm text-gray-400">
+                    <p className="px-4 py-8 text-center text-sm text-slate-600">
                       일치하는 고객이 없습니다.
                     </p>
                   ) : (
@@ -1319,12 +1319,12 @@ export default function QuoteWizardForm({
                           <button
                             type="button"
                             onClick={() => applyCustomerSelection(c.id)}
-                            className="flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left hover:bg-gray-50"
+                            className="flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left hover:bg-slate-100"
                           >
-                            <span className="text-sm font-medium text-gray-900">
+                            <span className="text-sm font-medium text-slate-900">
                               {c.name}
                             </span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-slate-600">
                               {c.phone}
                               {c.address ? ` · ${c.address}` : ""}
                             </span>
@@ -1341,7 +1341,7 @@ export default function QuoteWizardForm({
 
         {mode === "create" && step === 2 && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-slate-900">
               2. 견적유형
             </h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1357,7 +1357,7 @@ export default function QuoteWizardForm({
                   }`}
                 >
                   {type}
-                  <p className="mt-1 text-xs font-normal text-gray-400">
+                  <p className="mt-1 text-xs font-normal text-slate-600">
                     {type === "창호"
                       ? "총금액 입력 · 공종 선택 · LX 할인"
                       : type === "인테리어"
@@ -1372,7 +1372,7 @@ export default function QuoteWizardForm({
 
         {(isEdit || step === 3) && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-slate-900">
               {isEdit ? "기본정보" : "3. 기본정보"}
             </h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1425,7 +1425,7 @@ export default function QuoteWizardForm({
                   ))}
                 </select>
                 {mode === "create" && (
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-slate-600">
                     고객 담당자가 자동 선택됩니다. 필요한 경우 변경할 수 있습니다.
                   </p>
                 )}
@@ -1472,12 +1472,12 @@ export default function QuoteWizardForm({
 
         {(isEdit || step === 4) && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-slate-900">
               {isEdit ? "금액/공종" : "4. 금액/공종"}
             </h2>
 
                         {isEdit ? (
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-sm font-semibold text-slate-900">
                 {QUOTE_DOCUMENT_TITLES[quoteMode]}
               </p>
             ) : (
@@ -1557,10 +1557,10 @@ export default function QuoteWizardForm({
               <Field label="총견적금액(원)">
                 {isSimple || hasItems ? (
                   <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
-                    <p className="text-sm font-semibold text-gray-900">
+                    <p className="text-sm font-semibold text-slate-900">
                       {formatMoney(total)}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-gray-500">
+                    <p className="mt-0.5 text-[11px] text-slate-600">
                       {isSimple ? "항목 합계 · 원 단위" : "공종 합계 · 원 단위"}
                     </p>
                   </div>
@@ -1598,7 +1598,7 @@ export default function QuoteWizardForm({
                     className={inputClass}
                     placeholder="예: 7월 계약 프로모션"
                   />
-                  <p className="mt-1 text-[11px] text-gray-500">
+                  <p className="mt-1 text-[11px] text-slate-600">
                     최대 40자 · 금액이 있을 때만 고객 출력에 표시 ·{" "}
                     {specialDiscountMemo.length}/40
                   </p>
@@ -1612,7 +1612,7 @@ export default function QuoteWizardForm({
                   placeholder="0~100"
                   className={inputClass}
                 />
-                <p className="mt-1 text-[11px] text-gray-500">
+                <p className="mt-1 text-[11px] text-slate-600">
                   항목 할인이 비어 있는 LX 항목에 적용 · 합계{" "}
                   {formatMoney(amounts.lx_material_sum)} · 할인{" "}
                   {formatMoney(lxDiscount)}
@@ -1635,8 +1635,8 @@ export default function QuoteWizardForm({
                 </p>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500">
-              금액·단가는 모두 <strong className="font-medium text-slate-700">원</strong> 단위입니다.
+            <p className="text-[11px] text-slate-600">
+              금액·단가는 모두 <strong className="font-medium text-slate-900">원</strong> 단위입니다.
               만원으로 생각하지 마세요. 예: 3,500만원 → <span className="tabular-nums">35000000</span>
               {total >= QUOTE_LINE_AMOUNT_WARN ? (
                 <span className="ml-1 text-amber-700">
@@ -1662,10 +1662,10 @@ export default function QuoteWizardForm({
         )}
 
         <div className={isEdit || step === 5 ? "space-y-4" : "hidden"}>
-          <h2 className="text-base font-semibold text-gray-900">
+          <h2 className="text-base font-semibold text-slate-900">
             {isEdit ? "첨부파일" : "5. 파일"}
           </h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-slate-600">
             견적서 PDF/Excel 파일을 첨부해 주세요. (pdf, xls, xlsx · 최대
             30MB)
           </p>
@@ -1691,7 +1691,7 @@ export default function QuoteWizardForm({
 
           {initialQuote?.quote_files && initialQuote.quote_files.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-medium text-gray-500">
+              <p className="mb-1 text-xs font-medium text-slate-600">
                 기존 첨부파일
               </p>
               <ul className="space-y-1 text-sm text-gray-600">
@@ -1708,7 +1708,7 @@ export default function QuoteWizardForm({
 
         {mode === "create" && step === 6 && (
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-slate-900">
               6. 확인·저장
             </h2>
             <dl className="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 bg-gray-50/60 p-4 text-sm md:grid-cols-2">
@@ -1800,7 +1800,7 @@ export default function QuoteWizardForm({
               <button
                 type="button"
                 onClick={openPrintPdf}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
               >
                 인쇄·PDF 저장
               </button>
@@ -1811,7 +1811,7 @@ export default function QuoteWizardForm({
               >
                 고객전송 링크
               </button>
-              <label className="flex items-center gap-1.5 text-xs text-slate-700">
+              <label className="flex items-center gap-1.5 text-xs text-slate-900">
                 <input
                   type="checkbox"
                   checked={includeCover}
@@ -1836,7 +1836,7 @@ export default function QuoteWizardForm({
             <button
               type="button"
               onClick={goPrev}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
             >
               이전 단계
             </button>
@@ -1933,7 +1933,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="mb-1 block text-xs font-medium text-gray-500">
+      <label className="mb-1 block text-xs font-medium text-slate-600">
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
@@ -1953,12 +1953,12 @@ function SummaryItem({
 }) {
   return (
     <div>
-      <dt className="text-xs text-gray-400">{label}</dt>
+      <dt className="text-xs text-slate-600">{label}</dt>
       <dd
         className={
           emphasize
             ? "mt-0.5 text-base font-bold text-navy-900"
-            : "mt-0.5 font-medium text-gray-800"
+            : "mt-0.5 font-medium text-slate-900"
         }
       >
         {value}
@@ -1968,4 +1968,4 @@ function SummaryItem({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";

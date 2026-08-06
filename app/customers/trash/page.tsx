@@ -47,16 +47,16 @@ export default async function CustomersTrashPage({
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
               삭제 고객함
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-600">
               관리자 전용 · 복구 또는 영구삭제
             </p>
           </div>
           <Link
             href="/customers"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
           >
             고객 목록
           </Link>
@@ -84,7 +84,7 @@ export default async function CustomersTrashPage({
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
+                  <tr className="border-b border-gray-200 bg-gray-50 text-xs text-slate-600">
                     <th className="px-4 py-3 font-medium">고객명</th>
                     <th className="px-4 py-3 font-medium">연락처</th>
                     <th className="px-4 py-3 font-medium">상태</th>
@@ -99,7 +99,7 @@ export default async function CustomersTrashPage({
                     <tr>
                       <td
                         colSpan={7}
-                        className="px-4 py-10 text-center text-gray-500"
+                        className="px-4 py-10 text-center text-slate-600"
                       >
                         삭제된 고객이 없습니다.
                       </td>
@@ -108,9 +108,9 @@ export default async function CustomersTrashPage({
                   {customers.map((customer) => (
                     <tr
                       key={customer.id}
-                      className="border-b border-gray-50 hover:bg-gray-50/80"
+                      className="border-b border-gray-50 hover:bg-slate-100/80"
                     >
-                      <td className="px-4 py-3 font-medium text-gray-900">
+                      <td className="px-4 py-3 font-medium text-slate-900">
                         {customer.name}
                       </td>
                       <td className="px-4 py-3">{customer.phone}</td>
@@ -131,12 +131,12 @@ export default async function CustomersTrashPage({
                             )
                           : "-"}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 text-slate-600">
                         {customer.deleted_at
                           ? new Date(customer.deleted_at).toLocaleString("ko-KR")
                           : "-"}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 text-slate-600">
                         {customer.delete_reason ?? "-"}
                       </td>
                       <td className="px-4 py-3">

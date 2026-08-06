@@ -40,12 +40,12 @@ export default function ContactScheduleCards({
           <Link
             key={card.key}
             href={card.href}
-            className={`dashboard-card border-l-4 ${card.color} block p-4 transition hover:bg-gray-50`}
+            className={`dashboard-card border-l-4 ${card.color} block p-4 transition hover:bg-slate-100`}
           >
-            <p className="text-xs text-gray-500">{card.label}</p>
-            <p className="mt-1 text-xl font-bold text-gray-900">
+            <p className="text-xs text-slate-600">{card.label}</p>
+            <p className="mt-1 text-xl font-bold text-slate-900">
               {card.getValue(stats)}
-              <span className="ml-0.5 text-sm font-normal text-gray-500">건</span>
+              <span className="ml-0.5 text-sm font-normal text-slate-600">건</span>
             </p>
             <p className="mt-2 text-xs text-navy-800">고객 목록에서 확인 →</p>
           </Link>

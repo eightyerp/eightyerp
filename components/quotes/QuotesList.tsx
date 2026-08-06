@@ -12,6 +12,8 @@ import {
 import { formatEmployeeLabel } from "@/lib/crm/constants";
 import { calcQuoteSummary, isQuoteExpired } from "@/lib/crm/quote-mgmt-client";
 import { consumeQuoteListFlash } from "@/lib/crm/quote-list-flash";
+import InteriorQuoteExcelImportModal from "@/components/quotes/InteriorQuoteExcelImportModal";
+import type { InteriorImportCustomerOption } from "@/lib/crm/interior-quote-import";
 import type { Employee, ErpQuote } from "@/types/database";
 
 type QuotesListProps = {
@@ -21,6 +23,7 @@ type QuotesListProps = {
   hideCustomerColumn?: boolean;
   emptyMessage?: string;
   lockEmployeeId?: string | null;
+  importCustomers?: InteriorImportCustomerOption[];
 };
 
 type Filters = {
@@ -69,6 +72,7 @@ export default function QuotesList({
   hideCustomerColumn = false,
   emptyMessage = "등록된 견적이 없습니다.",
   lockEmployeeId = null,
+  importCustomers = [],
 }: QuotesListProps) {
   const router = useRouter();
   const [filters, setFilters] = useState<Filters>({
@@ -78,6 +82,7 @@ export default function QuotesList({
   const [sort, setSort] = useState<SortKey>("recent");
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [highlightQuoteId, setHighlightQuoteId] = useState<string | null>(null);
+  const [interiorImportOpen, setInteriorImportOpen] = useState(false);
   const highlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -205,7 +210,7 @@ export default function QuotesList({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-slate-600">
           총 {filtered.length}건
           {hasActiveFilters && ` (전체 ${quotes.length}건 중)`}
         </p>
@@ -221,6 +226,13 @@ export default function QuotesList({
             <option value="customer">고객명순</option>
             <option value="valid_until">유효기간순</option>
           </select>
+          <button
+            type="button"
+            onClick={() => setInteriorImportOpen(true)}
+            className="rounded-lg border border-amber-400 bg-amber-100 px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-200"
+          >
+            인테리어 엑셀 업로드
+          </button>
           <Link
             href={newHref}
             className="rounded-lg bg-navy-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-navy-700"
@@ -306,7 +318,7 @@ export default function QuotesList({
           />
         </div>
         <div className="flex items-end gap-4">
-          <label className="flex items-center gap-1.5 text-sm text-slate-700">
+          <label className="flex items-center gap-1.5 text-sm text-slate-900">
             <input
               type="checkbox"
               checked={filters.lxOnly}
@@ -315,7 +327,7 @@ export default function QuotesList({
             />
             LX만
           </label>
-          <label className="flex items-center gap-1.5 text-sm text-slate-700">
+          <label className="flex items-center gap-1.5 text-sm text-slate-900">
             <input
               type="checkbox"
               checked={filters.contractOnly}
@@ -334,7 +346,7 @@ export default function QuotesList({
                 employeeId: lockEmployeeId ?? "",
               })
             }
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-slate-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100"
           >
             필터 초기화
           </button>
@@ -350,7 +362,7 @@ export default function QuotesList({
       ) : (
         <div className="dashboard-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[2220px] table-fixed text-left text-sm text-slate-800">
+            <table className="w-full min-w-[2220px] table-fixed text-left text-sm text-slate-900">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-medium text-slate-600">
                   <th className="w-[108px] whitespace-nowrap px-3 py-3 break-keep">
@@ -442,7 +454,7 @@ export default function QuotesList({
                             ? "border-l-4 border-l-emerald-500 bg-emerald-50/50 hover:bg-emerald-50/80"
                             : expired
                               ? "bg-red-50/40 hover:bg-red-50/60"
-                              : "hover:bg-slate-50/80"
+                              : "hover:bg-slate-100/80"
                       }`}
                     >
                       <td className="whitespace-nowrap px-3 py-2.5 text-[13px] text-slate-600 break-keep">
@@ -467,15 +479,15 @@ export default function QuotesList({
                           </div>
                         </td>
                       )}
-                      <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-700 break-keep">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-900 break-keep">
                         {quote.customers?.phone ?? "-"}
                       </td>
-                      <td className="max-w-0 truncate px-3 py-2.5 text-sm text-slate-700">
+                      <td className="max-w-0 truncate px-3 py-2.5 text-sm text-slate-900">
                         <span title={address} className="block truncate">
                           {address}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-slate-800 break-keep">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-slate-900 break-keep">
                         {quote.quote_type}
                       </td>
                       <td className="max-w-0 px-3 py-2.5">
@@ -489,14 +501,14 @@ export default function QuotesList({
                         </Link>
                         {quote.quote_number ? (
                           <p
-                            className="truncate text-[13px] text-slate-500"
+                            className="truncate text-[13px] text-slate-600"
                             title={quote.quote_number}
                           >
                             {quote.quote_number}
                           </p>
                         ) : null}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-800 break-keep">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-sm text-slate-900 break-keep">
                         v{quote.version_number}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-right text-sm font-semibold tabular-nums text-navy-900 break-keep">
@@ -518,14 +530,14 @@ export default function QuotesList({
                         <span
                           className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-semibold break-keep ${
                             ERP_QUOTE_STATUS_BADGE[quote.status] ??
-                            "bg-slate-100 text-slate-700"
+                            "bg-slate-100 text-slate-900"
                           }`}
                         >
                           {quote.status}
                         </span>
                       </td>
                       <td
-                        className="truncate whitespace-nowrap px-3 py-2.5 text-sm text-slate-800 break-keep"
+                        className="truncate whitespace-nowrap px-3 py-2.5 text-sm text-slate-900 break-keep"
                         title={assignee}
                       >
                         {assignee}
@@ -549,7 +561,7 @@ export default function QuotesList({
                             LX
                           </span>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-slate-600">-</span>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 break-keep">
@@ -558,7 +570,7 @@ export default function QuotesList({
                             계약견적
                           </span>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-slate-600">-</span>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 break-keep">
@@ -576,7 +588,7 @@ export default function QuotesList({
                             href={`/quotes/${quote.id}`}
                             prefetch={false}
                             aria-label={`${title} 견적 상세`}
-                            className="inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
+                            className="inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-medium text-slate-900 hover:bg-slate-100"
                             onClick={(e) => e.stopPropagation()}
                           >
                             상세
@@ -591,6 +603,13 @@ export default function QuotesList({
           </div>
         </div>
       )}
+      <InteriorQuoteExcelImportModal
+        open={interiorImportOpen}
+        onClose={() => setInteriorImportOpen(false)}
+        customers={importCustomers}
+        employees={employees}
+        lockEmployeeId={lockEmployeeId}
+      />
     </div>
   );
 }
@@ -608,7 +627,7 @@ function SummaryCard({
     <div
       className={`rounded-xl border px-4 py-3 ${highlight ? "border-gold-300 bg-gold-50" : "border-gray-200 bg-white"}`}
     >
-      <p className="text-[13px] text-slate-500">{label}</p>
+      <p className="text-[13px] text-slate-600">{label}</p>
       <p className="mt-1 text-sm font-semibold text-navy-900">{value}</p>
     </div>
   );
@@ -618,4 +637,4 @@ const filterLabelClass =
   "mb-1 block text-sm font-medium text-slate-600";
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] text-slate-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";

@@ -56,7 +56,7 @@ export function QuoteTemplateSaveModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
         <h3 className="text-base font-semibold text-navy-900">템플릿으로 저장</h3>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-600">
           고객·특별할인·견적번호는 저장되지 않습니다. 실제 견적은 별도 「저장」으로
           저장하세요.
         </p>
@@ -87,7 +87,7 @@ export function QuoteTemplateSaveModal({
               ))}
             </select>
           </label>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-slate-600">
             공종 {tradeOrder.length}개 · 세부항목 {items.length}건 ·{" "}
             {quoteMode === "detailed" ? "상세견적" : "간편견적"}
           </p>
@@ -122,7 +122,7 @@ export function QuoteTemplateSaveModal({
                 onClose();
               });
             }}
-            className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-75"
           >
             {pending ? "저장 중…" : "템플릿 저장"}
           </button>
@@ -241,9 +241,9 @@ export function QuoteTemplateLoadModal({
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {error ? <p className="mb-2 text-sm text-red-600">{error}</p> : null}
           {pending && filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">불러오는 중…</p>
+            <p className="py-8 text-center text-sm text-slate-600">불러오는 중…</p>
           ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">
+            <p className="py-8 text-center text-sm text-slate-600">
               표시할 템플릿이 없습니다.
             </p>
           ) : (
@@ -256,7 +256,7 @@ export function QuoteTemplateLoadModal({
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-navy-900">{tpl.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">
+                      <p className="mt-0.5 text-xs text-slate-600">
                         {tpl.quote_type} · 공종 {tpl.trade_count} · 항목{" "}
                         {tpl.item_count} ·{" "}
                         {tpl.updated_at

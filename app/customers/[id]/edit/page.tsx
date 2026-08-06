@@ -55,10 +55,10 @@ export default async function EditCustomerPage({
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
               고객 수정
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-600">
               {customer
                 ? `${customer.name} 고객 정보를 수정합니다.`
                 : "고객 정보를 수정합니다."}
@@ -66,7 +66,7 @@ export default async function EditCustomerPage({
           </div>
           <Link
             href="/customers"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
           >
             목록으로
           </Link>

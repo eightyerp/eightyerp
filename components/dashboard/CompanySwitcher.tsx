@@ -61,11 +61,11 @@ export default function CompanySwitcher({
   if (companies.length === 1) {
     return (
       <div
-        className="flex max-w-32 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs font-medium text-gray-700 sm:max-w-52 sm:px-3"
+        className="flex max-w-32 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-xs font-medium text-slate-900 sm:max-w-52 sm:px-3"
         title={currentName}
       >
         <svg
-          className="h-4 w-4 shrink-0 text-gray-400"
+          className="h-4 w-4 shrink-0 text-slate-600"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -94,7 +94,7 @@ export default function CompanySwitcher({
         value={activeCompanyId || ""}
         onChange={handleChange}
         disabled={pending}
-        className="h-10 max-w-36 rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-medium text-gray-700 outline-none hover:bg-gray-100 focus:border-gold-500 focus:ring-1 focus:ring-gold-500 disabled:cursor-wait disabled:opacity-60 sm:max-w-56 sm:px-3"
+        className="h-10 max-w-36 rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-medium text-slate-900 outline-none hover:bg-gray-100 focus:border-gold-500 focus:ring-1 focus:ring-gold-500 disabled:cursor-wait disabled:opacity-75 sm:max-w-56 sm:px-3"
         title={currentName}
       >
         {!activeCompanyId && <option value="">회사 선택</option>}

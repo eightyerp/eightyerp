@@ -10,7 +10,7 @@ export default function QuickRegister() {
           <button
             key={label}
             type="button"
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-gold-500 hover:bg-gold-500/5 hover:text-navy-800"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 transition-colors hover:border-gold-500 hover:bg-gold-500/5 hover:text-navy-800"
           >
             + {label}
           </button>

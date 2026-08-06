@@ -149,7 +149,7 @@ export default function CustomerQuotesPanel({
           className={`rounded-lg border px-4 py-3 text-sm ${
             /실패|오류|없|권한/.test(toast)
               ? "border-red-200 bg-red-50 text-red-700"
-              : "border-green-200 bg-green-50 text-green-700"
+              : "border-green-200 bg-emerald-100 text-emerald-900"
           }`}
         >
           {toast}
@@ -158,8 +158,8 @@ export default function CustomerQuotesPanel({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">창호 견적서</h3>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <h3 className="text-sm font-semibold text-slate-900">창호 견적서</h3>
+          <p className="mt-0.5 text-xs text-slate-600">
             본사 전산 Excel/PDF를 업로드해 보관·버전관리·발송기록합니다.
           </p>
         </div>
@@ -191,7 +191,7 @@ export default function CustomerQuotesPanel({
       )}
 
       {groups.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-400">
+        <p className="py-8 text-center text-sm text-slate-600">
           등록된 창호 견적서가 없습니다.
         </p>
       ) : (
@@ -203,10 +203,10 @@ export default function CustomerQuotesPanel({
             >
               <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-50 px-4 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="text-sm font-semibold text-slate-900">
                     {group.latest.title}
                   </p>
-                  <p className="mt-0.5 text-xs text-gray-500">
+                  <p className="mt-0.5 text-xs text-slate-600">
                     {group.latest.brand} · 버전 {group.items.length}개
                     {group.final ? ` · 최종본 v${group.final.version}` : ""}
                   </p>
@@ -237,7 +237,7 @@ export default function CustomerQuotesPanel({
                             <span
                               className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                                 QUOTE_STATUS_BADGE_CLASS[quote.status] ??
-                                "bg-gray-100 text-gray-600"
+                                "bg-slate-100 text-slate-900"
                               }`}
                             >
                               {quote.status}
@@ -247,17 +247,17 @@ export default function CustomerQuotesPanel({
                                 최종본
                               </span>
                             )}
-                            <span className="text-xs uppercase text-gray-400">
+                            <span className="text-xs uppercase text-slate-600">
                               {quote.file_type}
                             </span>
                           </div>
-                          <p className="text-gray-800">{quote.file_name}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-slate-900">{quote.file_name}</p>
+                          <p className="text-xs text-slate-600">
                             금액 {formatAmount(quote.amount)} · 견적일{" "}
                             {formatDate(quote.quote_date)} · 유효기간{" "}
                             {formatDate(quote.valid_until)}
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-slate-600">
                             담당자{" "}
                             {quote.employees
                               ? formatEmployeeLabel(
@@ -269,7 +269,7 @@ export default function CustomerQuotesPanel({
                           </p>
                           {sends.length > 0 && (
                             <div className="mt-2 space-y-1">
-                              <p className="text-xs font-medium text-gray-500">
+                              <p className="text-xs font-medium text-slate-600">
                                 발송기록
                               </p>
                               {sends.map((send) => (
@@ -280,7 +280,7 @@ export default function CustomerQuotesPanel({
                                   {formatDate(send.sent_at)} · {send.send_method}
                                   {send.recipient ? ` · ${send.recipient}` : ""}
                                   {send.note ? ` · ${send.note}` : ""}
-                                  <span className="ml-1 text-gray-400">
+                                  <span className="ml-1 text-slate-600">
                                     ({send.provider_status})
                                   </span>
                                 </p>
@@ -295,7 +295,7 @@ export default function CustomerQuotesPanel({
                               type="button"
                               disabled={urlPending}
                               onClick={() => openFile(quote, "preview")}
-                              className="rounded-lg bg-navy-800 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+                              className="rounded-lg bg-navy-800 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-75"
                             >
                               PDF 미리보기
                             </button>
@@ -304,7 +304,7 @@ export default function CustomerQuotesPanel({
                               type="button"
                               disabled={urlPending}
                               onClick={() => openFile(quote, "download")}
-                              className="rounded-lg bg-navy-800 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+                              className="rounded-lg bg-navy-800 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-75"
                             >
                               Excel 다운로드
                             </button>
@@ -313,7 +313,7 @@ export default function CustomerQuotesPanel({
                             type="button"
                             disabled={urlPending}
                             onClick={() => openFile(quote, "download")}
-                            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-75"
                           >
                             다운로드
                           </button>
@@ -332,7 +332,7 @@ export default function CustomerQuotesPanel({
                               <button
                                 type="submit"
                                 disabled={finalPending}
-                                className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-75"
                               >
                                 최종본 지정
                               </button>
@@ -366,17 +366,17 @@ export default function CustomerQuotesPanel({
       {sendOf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-            <h4 className="text-base font-semibold text-gray-900">
+            <h4 className="text-base font-semibold text-slate-900">
               발송기록 등록
             </h4>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-slate-600">
               {sendOf.title} · v{sendOf.version} · 실제 API 발송은 추후 연결
             </p>
             <form action={sendAction} className="mt-4 space-y-3">
               <input type="hidden" name="quote_id" value={sendOf.id} />
               <input type="hidden" name="customer_id" value={customerId} />
               <div>
-                <label className="mb-1 block text-xs text-gray-500">
+                <label className="mb-1 block text-xs text-slate-600">
                   발송방법
                 </label>
                 <select
@@ -392,7 +392,7 @@ export default function CustomerQuotesPanel({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">
+                <label className="mb-1 block text-xs text-slate-600">
                   수신처
                 </label>
                 <input
@@ -402,7 +402,7 @@ export default function CustomerQuotesPanel({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">
+                <label className="mb-1 block text-xs text-slate-600">
                   발송일시
                 </label>
                 <input
@@ -412,7 +412,7 @@ export default function CustomerQuotesPanel({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-gray-500">비고</label>
+                <label className="mb-1 block text-xs text-slate-600">비고</label>
                 <textarea name="note" rows={2} className={inputClass} />
               </div>
               <div className="flex justify-end gap-2">
@@ -426,7 +426,7 @@ export default function CustomerQuotesPanel({
                 <button
                   type="submit"
                   disabled={sendPending}
-                  className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+                  className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
                 >
                   {sendPending ? "저장 중..." : "기록 저장"}
                 </button>
@@ -439,7 +439,7 @@ export default function CustomerQuotesPanel({
       {deleteOf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-            <h4 className="text-base font-semibold text-gray-900">
+            <h4 className="text-base font-semibold text-slate-900">
               견적서 삭제 확인
             </h4>
             <p className="mt-2 text-sm text-gray-600">
@@ -449,29 +449,29 @@ export default function CustomerQuotesPanel({
 
             <div className="mt-4 space-y-1.5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
               <p>
-                <span className="text-gray-500">고객명</span>
-                <span className="ml-2 font-semibold text-gray-900">
+                <span className="text-slate-600">고객명</span>
+                <span className="ml-2 font-semibold text-slate-900">
                   {customerName}
                 </span>
               </p>
               <p>
-                <span className="text-gray-500">견적서 제목</span>
-                <span className="ml-2 font-semibold text-gray-900">
+                <span className="text-slate-600">견적서 제목</span>
+                <span className="ml-2 font-semibold text-slate-900">
                   {deleteOf.title}
-                  <span className="ml-1 font-normal text-gray-500">
+                  <span className="ml-1 font-normal text-slate-600">
                     (v{deleteOf.version})
                   </span>
                 </span>
               </p>
               <p>
-                <span className="text-gray-500">파일명</span>
-                <span className="ml-2 font-semibold text-gray-900 break-all">
+                <span className="text-slate-600">파일명</span>
+                <span className="ml-2 font-semibold text-slate-900 break-all">
                   {deleteOf.file_name}
                 </span>
               </p>
               <p>
-                <span className="text-gray-500">견적금액</span>
-                <span className="ml-2 font-semibold text-gray-900">
+                <span className="text-slate-600">견적금액</span>
+                <span className="ml-2 font-semibold text-slate-900">
                   {formatAmount(deleteOf.amount)}
                 </span>
               </p>
@@ -481,7 +481,7 @@ export default function CustomerQuotesPanel({
               <input type="hidden" name="quote_id" value={deleteOf.id} />
               <input type="hidden" name="customer_id" value={customerId} />
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">
+                <label className="mb-1 block text-xs font-medium text-slate-600">
                   삭제 사유 <span className="text-red-500">*</span>
                 </label>
                 <textarea
@@ -501,14 +501,14 @@ export default function CustomerQuotesPanel({
                 <button
                   type="button"
                   onClick={() => setDeleteOf(null)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-slate-100"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={deletePending}
-                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-60"
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-75"
                 >
                   {deletePending ? "삭제 중..." : "견적서 삭제"}
                 </button>
@@ -522,7 +522,7 @@ export default function CustomerQuotesPanel({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <p className="text-sm font-semibold text-gray-900">{previewTitle}</p>
+              <p className="text-sm font-semibold text-slate-900">{previewTitle}</p>
               <button
                 type="button"
                 onClick={() => {
@@ -576,7 +576,7 @@ function UploadForm({
         </>
       )}
 
-      <p className="mb-3 text-sm font-medium text-gray-800">
+      <p className="mb-3 text-sm font-medium text-slate-900">
         {parent
           ? `수정본 업로드 (원본 v${parent.version} → 새 버전)`
           : "새 창호 견적서 업로드"}
@@ -693,7 +693,7 @@ function UploadForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-navy-800 px-4 py-2 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+          className="rounded-lg bg-navy-800 px-4 py-2 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-75"
         >
           {pending ? "업로드 중..." : "업로드"}
         </button>
@@ -715,7 +715,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="mb-1 block text-xs font-medium text-gray-500">
+      <label className="mb-1 block text-xs font-medium text-slate-600">
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
@@ -725,4 +725,4 @@ function Field({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";

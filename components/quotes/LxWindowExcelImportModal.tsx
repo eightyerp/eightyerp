@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildQuoteLinesFromLxImport,
-  parseLxWindowExcelBuffer,
   sumLxImportRows,
   type LxImportCategory,
   type LxImportParseResult,
   type LxImportPreviewRow,
   type LxImportRowStatus,
 } from "@/lib/crm/lx-window-excel";
+import { lxWindowAdapter, recognizeQuoteWorkbook, type TemplateRecognition } from "@/lib/excel-engine";
 import { formatQuantitySetDisplay } from "@/lib/crm/lx-window-meta";
 import type { QuoteLineRow } from "@/components/quotes/QuoteTradeItemsPanel";
 
@@ -37,7 +37,7 @@ const CATEGORY_OPTIONS: LxImportCategory[] = [
 
 /** body(--foreground 베이지) 상속 차단용 공통 입력 스타일 */
 const fieldClass =
-  "rounded border border-slate-300 bg-white px-1.5 py-1 text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-white disabled:text-slate-700 disabled:opacity-100";
+  "rounded border border-slate-300 bg-white px-1.5 py-1 text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-white disabled:text-slate-900 disabled:opacity-100";
 
 function formatWon(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "-";
@@ -139,6 +139,7 @@ export default function LxWindowExcelImportModal({
   const [applying, setApplying] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [result, setResult] = useState<LxImportParseResult | null>(null);
+  const [recognition, setRecognition] = useState<TemplateRecognition | null>(null);
   const [rows, setRows] = useState<LxImportPreviewRow[]>([]);
 
   const inputsLocked = parsing || applying;
@@ -164,7 +165,9 @@ export default function LxWindowExcelImportModal({
     setParsing(true);
     setParseError(null);
     try {
-      const parsed = parseLxWindowExcelBuffer(buffer);
+      const recognized = recognizeQuoteWorkbook(buffer);
+      const parsed = lxWindowAdapter.parse(buffer);
+      setRecognition(recognized);
       setResult(parsed);
       setRows(
         parsed.rows.map((r) =>
@@ -346,7 +349,7 @@ export default function LxWindowExcelImportModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700"
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-900"
           >
             닫기
           </button>
@@ -365,7 +368,7 @@ export default function LxWindowExcelImportModal({
               type="button"
               disabled={inputsLocked}
               onClick={() => fileRef.current?.click()}
-              className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-700 disabled:opacity-50"
+              className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-semibold text-white hover:bg-navy-700 disabled:opacity-75"
             >
               .xlsx 선택
             </button>
@@ -391,7 +394,13 @@ export default function LxWindowExcelImportModal({
 
           {result ? (
             <>
-              <dl className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 sm:grid-cols-2 lg:grid-cols-4">
+              {recognition ? (
+                <div className={`rounded-lg border px-3 py-2 text-sm ${recognition.confidence < 70 ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-sky-50 text-slate-900"}`}>
+                  <b>{recognition.label} · 신뢰도 {recognition.confidence}%</b>
+                  {recognition.confidence < 70 ? <p className="mt-1 text-amber-900">양식 인식 신뢰도가 낮습니다. 변환 결과를 직접 확인해 주세요.</p> : null}
+                </div>
+              ) : null}
+              <dl className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <dt className="text-slate-600">견적번호</dt>
                   <dd className="font-medium text-slate-900">
@@ -520,7 +529,7 @@ export default function LxWindowExcelImportModal({
                   </div>
                   <ul className="space-y-1">
                     {problemRows.slice(0, 8).map((r) => (
-                      <li key={r.id} className="text-slate-800">
+                      <li key={r.id} className="text-slate-900">
                         · 엑셀 {r.excelRow != null ? `${r.excelRow}행` : "-"} /{" "}
                         {r.sourceLabel || r.product || "(품명 없음)"} —{" "}
                         {r.statusReasons[0] || "확인 필요"}
@@ -535,7 +544,7 @@ export default function LxWindowExcelImportModal({
 
               <div className="overflow-x-auto rounded-lg border border-slate-300">
                 <table className="min-w-[1200px] w-full text-left text-xs text-slate-900">
-                  <thead className="bg-slate-100 text-slate-700">
+                  <thead className="bg-slate-100 text-slate-900">
                     <tr>
                       <th className="px-2 py-2">선택</th>
                       <th className="px-2 py-2">위치</th>
@@ -738,19 +747,19 @@ export default function LxWindowExcelImportModal({
                                 >
                                   확인 필요
                                 </p>
-                                <p className="text-[10px] text-slate-700">
+                                <p className="text-[10px] text-slate-900">
                                   엑셀{" "}
                                   {row.excelRow != null
                                     ? `${row.excelRow}행`
                                     : "-"}
                                 </p>
-                                <p className="text-[10px] text-slate-700">
+                                <p className="text-[10px] text-slate-900">
                                   {row.sourceLabel || row.product || "-"}
                                 </p>
                                 {row.statusReasons.map((reason) => (
                                   <p
                                     key={reason}
-                                    className="text-[10px] leading-snug text-slate-800"
+                                    className="text-[10px] leading-snug text-slate-900"
                                   >
                                     {reason}
                                   </p>
@@ -781,7 +790,7 @@ export default function LxWindowExcelImportModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900"
           >
             취소
           </button>

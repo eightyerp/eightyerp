@@ -99,10 +99,10 @@ export default async function CustomersPage({
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
               고객관리 (CRM)
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-600">
               검색 · 필터 · 상담이력 기반 고객 관리
             </p>
             <p className="mt-1 text-xs font-medium text-navy-800">
@@ -127,7 +127,7 @@ export default async function CustomersPage({
             />
             <Link
               href="/customers/import"
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 hover:bg-slate-100"
             >
               문의 자동등록(전체화면)
             </Link>
@@ -177,7 +177,7 @@ export default async function CustomersPage({
           <>
             <Suspense
               fallback={
-                <div className="dashboard-card p-4 text-sm text-gray-500">
+                <div className="dashboard-card p-4 text-sm text-slate-600">
                   필터 로딩 중...
                 </div>
               }
@@ -189,7 +189,7 @@ export default async function CustomersPage({
               />
             </Suspense>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
               <p>
                 총 {total}건
                 {params.contact && (

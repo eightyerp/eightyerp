@@ -37,7 +37,7 @@ export default function CustomerPagination({
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-slate-600">
         {total}건 중 {page}/{totalPages} 페이지
       </p>
       <div className="flex flex-wrap items-center gap-1">
@@ -46,8 +46,8 @@ export default function CustomerPagination({
           aria-disabled={page <= 1}
           className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
             page <= 1
-              ? "pointer-events-none border-gray-100 text-gray-300"
-              : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              ? "pointer-events-none border-gray-100 text-slate-600"
+              : "border-gray-200 text-gray-600 hover:bg-slate-100"
           }`}
         >
           이전
@@ -58,14 +58,14 @@ export default function CustomerPagination({
           return (
             <span key={p} className="flex items-center gap-1">
               {showEllipsis && (
-                <span className="px-1 text-xs text-gray-300">…</span>
+                <span className="px-1 text-xs text-slate-600">…</span>
               )}
               <Link
                 href={buildHref(p, searchParams)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
                   p === page
                     ? "bg-navy-800 text-white"
-                    : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    : "border border-gray-200 text-gray-600 hover:bg-slate-100"
                 }`}
               >
                 {p}
@@ -78,8 +78,8 @@ export default function CustomerPagination({
           aria-disabled={page >= totalPages}
           className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
             page >= totalPages
-              ? "pointer-events-none border-gray-100 text-gray-300"
-              : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              ? "pointer-events-none border-gray-100 text-slate-600"
+              : "border-gray-200 text-gray-600 hover:bg-slate-100"
           }`}
         >
           다음

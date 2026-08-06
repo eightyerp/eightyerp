@@ -12,14 +12,14 @@ export const ERP_QUOTE_STATUSES = [
 ] as const;
 
 export const ERP_QUOTE_STATUS_BADGE: Record<string, string> = {
-  작성중: "bg-gray-100 text-gray-600",
-  검토중: "bg-sky-50 text-sky-700",
-  발송완료: "bg-blue-50 text-blue-700",
+  작성중: "bg-slate-100 text-slate-900",
+  검토중: "bg-sky-100 text-sky-900",
+  발송완료: "bg-sky-100 text-sky-900",
   수정요청: "bg-orange-50 text-orange-700",
-  승인: "bg-emerald-50 text-emerald-700",
-  계약전환: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300",
+  승인: "bg-emerald-100 text-emerald-900",
+  계약전환: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-300",
   만료: "bg-red-50 text-red-700",
-  취소: "bg-slate-100 text-slate-500",
+  취소: "bg-slate-100 text-slate-900",
 };
 
 /** 상세견적 기본 대표공종 (작성 화면 기본 표시·순서) */

@@ -54,20 +54,20 @@ export const PROCESS_NAME_SUGGESTIONS = [
 ] as const;
 
 export const SCHEDULE_STATUS_BADGE: Record<string, string> = {
-  예정: "bg-sky-50 text-sky-700",
-  진행중: "bg-blue-50 text-blue-700",
-  완료: "bg-emerald-50 text-emerald-700",
-  연기: "bg-amber-50 text-amber-800",
-  취소: "bg-slate-100 text-slate-500",
+  예정: "bg-sky-100 text-sky-900",
+  진행중: "bg-sky-100 text-sky-900",
+  완료: "bg-emerald-100 text-emerald-900",
+  연기: "bg-amber-100 text-amber-900",
+  취소: "bg-slate-100 text-slate-900",
   미처리: "bg-red-50 text-red-700",
   지연: "bg-red-50 text-red-700",
   중단: "bg-orange-50 text-orange-700",
 };
 
 export const PRIORITY_BADGE: Record<string, string> = {
-  낮음: "bg-gray-100 text-gray-600",
-  보통: "bg-slate-100 text-slate-700",
-  높음: "bg-amber-50 text-amber-800",
+  낮음: "bg-slate-100 text-slate-900",
+  보통: "bg-slate-100 text-slate-900",
+  높음: "bg-amber-100 text-amber-900",
   긴급: "bg-red-100 text-red-700 font-semibold",
 };
 

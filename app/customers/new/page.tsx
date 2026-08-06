@@ -31,16 +31,16 @@ export default async function NewCustomerPage() {
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
               신규 고객 등록
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-600">
               고객 정보를 입력하고 CRM에 등록합니다.
             </p>
           </div>
           <Link
             href="/customers"
-            className="hidden min-h-11 items-center justify-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 sm:inline-flex"
+            className="hidden min-h-11 items-center justify-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100 sm:inline-flex"
           >
             목록으로
           </Link>

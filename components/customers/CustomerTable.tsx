@@ -25,7 +25,7 @@ export default function CustomerTable({
 }: CustomerTableProps) {
   if (customers.length === 0) {
     return (
-      <div className="dashboard-card px-5 py-12 text-center text-sm text-gray-500">
+      <div className="dashboard-card px-5 py-12 text-center text-sm text-slate-600">
         {trashMode
           ? "삭제된 고객이 없습니다."
           : "등록된 고객이 없거나 검색 조건에 맞는 고객이 없습니다."}
@@ -38,7 +38,7 @@ export default function CustomerTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1280px] text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
+            <tr className="border-b border-gray-200 bg-gray-50 text-xs text-slate-600">
               <th className="px-4 py-3 font-medium">고객명</th>
               <th className="px-4 py-3 font-medium">연락처</th>
               <th className="px-4 py-3 font-medium">상담유형</th>
@@ -56,11 +56,11 @@ export default function CustomerTable({
             {customers.map((customer) => (
               <tr
                 key={customer.id}
-                className={`border-b border-gray-50 hover:bg-gray-50/80 ${
+                className={`border-b border-gray-50 hover:bg-slate-100/80 ${
                   customer.needs_attention ? "bg-red-50/40" : ""
                 }`}
               >
-                <td className="px-4 py-3 font-medium text-gray-900">
+                <td className="px-4 py-3 font-medium text-slate-900">
                   <Link
                     href={`/customers/${customer.id}`}
                     className="hover:text-navy-800 hover:underline"
@@ -68,14 +68,14 @@ export default function CustomerTable({
                     {customer.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{customer.phone}</td>
-                <td className="px-4 py-3 text-gray-700">
+                <td className="px-4 py-3 text-slate-900">{customer.phone}</td>
+                <td className="px-4 py-3 text-slate-900">
                   {customer.consultation_type}
                 </td>
-                <td className="px-4 py-3 text-gray-700">
+                <td className="px-4 py-3 text-slate-900">
                   {customer.lead_sources?.name ?? "-"}
                 </td>
-                <td className="px-4 py-3 text-gray-700">
+                <td className="px-4 py-3 text-slate-900">
                   {customer.employees
                     ? formatEmployeeLabel(
                         customer.employees.name,
@@ -87,13 +87,13 @@ export default function CustomerTable({
                   <span
                     className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                       STATUS_BADGE_CLASS[customer.status] ??
-                      "bg-gray-100 text-gray-600"
+                      "bg-slate-100 text-slate-900"
                     }`}
                   >
                     {customer.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-700">
+                <td className="px-4 py-3 text-slate-900">
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100">
                       <div
@@ -107,12 +107,12 @@ export default function CustomerTable({
                     </span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-500">
+                <td className="px-4 py-3 text-slate-600">
                   {formatDate(customer.last_activity_at)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-1">
-                    <span className="text-gray-700">
+                    <span className="text-slate-900">
                       {formatDate(customer.next_contact_at)}
                     </span>
                     <span
@@ -130,7 +130,7 @@ export default function CustomerTable({
                       관리 필요
                     </span>
                   ) : (
-                    <span className="text-xs text-gray-400">정상</span>
+                    <span className="text-xs text-slate-600">정상</span>
                   )}
                 </td>
                 <td className="px-4 py-3">

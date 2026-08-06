@@ -2,7 +2,7 @@ import { alertCustomers } from "@/lib/sample-data";
 
 const statusStyle: Record<string, string> = {
   미연락: "bg-red-50 text-red-600",
-  관리필요: "bg-amber-50 text-amber-600",
+  관리필요: "bg-amber-100 text-amber-900",
 };
 
 export default function CustomerAlerts() {
@@ -14,13 +14,13 @@ export default function CustomerAlerts() {
         {alertCustomers.map((customer) => (
           <div
             key={customer.name}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2.5 hover:bg-gray-50"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2.5 hover:bg-slate-100"
           >
             <div>
-              <p className="text-sm font-medium text-gray-800">
+              <p className="text-sm font-medium text-slate-900">
                 {customer.name}
               </p>
-              <p className="text-xs text-gray-400">{customer.phone}</p>
+              <p className="text-xs text-slate-600">{customer.phone}</p>
             </div>
             <div className="text-right">
               <span
@@ -28,7 +28,7 @@ export default function CustomerAlerts() {
               >
                 {customer.status}
               </span>
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-slate-600">
                 {customer.lastContact} · {customer.manager}
               </p>
             </div>

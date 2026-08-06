@@ -1,0 +1,124 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { saveInteriorQuoteImportAction } from "@/app/actions/interior-quote-import";
+import { INTERIOR_EXCEL_MAX_BYTES, type InteriorExcelItem, type InteriorExcelParseResult } from "@/lib/crm/interior-quote-excel";
+import { genericInteriorAdapter, recognizeQuoteWorkbook, type TemplateRecognition } from "@/lib/excel-engine";
+import type { InteriorImportCustomerOption } from "@/lib/crm/interior-quote-import";
+import type { Employee } from "@/types/database";
+
+type Props = { open: boolean; onClose: () => void; customers: InteriorImportCustomerOption[]; employees: Employee[]; lockEmployeeId?: string | null };
+const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-gold-500 focus:outline-none focus:ring-2 focus:ring-gold-100 disabled:opacity-75";
+const money = (value: number) => `${Math.round(value).toLocaleString("ko-KR")}원`;
+
+export default function InteriorQuoteExcelImportModal({ open, onClose, customers, employees, lockEmployeeId = null }: Props) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [query, setQuery] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [employeeId, setEmployeeId] = useState(lockEmployeeId ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [parsed, setParsed] = useState<InteriorExcelParseResult | null>(null);
+  const [recognition, setRecognition] = useState<TemplateRecognition | null>(null);
+  const [items, setItems] = useState<InteriorExcelItem[]>([]);
+  const [vatMode, setVatMode] = useState<"inclusive" | "exclusive">("exclusive");
+  const [discount, setDiscount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([]);
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return customers.slice(0, 30);
+    return customers.filter((customer) => [customer.name, customer.phone, customer.address, ...customer.sites.flatMap((site) => [site.name, site.address])].filter(Boolean).join(" ").toLowerCase().includes(needle)).slice(0, 50);
+  }, [customers, query]);
+  const itemSum = items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice), 0);
+  const discounted = Math.max(0, itemSum - discount);
+  const supply = vatMode === "inclusive" ? Math.round(discounted / 1.1) : discounted;
+  const vat = vatMode === "inclusive" ? discounted - supply : Math.round(supply * 0.1);
+  const total = supply + vat;
+  const excelDifference = parsed?.totals.totalAmount == null ? 0 : total - parsed.totals.totalAmount;
+  const hasErrors = items.length === 0 || items.some((item) => !item.itemName.trim() || item.quantity <= 0 || item.unitPrice < 0);
+  const customerMismatch = Boolean(parsed && selectedCustomer && [
+    parsed.customerHints.name && !selectedCustomer.name.includes(parsed.customerHints.name),
+    parsed.customerHints.phone && selectedCustomer.phone.replace(/\D/g, "") !== parsed.customerHints.phone.replace(/\D/g, ""),
+    parsed.customerHints.address && !(selectedCustomer.address ?? "").includes(parsed.customerHints.address),
+  ].some(Boolean));
+
+  if (!open) return null;
+
+  async function analyze(nextFile: File) {
+    setError(null); setDuplicateWarnings([]); setParsed(null); setRecognition(null); setItems([]);
+    if (!/\.(xlsx|xls)$/i.test(nextFile.name)) return setError("xlsx 또는 xls 파일만 선택할 수 있습니다.");
+    if (nextFile.size > INTERIOR_EXCEL_MAX_BYTES) return setError("Excel 파일은 15MB 이하여야 합니다.");
+    try {
+      const buffer = await nextFile.arrayBuffer();
+      const recognized = recognizeQuoteWorkbook(buffer);
+      const result = genericInteriorAdapter.parse(buffer);
+      setRecognition(recognized);
+      setFile(nextFile); setParsed(result); setItems(result.items); setVatMode(result.totals.vatMode); setDiscount(result.totals.discountAmount);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Excel 분석에 실패했습니다."); }
+  }
+
+  function updateItem(id: string, patch: Partial<InteriorExcelItem>) {
+    setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch, errors: [] } : item));
+  }
+
+  function moveTrade(trade: string, direction: -1 | 1) {
+    const trades = [...new Set(items.map((item) => item.tradeName))];
+    const from = trades.indexOf(trade); const to = from + direction;
+    if (from < 0 || to < 0 || to >= trades.length) return;
+    [trades[from], trades[to]] = [trades[to], trades[from]];
+    setItems([...items].sort((a, b) => trades.indexOf(a.tradeName) - trades.indexOf(b.tradeName)));
+  }
+
+  function submit(confirmDuplicate = false) {
+    if (!file || !parsed || !selectedCustomer || hasErrors) return setError("고객·파일·필수 품목 정보를 확인해 주세요.");
+    setError(null);
+    startTransition(async () => {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("confirm_duplicate", String(confirmDuplicate));
+      form.set("header_json", JSON.stringify({
+        request_id: crypto.randomUUID(), customer_id: selectedCustomer.id, assigned_employee_id: employeeId || null,
+        quote_type: "인테리어", quote_mode: "detailed", title: `${selectedCustomer.name} 인테리어 견적`, status: "작성중",
+        total_amount: itemSum, discount_amount: discount, lx_discount_rate: 0, lx_discount_amount: 0, final_amount: discounted,
+        vat_mode: vatMode, vat_rate: 10, supply_amount: supply, vat_amount: vat, customer_total_amount: total,
+        issued_at: new Date().toISOString().slice(0, 10), is_lx_material: false, is_contract_quote: false,
+      }));
+      form.set("items_json", JSON.stringify(items.map((item, index) => ({
+        id: null, client_key: item.id, trade_name: item.tradeName || "기타공사", item_name: item.itemName,
+        description: item.specification || null, remark: item.remark || null, quantity: item.quantity,
+        unit: item.unit || null, unit_price: item.unitPrice, amount: Math.round(item.quantity * item.unitPrice),
+        cost_type: "일반", is_lx_material: false, lx_discount_base_amount: 0, lx_discount_type: null, lx_discount_value: null, sort_order: index,
+      }))));
+      form.set("import_json", JSON.stringify({ sheet_name: parsed.sheetName, customer_hint: parsed.customerHints, parsed_totals: { ...parsed.totals, totalAmount: parsed.totals.totalAmount ?? total } }));
+      const result = await saveInteriorQuoteImportAction(form);
+      if (result.needsDuplicateConfirmation) { setDuplicateWarnings(result.duplicateWarnings ?? []); return; }
+      if (!result.success || !result.quoteId) { setError(result.error ?? "저장에 실패했습니다."); return; }
+      router.push(`/quotes/${result.quoteId}`); router.refresh();
+    });
+  }
+
+  const grouped = [...new Set(items.map((item) => item.tradeName))];
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" role="dialog" aria-modal="true" aria-label="인테리어 견적 Excel 업로드">
+    <div className="max-h-[95vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white p-5 text-slate-900 shadow-2xl">
+      <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold">인테리어 견적 엑셀 업로드</h2><p className="mt-1 text-sm text-slate-600">Excel 고객정보는 비교 경고에만 사용하며 기존 고객정보를 변경하지 않습니다.</p></div><button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">닫기</button></div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <section><label className="text-sm font-semibold">1. 기존 고객 검색</label><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="고객명, 연락처, 주소, 현장명" className={`${inputClass} mt-1`} /><div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-slate-200">{matches.map((customer) => <button key={customer.id} type="button" onClick={() => { setCustomerId(customer.id); setEmployeeId(lockEmployeeId ?? customer.assigned_employee_id ?? ""); }} className={`block w-full border-b p-2 text-left text-sm hover:bg-slate-100 ${customer.id === customerId ? "bg-amber-100 ring-2 ring-inset ring-amber-400" : ""}`}><b>{customer.name}</b><span className="block text-xs text-slate-600">{customer.phone} · {customer.address ?? "주소 없음"}{customer.sites[0] ? ` · ${customer.sites[0].name}` : ""}</span></button>)}</div></section>
+        <section><label className="text-sm font-semibold">2. 담당 직원</label><select value={employeeId} disabled={Boolean(lockEmployeeId)} onChange={(e) => setEmployeeId(e.target.value)} className={`${inputClass} mt-1`}><option value="">담당자 선택</option>{employees.filter((employee) => employee.is_active).map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.title}</option>)}</select>{selectedCustomer ? <div className="mt-3 rounded-lg bg-slate-100 p-3 text-sm"><b>{selectedCustomer.name}</b><p className="text-slate-600">{selectedCustomer.phone}<br />{selectedCustomer.address ?? "주소 없음"}</p></div> : null}</section>
+        <section><label className="text-sm font-semibold">3. Excel 파일</label><input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(e) => { const next = e.target.files?.[0]; if (next) void analyze(next); }} className={`${inputClass} mt-1`} /><p className="mt-2 text-xs text-slate-600">xlsx/xls · 최대 15MB · 매크로 및 외부링크 차단</p>{parsed ? <p className="mt-2 rounded bg-emerald-100 p-2 text-sm text-emerald-900">{parsed.sheetName} · {items.length}개 항목 분석 완료</p> : null}</section>
+      </div>
+      {customerMismatch ? <p className="mt-4 rounded-lg border border-amber-300 bg-amber-100 p-3 text-sm font-medium text-amber-900">Excel 고객정보와 선택 고객이 다릅니다. 저장은 선택한 ERP 고객으로만 연결됩니다.</p> : null}
+      {recognition ? <div className={`mt-4 rounded-lg border p-3 text-sm ${recognition.confidence < 70 ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-sky-50 text-slate-900"}`}><b>{recognition.label} · 신뢰도 {recognition.confidence}%</b>{recognition.confidence < 70 ? <p className="mt-1 text-amber-900">양식 인식 신뢰도가 낮습니다. 매핑 결과를 직접 확인해 주세요.</p> : null}</div> : null}
+      {parsed?.warnings.map((warning) => <p key={warning} className="mt-2 rounded-lg bg-amber-100 p-2 text-sm text-amber-900">{warning}</p>)}
+      {parsed ? <div className="mt-5 space-y-4">{grouped.map((trade, tradeIndex) => <section key={trade} className="rounded-xl border border-slate-200"><div className="flex items-center justify-between bg-slate-100 px-3 py-2"><div className="flex items-center gap-3"><input value={trade} onChange={(e) => setItems((current) => current.map((item) => item.tradeName === trade ? { ...item, tradeName: e.target.value } : item))} className="rounded border border-slate-300 bg-white px-2 py-1 font-semibold" /><span className="text-sm font-semibold text-slate-600">소계 {money(items.filter((item) => item.tradeName === trade).reduce((sum, item) => sum + item.quantity * item.unitPrice, 0))}</span></div><div><button type="button" disabled={tradeIndex === 0} onClick={() => moveTrade(trade, -1)} className="px-2 disabled:opacity-75">↑</button><button type="button" disabled={tradeIndex === grouped.length - 1} onClick={() => moveTrade(trade, 1)} className="px-2 disabled:opacity-75">↓</button></div></div><div className="overflow-x-auto"><table className="min-w-[1050px] w-full text-sm"><thead className="text-slate-600"><tr>{["품목","규격","수량","단위","단가","금액","비고",""].map((label) => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead><tbody>{items.filter((item) => item.tradeName === trade).map((item) => <tr key={item.id} className={`border-t hover:bg-slate-100 ${item.errors.length ? "bg-red-50" : ""}`}><td className="p-1"><input value={item.itemName} onChange={(e) => updateItem(item.id,{itemName:e.target.value})} className={inputClass} />{item.errors.length ? <p className="text-xs text-red-700">{item.errors.join(" · ")}</p> : null}</td><td className="p-1"><input value={item.specification} onChange={(e) => updateItem(item.id,{specification:e.target.value})} className={inputClass} /></td><td className="p-1"><input type="number" value={item.quantity} onChange={(e) => updateItem(item.id,{quantity:Number(e.target.value)})} className={inputClass} /></td><td className="p-1"><input value={item.unit} onChange={(e) => updateItem(item.id,{unit:e.target.value})} className={inputClass} /></td><td className="p-1"><input type="number" value={item.unitPrice} onChange={(e) => updateItem(item.id,{unitPrice:Number(e.target.value)})} className={inputClass} /></td><td className="p-2 text-right font-semibold">{money(item.quantity*item.unitPrice)}</td><td className="p-1"><input value={item.remark} onChange={(e) => updateItem(item.id,{remark:e.target.value})} className={inputClass} /></td><td><button type="button" onClick={() => setItems((current) => current.filter((row) => row.id !== item.id))} className="text-red-700">삭제</button></td></tr>)}</tbody></table></div></section>)}<button type="button" onClick={() => setItems((current) => [...current,{id:crypto.randomUUID(),sourceRow:0,tradeName:grouped.at(-1)??"기타공사",itemName:"",specification:"",quantity:1,unit:"식",unitPrice:0,amount:0,remark:"",errors:["품목 누락"]}])} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium">행 추가</button></div> : null}
+      {parsed ? <div className="mt-5 grid gap-3 rounded-xl bg-slate-100 p-4 sm:grid-cols-5"><label className="text-sm">VAT<select value={vatMode} onChange={(e) => setVatMode(e.target.value as "inclusive"|"exclusive")} className={`${inputClass} mt-1`}><option value="exclusive">별도</option><option value="inclusive">포함</option></select></label><label className="text-sm">할인/조정<input type="number" min={0} value={discount} onChange={(e) => setDiscount(Math.max(0,Number(e.target.value)))} className={`${inputClass} mt-1`} /></label><Summary label="공급가" value={money(supply)} /><Summary label="부가세" value={money(vat)} /><Summary label="ERP 총액" value={money(total)} /><p className={`sm:col-span-5 text-sm font-medium ${excelDifference ? "text-red-700" : "text-emerald-800"}`}>Excel 총액 {money(parsed.totals.totalAmount ?? 0)} · 차이 {money(excelDifference)}</p></div> : null}
+      {duplicateWarnings.length ? <div className="mt-4 rounded-lg border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900"><b>중복 가능성 확인</b>{duplicateWarnings.map((warning) => <p key={warning}>{warning}</p>)}<button type="button" disabled={pending} onClick={() => submit(true)} className="mt-2 rounded bg-amber-900 px-3 py-2 font-medium text-white disabled:opacity-75">확인 후 저장</button></div> : null}
+      {error ? <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      <div className="mt-5 flex justify-end"><button type="button" disabled={pending || hasErrors || !customerId || !file} onClick={() => submit(false)} className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-75">{pending ? "저장 중…" : "정식 견적으로 저장"}</button></div>
+    </div>
+  </div>;
+}
+
+function Summary({ label, value }: { label: string; value: string }) { return <div className="rounded-lg bg-white p-3"><p className="text-xs text-slate-600">{label}</p><b>{value}</b></div>; }

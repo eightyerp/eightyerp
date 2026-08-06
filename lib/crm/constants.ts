@@ -53,14 +53,14 @@ export const QUOTE_STATUSES = [
 export const QUOTE_SEND_METHODS = ["문자", "카카오톡", "이메일", "기타"] as const;
 
 export const QUOTE_STATUS_BADGE_CLASS: Record<string, string> = {
-  작성중: "bg-gray-100 text-gray-600 ring-1 ring-gray-200",
-  고객발송: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
-  고객확인: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+  작성중: "bg-slate-100 text-slate-900 ring-1 ring-gray-200",
+  고객발송: "bg-sky-100 text-sky-900 ring-1 ring-sky-200",
+  고객확인: "bg-sky-100 text-sky-900 ring-1 ring-blue-200",
   수정요청: "bg-orange-50 text-orange-700 ring-1 ring-orange-200",
-  최종견적: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  최종견적: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
   계약전환: "bg-navy-800 text-gold-400 ring-1 ring-navy-900",
-  보류: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
-  취소: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
+  보류: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
+  취소: "bg-slate-100 text-slate-900 ring-1 ring-slate-200",
 };
 
 export const QUOTE_STORAGE_BUCKET = "customer-quotes";
@@ -240,23 +240,23 @@ export function isManagerOrAboveRole(role: UserRole | null | undefined): boolean
 }
 
 export const STATUS_BADGE_CLASS: Record<string, string> = {
-  신규: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
+  신규: "bg-sky-100 text-sky-900 ring-1 ring-sky-200",
   미연락: "bg-red-50 text-red-700 ring-1 ring-red-200",
   "1차 연락완료": "bg-orange-50 text-orange-700 ring-1 ring-orange-200",
-  상담중: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+  상담중: "bg-amber-100 text-amber-900 ring-1 ring-amber-200",
   방문예약: "bg-violet-50 text-violet-700 ring-1 ring-violet-200",
   실측예약: "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-200",
   견적작성중: "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200",
-  견적제출: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+  견적제출: "bg-sky-100 text-sky-900 ring-1 ring-blue-200",
   계약협의: "bg-teal-50 text-teal-700 ring-1 ring-teal-200",
-  계약완료: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-  계약: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  계약완료: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
+  계약: "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200",
   시공예정: "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200",
   시공중: "bg-navy-800/10 text-navy-800 ring-1 ring-navy-700/20",
   완료: "bg-navy-800 text-gold-400 ring-1 ring-navy-900",
-  보류: "bg-gray-100 text-gray-600 ring-1 ring-gray-200",
+  보류: "bg-slate-100 text-slate-900 ring-1 ring-gray-200",
   연락두절: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
-  취소: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
+  취소: "bg-slate-100 text-slate-900 ring-1 ring-slate-200",
 };
 
 export const ROLE_LABEL: Record<UserRole, string> = {

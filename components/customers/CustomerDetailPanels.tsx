@@ -188,7 +188,7 @@ export default function CustomerDetailPanels({
           className={`rounded-lg border px-4 py-3 text-sm ${
             toast.includes("실패") || toast.includes("오류") || toast.includes("없")
               ? "border-red-200 bg-red-50 text-red-700"
-              : "border-green-200 bg-green-50 text-green-700"
+              : "border-green-200 bg-emerald-100 text-emerald-900"
           }`}
         >
           {toast}
@@ -200,11 +200,11 @@ export default function CustomerDetailPanels({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-gray-900">{customer.name}</h2>
+              <h2 className="text-xl font-bold text-slate-900">{customer.name}</h2>
               <span
                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                   STATUS_BADGE_CLASS[customer.status] ??
-                  "bg-gray-100 text-gray-600"
+                  "bg-slate-100 text-slate-900"
                 }`}
               >
                 {customer.status}
@@ -259,7 +259,7 @@ export default function CustomerDetailPanels({
                 valueClassName={
                   customer.last_contact_at
                     ? undefined
-                    : "font-medium text-gray-500"
+                    : "font-medium text-slate-600"
                 }
               />
               <InfoItem
@@ -296,14 +296,14 @@ export default function CustomerDetailPanels({
                         key={row.id}
                         className="border-t border-gray-100 pt-2 text-sm first:border-t-0 first:pt-0"
                       >
-                        <p className="font-medium text-gray-800">
+                        <p className="font-medium text-slate-900">
                           {employeeNameById(row.previous_assignee_id)}
-                          <span className="mx-1.5 text-gray-400">→</span>
+                          <span className="mx-1.5 text-slate-600">→</span>
                           {employeeNameById(row.new_assignee_id)}
                         </p>
-                        <p className="mt-0.5 text-xs text-gray-500">
+                        <p className="mt-0.5 text-xs text-slate-600">
                           변경한 사람 {changedBy}
-                          <span className="mx-1.5 text-gray-300">·</span>
+                          <span className="mx-1.5 text-slate-600">·</span>
                           {formatDateTime(row.created_at)}
                         </p>
                       </li>
@@ -355,7 +355,7 @@ export default function CustomerDetailPanels({
             <button
               type="button"
               onClick={() => setTab("quote")}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100"
             >
               견적서
             </button>
@@ -368,7 +368,7 @@ export default function CustomerDetailPanels({
                 className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
               />
             ) : (
-              <span className="rounded-lg border border-gray-100 px-3 py-2 text-xs text-gray-300">
+              <span className="rounded-lg border border-gray-100 px-3 py-2 text-xs text-slate-600">
                 삭제
               </span>
             )}
@@ -386,16 +386,16 @@ export default function CustomerDetailPanels({
                 <span className="rounded-full bg-navy-800/5 px-2.5 py-0.5 text-xs font-medium text-navy-800">
                   {latestLog.consult_type}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-slate-600">
                   {formatDateTime(latestLog.created_at)}
                 </span>
               </div>
-              <p className="whitespace-pre-wrap text-gray-700">
+              <p className="whitespace-pre-wrap text-slate-900">
                 {latestLog.consult_content}
               </p>
             </div>
           ) : (
-            <p className="mt-3 text-sm text-gray-400">
+            <p className="mt-3 text-sm text-slate-600">
               등록된 상담이력이 없습니다. 아래에서 첫 상담을 등록해 주세요.
             </p>
           )}
@@ -405,20 +405,20 @@ export default function CustomerDetailPanels({
           <h3 className="dashboard-section-title">연락 현황</h3>
           <div className="mt-3 space-y-3">
             <div>
-              <p className="text-xs text-gray-400">최근 연락</p>
+              <p className="text-xs text-slate-600">최근 연락</p>
               <p
                 className={`mt-1 text-base font-semibold ${
-                  customer.last_contact_at ? "text-gray-900" : "text-gray-500"
+                  customer.last_contact_at ? "text-slate-900" : "text-slate-600"
                 }`}
               >
                 {lastContactLabel}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">다음 연락일</p>
+              <p className="text-xs text-slate-600">다음 연락일</p>
               <p
                 className={`mt-1 text-2xl font-bold ${
-                  isContactOverdue ? "text-red-700" : "text-gray-900"
+                  isContactOverdue ? "text-red-700" : "text-slate-900"
                 }`}
               >
                 {nextContactLabel}
@@ -427,7 +427,7 @@ export default function CustomerDetailPanels({
                 className={`mt-1 text-sm ${
                   isContactOverdue
                     ? "font-semibold text-red-700"
-                    : "text-gray-500"
+                    : "text-slate-600"
                 }`}
               >
                 {contactBucketLabel(bucket)}
@@ -440,13 +440,13 @@ export default function CustomerDetailPanels({
           <div className="mt-4 flex flex-wrap gap-2">
             <a
               href={`tel:${formatPhoneForTel(customer.phone)}`}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
             >
               전화
             </a>
             <a
               href={buildSmsLink(customer.phone)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
             >
               문자
             </a>
@@ -454,7 +454,7 @@ export default function CustomerDetailPanels({
               href={buildKakaoLink(customer.phone)}
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
             >
               카카오톡
             </a>
@@ -464,7 +464,7 @@ export default function CustomerDetailPanels({
               <button
                 type="submit"
                 disabled={pending}
-                className="rounded-lg bg-gold-500/20 px-3 py-1.5 text-xs font-medium text-navy-800 hover:bg-gold-500/30 disabled:opacity-60"
+                className="rounded-lg bg-gold-500/20 px-3 py-1.5 text-xs font-medium text-navy-800 hover:bg-gold-500/30 disabled:opacity-75"
               >
                 전화시도 기록
               </button>
@@ -480,7 +480,7 @@ export default function CustomerDetailPanels({
             <input type="hidden" name="customer_id" value={customer.id} />
             <input type="hidden" name="mode" value="status" />
             <div>
-              <label className="mb-1 block text-xs text-gray-500">상담상태 변경</label>
+              <label className="mb-1 block text-xs text-slate-600">상담상태 변경</label>
               <select
                 name="status"
                 defaultValue={customer.status}
@@ -496,7 +496,7 @@ export default function CustomerDetailPanels({
             <button
               type="submit"
               disabled={pending}
-              className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+              className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700 disabled:opacity-75"
             >
               상태 저장
             </button>
@@ -506,7 +506,7 @@ export default function CustomerDetailPanels({
             <input type="hidden" name="customer_id" value={customer.id} />
             <input type="hidden" name="mode" value="assignee" />
             <div>
-              <label className="mb-1 block text-xs text-gray-500">담당자 변경</label>
+              <label className="mb-1 block text-xs text-slate-600">담당자 변경</label>
               <select
                 name="assigned_employee_id"
                 defaultValue={customer.assigned_employee_id ?? ""}
@@ -525,12 +525,12 @@ export default function CustomerDetailPanels({
               <button
                 type="submit"
                 disabled={pending}
-                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-75"
               >
                 담당자 저장
               </button>
             ) : (
-              <p className="pb-2 text-xs text-gray-400">
+              <p className="pb-2 text-xs text-slate-600">
                 담당자 변경은 관리자만 가능
               </p>
             )}
@@ -549,7 +549,7 @@ export default function CustomerDetailPanels({
               className={`rounded-t-lg px-4 py-2.5 text-sm font-medium transition ${
                 tab === item.key
                   ? "bg-navy-800 text-white"
-                  : "text-gray-500 hover:bg-gray-50 hover:text-navy-800"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-navy-800"
               }`}
             >
               {item.label}
@@ -630,7 +630,7 @@ export default function CustomerDetailPanels({
               </div>
 
               {schedules.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-400">
+                <p className="py-8 text-center text-sm text-slate-600">
                   등록된 상담 일정이 없습니다.
                 </p>
               ) : (
@@ -643,10 +643,10 @@ export default function CustomerDetailPanels({
                         className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
                       >
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-slate-900">
                             {s.title}
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-500">
+                          <p className="mt-0.5 text-xs text-slate-600">
                             {formatDateTime(s.start_at)} · {s.schedule_type}
                             {s.employees
                               ? ` · ${s.employees.name}`
@@ -662,7 +662,7 @@ export default function CustomerDetailPanels({
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                               SCHEDULE_STATUS_BADGE[s.status] ??
-                              "bg-gray-100 text-gray-600"
+                              "bg-slate-100 text-slate-900"
                             }`}
                           >
                             {s.status}
@@ -717,7 +717,7 @@ export default function CustomerDetailPanels({
                           <p className="text-sm font-medium text-navy-900">
                             {q.title}
                           </p>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-slate-600">
                             v{q.version_number} · {q.quote_type}
                           </span>
                           {q.is_contract_quote && (
@@ -726,7 +726,7 @@ export default function CustomerDetailPanels({
                             </span>
                           )}
                         </div>
-                        <p className="mt-0.5 text-xs text-gray-500">
+                        <p className="mt-0.5 text-xs text-slate-600">
                           {q.status}
                           {q.valid_until ? ` · 유효 ${q.valid_until}` : ""}
                         </p>
@@ -738,14 +738,14 @@ export default function CustomerDetailPanels({
                   ))}
                 </div>
               ) : (
-                <p className="rounded-xl border border-dashed p-6 text-center text-sm text-gray-500">
+                <p className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-600">
                   등록된 견적이 없습니다. 새 견적을 등록해 주세요.
                 </p>
               )}
 
               {quotes.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-medium text-gray-400">
+                  <p className="mb-2 text-xs font-medium text-slate-600">
                     이전 견적(레거시) · 창호 견적서 업로드 보관용
                   </p>
                   <CustomerQuotesPanel
@@ -857,8 +857,8 @@ function ConsultTab({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">상담 타임라인</h3>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <h3 className="text-sm font-semibold text-slate-900">상담 타임라인</h3>
+          <p className="mt-0.5 text-xs text-slate-600">
             전화·방문·카카오톡 등 상담 이력을 시간순으로 확인합니다.
           </p>
         </div>
@@ -879,7 +879,7 @@ function ConsultTab({
           <input type="hidden" name="customer_id" value={customerId} />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">
+              <label className="mb-1 block text-xs font-medium text-slate-600">
                 상담유형
               </label>
               <select
@@ -896,7 +896,7 @@ function ConsultTab({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">
+              <label className="mb-1 block text-xs font-medium text-slate-600">
                 다음 연락일
               </label>
               <input
@@ -906,7 +906,7 @@ function ConsultTab({
               />
             </div>
             <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-500">
+              <label className="mb-1 block text-xs font-medium text-slate-600">
                 상담내용
               </label>
               <textarea
@@ -925,7 +925,7 @@ function ConsultTab({
             <button
               type="submit"
               disabled={pending}
-              className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+              className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-75"
             >
               {pending ? "등록 중..." : "상담이력 저장"}
             </button>
@@ -934,7 +934,7 @@ function ConsultTab({
       )}
 
       {logs.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-400">
+        <p className="py-8 text-center text-sm text-slate-600">
           아직 상담이력이 없습니다.
         </p>
       ) : (
@@ -947,7 +947,7 @@ function ConsultTab({
                   <span className="rounded-full bg-navy-800/5 px-2.5 py-0.5 text-xs font-semibold text-navy-800">
                     {log.consult_type}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-slate-600">
                     {formatDateTime(log.created_at)}
                   </span>
                   {log.next_contact_date && (
@@ -956,7 +956,7 @@ function ConsultTab({
                     </span>
                   )}
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-900">
                   {log.consult_content}
                 </p>
               </div>
@@ -981,8 +981,8 @@ function PlaceholderTab({
 }) {
   return (
     <div className="flex flex-col items-start gap-3 py-6">
-      <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-      <p className="text-sm text-gray-500">{description}</p>
+      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <p className="text-sm text-slate-600">{description}</p>
       <button
         type="button"
         onClick={onAction}
@@ -1007,13 +1007,13 @@ function MiniStat({
     accent === "red"
       ? "border-red-200 bg-red-50 text-red-700"
       : accent === "blue"
-        ? "border-sky-200 bg-sky-50 text-sky-800"
+        ? "border-sky-200 bg-sky-100 text-sky-900"
         : accent === "gold"
           ? "border-gold-300 bg-gold-50 text-navy-900"
           : "border-gray-100 bg-gray-50 text-gray-600";
   return (
     <div className={`rounded-xl border px-4 py-3 ${accentClass}`}>
-      <p className="text-xs opacity-70">{label}</p>
+      <p className="text-xs opacity-80">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
   );
@@ -1030,7 +1030,7 @@ function ActionPlaceholder({
     <button
       type="button"
       onClick={() => onNotify(`${label} 기능은 준비 중입니다.`)}
-      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100"
     >
       {label}
     </button>
@@ -1041,7 +1041,7 @@ function InfoItem({
   label,
   value,
   className = "",
-  valueClassName = "font-medium text-gray-800",
+  valueClassName = "font-medium text-slate-900",
 }: {
   label: string;
   value: string;
@@ -1050,11 +1050,11 @@ function InfoItem({
 }) {
   return (
     <div className={className}>
-      <dt className="text-xs text-gray-400">{label}</dt>
+      <dt className="text-xs text-slate-600">{label}</dt>
       <dd className={`mt-0.5 ${valueClassName}`}>{value}</dd>
     </div>
   );
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
