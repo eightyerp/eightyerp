@@ -54,10 +54,22 @@ export default function EmployeeContactsWorkspace({
   const [keepProfileId, setKeepProfileId] = useState("");
   const [otherLoginAction, setOtherLoginAction] = useState<"unlink" | "deactivate">("unlink");
   const [mergeReport, setMergeReport] = useState<EmployeeMergeResult | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const visibleEmployees = canManageAll
+  const accessibleEmployees = canManageAll
     ? employees
     : employees.filter((employee) => employee.id === currentEmployeeId);
+  const needle = searchQuery.trim().toLowerCase();
+  const visibleEmployees = needle
+    ? accessibleEmployees.filter((employee) => {
+        const team = teams.find((item) => item.id === employee.team_id);
+        return [employee.name, employee.title, employee.phone, employee.email, employee.login_email, team?.name]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(needle);
+      })
+    : accessibleEmployees;
 
   function run(action: () => Promise<{ success: boolean; error?: string }>, success: string) {
     setMessage(null);
@@ -96,6 +108,13 @@ export default function EmployeeContactsWorkspace({
           </button>
           </div>
         ) : null}
+      </div>
+
+      <div className="border-b border-slate-200 bg-slate-50 p-4">
+        <label className="block max-w-md text-sm font-medium text-slate-900">
+          직원 검색
+          <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="이름, 팀, 직책, 전화, 이메일" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400" />
+        </label>
       </div>
 
       {message ? <p className="m-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p> : null}

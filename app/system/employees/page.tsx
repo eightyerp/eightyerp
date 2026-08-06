@@ -1,35 +1,22 @@
 import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EmployeeContactsWorkspace from "@/components/system/EmployeeContactsWorkspace";
-import StaffApprovalsWorkspace from "@/components/system/StaffApprovalsWorkspace";
-import { getCurrentUserAccess } from "@/lib/crm/access";
 import {
   listCompanyEmployeesForContact,
   listEmployeeMasterEvents,
 } from "@/lib/crm/employee-contacts";
-import {
-  listManagedProfiles,
-  listPendingSignups,
-  listTeamsForApproval,
-} from "@/lib/crm/staff-approvals";
+import { listPendingSignups } from "@/lib/crm/staff-approvals";
 
 export default async function EmployeeMasterPage() {
-  const [data, access] = await Promise.all([
-    listCompanyEmployeesForContact(),
-    getCurrentUserAccess(),
-  ]);
+  const data = await listCompanyEmployeesForContact();
 
   if (!data.isAuthenticated) redirect("/login");
   if (!data.canAccessErp) redirect("/pending-approval");
 
-  const approvalData = access.isAdmin
-    ? await Promise.all([
-        listPendingSignups(),
-        listManagedProfiles(),
-        listTeamsForApproval(),
-      ])
-    : null;
-  const masterEvents = access.isAdmin
+  const pendingAccounts = data.canManageAll
+    ? await listPendingSignups().catch(() => [])
+    : [];
+  const masterEvents = data.canManageAll
     ? await listEmployeeMasterEvents().catch(() => [])
     : [];
 
@@ -51,26 +38,16 @@ export default async function EmployeeMasterPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
             {data.loadError}
           </div>
-        ) : (
-          <EmployeeContactsWorkspace
-            employees={data.employees}
-            teams={data.teams}
-            currentEmployeeId={data.currentEmployeeId}
-            canManageAll={data.canManageAll}
-            canMergeEmployees={data.canMergeEmployees}
-            pendingAccounts={approvalData?.[0] ?? []}
-            events={masterEvents}
-          />
-        )}
-
-        {approvalData ? (
-          <StaffApprovalsWorkspace
-            pending={approvalData[0]}
-            allProfiles={approvalData[1]}
-            employees={data.employees}
-            teams={approvalData[2]}
-          />
         ) : null}
+        <EmployeeContactsWorkspace
+          employees={data.employees}
+          teams={data.teams}
+          currentEmployeeId={data.currentEmployeeId}
+          canManageAll={data.canManageAll}
+          canMergeEmployees={data.canMergeEmployees}
+          pendingAccounts={pendingAccounts}
+          events={masterEvents}
+        />
       </div>
     </DashboardLayout>
   );
