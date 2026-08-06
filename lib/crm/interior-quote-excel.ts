@@ -20,6 +20,15 @@ export type InteriorExcelItem = {
   laborAmount: number;
   remark: string;
   errors: string[];
+  excelOriginal: {
+    quantity: number | null;
+    materialUnitPrice: number | null;
+    materialAmount: number | null;
+    laborUnitPrice: number | null;
+    laborAmount: number | null;
+    amount: number | null;
+    invalidFields: string[];
+  };
 };
 
 export function hasInteriorItemContent(
@@ -86,6 +95,8 @@ export function getInteriorImportBlockingReason(input: {
   fileReady: boolean;
   items: InteriorExcelItem[];
   excelDifference: number;
+  unresolvedDiagnosticCount?: number;
+  totalMismatchConfirmed?: boolean;
 }): string | null {
   if (!input.customerId) return "고객을 선택해 주세요.";
   if (!input.employeeId) return "담당 직원을 선택해 주세요.";
@@ -93,7 +104,10 @@ export function getInteriorImportBlockingReason(input: {
   if (!input.items.some((item) => hasInteriorItemContent(item) && item.amount > 0)) {
     return "유효한 유상 품목이 1개 이상 필요합니다.";
   }
-  if (Math.abs(input.excelDifference) > 1) {
+  if ((input.unresolvedDiagnosticCount ?? 0) > 0) {
+    return `해결되지 않은 필수 오류 ${input.unresolvedDiagnosticCount}건을 검토해 주세요.`;
+  }
+  if (Math.abs(input.excelDifference) > 1 && !input.totalMismatchConfirmed) {
     return "Excel 총액과 ERP 계산 총액이 일치하지 않습니다.";
   }
   if (
@@ -158,6 +172,11 @@ function optionalNumber(value: unknown): number | null {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function invalidNumberField(value: unknown, label: string): string | null {
+  if (value == null || String(value).trim() === "") return null;
+  return optionalNumber(value) == null ? label : null;
 }
 
 function normalizedHeader(value: unknown): string {
@@ -282,12 +301,21 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
     if (!joined.trim()) return;
     if (/^내\s*용$/i.test(text(row[header.columns.trade])) && /품\s*목/i.test(text(row[header.columns.item]))) return;
     if (/^(?:자재비|인건비|노무비|단가|금액|견적가|총\s*금액)+$/i.test(joined.replace(/\s+/g, ""))) return;
-    const quantity = numberValue(row[header.columns.quantity]);
+    const rawQuantity = optionalNumber(row[header.columns.quantity]);
+    const quantity = rawQuantity ?? 0;
     const rawMaterialUnitPrice = optionalNumber(row[header.columns.materialUnitPrice]);
     const rawMaterialAmount = optionalNumber(row[header.columns.materialAmount]);
     const rawLaborUnitPrice = optionalNumber(row[header.columns.laborUnitPrice]);
     const rawLaborAmount = optionalNumber(row[header.columns.laborAmount]);
     const explicitAmount = optionalNumber(row[header.columns.amount]);
+    const invalidFields = [
+      invalidNumberField(row[header.columns.quantity], "수량"),
+      invalidNumberField(row[header.columns.materialUnitPrice], "자재단가"),
+      invalidNumberField(row[header.columns.materialAmount], "자재금액"),
+      invalidNumberField(row[header.columns.laborUnitPrice], "인건비단가"),
+      invalidNumberField(row[header.columns.laborAmount], "인건비금액"),
+      invalidNumberField(row[header.columns.amount], "행 합계금액"),
+    ].filter((value): value is string => Boolean(value));
     const materialUnitPrice = rawMaterialUnitPrice ?? (rawMaterialAmount != null && quantity > 0 ? rawMaterialAmount / quantity : 0);
     const laborUnitPrice = rawLaborUnitPrice ?? (rawLaborAmount != null && quantity > 0 ? rawLaborAmount / quantity : 0);
     const materialAmount = rawMaterialAmount ?? (rawMaterialUnitPrice != null ? quantity * rawMaterialUnitPrice : 0);
@@ -339,6 +367,15 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
       laborAmount: Math.round(laborAmount),
       remark: text(row[header.columns.remark]),
       errors,
+      excelOriginal: {
+        quantity: rawQuantity,
+        materialUnitPrice: rawMaterialUnitPrice,
+        materialAmount: rawMaterialAmount,
+        laborUnitPrice: rawLaborUnitPrice,
+        laborAmount: rawLaborAmount,
+        amount: explicitAmount,
+        invalidFields,
+      },
     });
   });
 
