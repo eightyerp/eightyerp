@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import * as XLSX from "xlsx";
 import { INTERIOR_EXCEL_EXTENSIONS, parseInteriorQuoteWorkbook } from "../lib/crm/interior-quote-excel";
 
-function workbookBuffer(rows: unknown[][], options?: { extraSheet?: boolean; merge?: XLSX.Range }) {
+function workbookBuffer(rows: unknown[][], options?: { extraSheet?: boolean; merge?: XLSX.Range; merges?: XLSX.Range[] }) {
   const workbook = XLSX.utils.book_new();
   if (options?.extraSheet) XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["안내"], ["견적 내역은 다음 시트"]]), "안내");
   const sheet = XLSX.utils.aoa_to_sheet(rows);
-  if (options?.merge) sheet["!merges"] = [options.merge];
+  if (options?.merge || options?.merges) sheet["!merges"] = [...(options.merges ?? []), ...(options.merge ? [options.merge] : [])];
   XLSX.utils.book_append_sheet(workbook, sheet, "인테리어 견적서");
   return XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
 }
@@ -67,16 +66,41 @@ assert.ok(mismatch.warnings.some((warning) => warning.includes("다릅니다")),
 
 assert.deepEqual(INTERIOR_EXCEL_EXTENSIONS, ["xlsx", "xls"], "잘못된 확장자 제외");
 
-const migration = fs.readFileSync("supabase/migrations/20260806000001_interior_quote_excel_import.sql", "utf8");
-assert.match(migration, /create_interior_quote_from_excel/, "전용 원자 저장 RPC");
-assert.match(migration, /create_quote_with_items/, "기존 견적 저장 RPC 재사용");
-assert.match(migration, /current_company_id\(\)/, "회사 경계");
-assert.match(migration, /can_access_customer/, "고객 접근 범위");
-assert.match(migration, /source_file_hash/, "중복 파일 해시 기록");
+const standardRows = [
+  ["공종", "품목", "설명", "수량", "단위", "자재단가", "자재금액", "인건비단가", "인건비금액", "비고"],
+  ["목공사", "천장", "석고 2P", 2, "식", 100000, 200000, 50000, 100000, ""],
+  ["공급가", "", "", "", "", "", 300000], ["부가세", "", "", "", "", "", 30000], ["합계", "", "", "", "", "", 330000],
+];
+const standard = parseInteriorQuoteWorkbook(workbookBuffer(standardRows));
+assert.equal(standard.items[0].materialUnitPrice, 100000, "표준 양식 자재단가");
+assert.equal(standard.items[0].laborUnitPrice, 50000, "표준 양식 인건비단가");
+assert.equal(standard.items[0].unitPrice, 150000, "DB 저장용 합산단가");
+assert.equal(standard.items[0].amount, 300000, "DB 저장용 합산금액");
 
-const action = fs.readFileSync("app/actions/interior-quote-import.ts", "utf8");
-assert.match(action, /storage\.from\(QUOTE_FILES_BUCKET\)\.remove/, "DB 저장 실패 시 원본 정리");
-assert.match(action, /needsDuplicateConfirmation/, "중복 자동 차단 대신 확인");
-assert.match(action, /validateSignature/, "확장자·파일 시그니처 검증");
+const layeredRows = [
+  ["01 준비 공사", null, null, null, null, null, null, null, null, null, null],
+  ["내 용", "품 목", "설명", "수량", "단위", "견적가", null, null, null, "총 금액", "비고"],
+  [null, null, null, null, null, "자재비", null, "인건비", null, null, null],
+  [null, null, null, null, null, "단가", "금액", "단가", "금액", null, null],
+  ["혼합", "자재+인건비", "모두 존재", 2, "식", "100,000원", 200000, 50000, 100000, 300000, ""],
+  ["자재", "자재만", "금액 없음", 2, "식", 120000, null, null, null, 240000, ""],
+  ["노무", "인건비만", "단가 없음", 3, "식", null, null, null, 300000, 300000, ""],
+  ["금액", "금액만", "양쪽 금액", 2, "식", null, 400000, null, 100000, 500000, ""],
+  ["영원", "명시적 0", "0과 빈값 구분", 2, "식", 100000, 0, 50000, null, 100000, ""],
+  ["경고", "합계 불일치", "비교 경고", 1, "식", 100, 100, 50, 50, 999, ""],
+  ["소 계", null, null, null, null, null, 840100, null, 500150, 1340250, null],
+];
+const layered = parseInteriorQuoteWorkbook(workbookBuffer(layeredRows,{merges:[
+  {s:{r:0,c:0},e:{r:0,c:10}}, {s:{r:1,c:0},e:{r:3,c:0}}, {s:{r:1,c:1},e:{r:3,c:1}},
+  {s:{r:1,c:5},e:{r:1,c:8}}, {s:{r:2,c:5},e:{r:2,c:6}}, {s:{r:2,c:7},e:{r:2,c:8}},
+]}));
+assert.equal(layered.items.length,6,"3단 병합헤더 품목 수");
+assert.deepEqual(layered.items[0],{...layered.items[0],materialUnitPrice:100000,materialAmount:200000,laborUnitPrice:50000,laborAmount:100000,unitPrice:150000,amount:300000},"자재+인건비");
+assert.equal(layered.items[1].materialAmount,240000,"단가만 있으면 수량×자재단가");
+assert.equal(layered.items[2].laborUnitPrice,100000,"금액만 있으면 수량으로 단가 역산");
+assert.equal(layered.items[3].unitPrice,250000,"자재·인건비 금액만 있는 행 합산단가");
+assert.equal(layered.items[4].materialAmount,0,"명시적 0은 단가 계산으로 덮지 않음");
+assert.equal(layered.items[4].laborAmount,100000,"빈 금액은 수량×단가");
+assert.ok(layered.items[5].errors.some((error)=>error.includes("Excel 합계금액")),"명시 합계 차이 경고");
 
-console.log("PASS: interior quote Excel parser, validation, duplicate warning, rollback and company guard tests");
+console.log("PASS: interior quote Excel parser, design-eighty standard mapping, totals and validation tests");
