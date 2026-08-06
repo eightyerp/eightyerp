@@ -22,6 +22,94 @@ export type InteriorExcelItem = {
   errors: string[];
 };
 
+export function hasInteriorItemContent(
+  item: Pick<InteriorExcelItem, "itemName" | "specification">,
+): boolean {
+  return Boolean(item.itemName.trim() || item.specification.trim());
+}
+
+export function isInteriorReferenceItem(
+  item: Pick<InteriorExcelItem, "itemName" | "specification" | "amount">,
+): boolean {
+  return hasInteriorItemContent(item) && item.amount === 0;
+}
+
+export function recalculateInteriorCostItem(
+  item: InteriorExcelItem,
+  patch: Partial<Pick<InteriorExcelItem, "quantity" | "materialUnitPrice" | "laborUnitPrice">>,
+): InteriorExcelItem {
+  const next = { ...item, ...patch };
+  const materialAmount = Math.round(next.quantity * next.materialUnitPrice);
+  const laborAmount = Math.round(next.quantity * next.laborUnitPrice);
+  return {
+    ...next,
+    materialAmount,
+    laborAmount,
+    unitPrice: next.materialUnitPrice + next.laborUnitPrice,
+    amount: materialAmount + laborAmount,
+    errors: [],
+  };
+}
+
+export function buildInteriorQuoteItemsPayload(items: InteriorExcelItem[]) {
+  return items.map((item, index) => ({
+    id: null,
+    client_key: item.id,
+    trade_name: item.tradeName || "기타공사",
+    item_name: item.itemName.trim() || null,
+    description:
+      [
+        item.specification,
+        item.materialAmount || item.laborAmount
+          ? `자재 ${Math.round(item.materialAmount).toLocaleString("ko-KR")}원 · 인건비 ${Math.round(item.laborAmount).toLocaleString("ko-KR")}원`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · ") || null,
+    remark: item.remark || null,
+    quantity: item.quantity,
+    unit: item.unit || null,
+    unit_price: item.materialUnitPrice + item.laborUnitPrice,
+    amount: Math.round(item.materialAmount + item.laborAmount),
+    cost_type: "일반" as const,
+    is_lx_material: false,
+    lx_discount_base_amount: 0,
+    lx_discount_type: null,
+    lx_discount_value: null,
+    sort_order: index,
+  }));
+}
+
+export function getInteriorImportBlockingReason(input: {
+  customerId: string;
+  employeeId: string;
+  fileReady: boolean;
+  items: InteriorExcelItem[];
+  excelDifference: number;
+}): string | null {
+  if (!input.customerId) return "고객을 선택해 주세요.";
+  if (!input.employeeId) return "담당 직원을 선택해 주세요.";
+  if (!input.fileReady) return "Excel 파일을 분석해 주세요.";
+  if (!input.items.some((item) => hasInteriorItemContent(item) && item.amount > 0)) {
+    return "유효한 유상 품목이 1개 이상 필요합니다.";
+  }
+  if (Math.abs(input.excelDifference) > 1) {
+    return "Excel 총액과 ERP 계산 총액이 일치하지 않습니다.";
+  }
+  if (
+    input.items.some(
+      (item) =>
+        !hasInteriorItemContent(item) ||
+        item.quantity < 0 ||
+        item.unitPrice < 0 ||
+        item.amount < 0,
+    )
+  ) {
+    return "음수 금액 또는 내용이 없는 품목을 확인해 주세요.";
+  }
+  return null;
+}
+
 export type InteriorExcelParseResult = {
   sheetName: string;
   customerHints: { name: string; phone: string; address: string; siteName: string };
@@ -218,20 +306,21 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
 
     const trade = text(row[header.columns.trade]);
     const itemName = text(row[header.columns.item]);
+    const specification = text(row[header.columns.spec]);
     const unitPrice = numberValue(row[header.columns.unitPrice]) || materialUnitPrice + laborUnitPrice;
-    if (trade && !itemName && quantity === 0 && unitPrice === 0 && amount === 0) {
+    if (trade && !itemName && !specification && quantity === 0 && unitPrice === 0 && amount === 0) {
       if (!tradeColumnIsDetail || /^\d{1,2}\s/.test(trade)) currentTrade = trade;
       return;
     }
-    if (!itemName && amount === 0) return;
+    if (!itemName && !specification && amount === 0) return;
     if (trade && !tradeColumnIsDetail) currentTrade = trade;
 
     const calculated = Math.round(quantity * unitPrice);
     const resolvedAmount = Math.round(hasSplitCost ? amount : (explicitAmount ?? calculated));
     const errors: string[] = [];
-    if (!itemName) errors.push("품목 누락");
-    if (quantity <= 0) errors.push("수량 누락");
-    if (unitPrice <= 0 && resolvedAmount <= 0) errors.push("단가·금액 누락");
+    if (!itemName && !specification) errors.push("품목·설명 누락");
+    if (quantity < 0) errors.push("수량은 0 이상이어야 합니다.");
+    if (unitPrice < 0 || resolvedAmount < 0) errors.push("단가·금액은 0 이상이어야 합니다.");
     if (amount && calculated && Math.abs(amount - calculated) > 1) errors.push("수량×단가와 금액 불일치");
     if (explicitAmount != null && Math.abs(explicitAmount - amount) > 1) errors.push(`Excel 합계금액과 자재·인건비 합계 불일치 (${Math.round(explicitAmount - amount).toLocaleString("ko-KR")}원)`);
     items.push({
@@ -239,7 +328,7 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
       sourceRow: rowNumber,
       tradeName: currentTrade || "기타공사",
       itemName,
-      specification: text(row[header.columns.spec]),
+      specification,
       quantity,
       unit: text(row[header.columns.unit]) || "식",
       unitPrice: Math.round(unitPrice),

@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { saveInteriorQuoteImportAction } from "@/app/actions/interior-quote-import";
 import {
   INTERIOR_EXCEL_MAX_BYTES,
+  buildInteriorQuoteItemsPayload,
+  getInteriorImportBlockingReason,
+  isInteriorReferenceItem,
   parseInteriorQuoteWorkbook,
+  recalculateInteriorCostItem,
   type InteriorExcelItem,
   type InteriorExcelParseResult,
 } from "@/lib/crm/interior-quote-excel";
@@ -22,6 +26,7 @@ type Props = {
   customers: InteriorImportCustomerOption[];
   employees: Employee[];
   lockEmployeeId?: string | null;
+  defaultEmployeeId?: string | null;
 };
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-gold-500 focus:outline-none focus:ring-2 focus:ring-gold-100 disabled:opacity-75";
@@ -34,12 +39,15 @@ export default function InteriorQuoteExcelImportModal({
   customers,
   employees,
   lockEmployeeId = null,
+  defaultEmployeeId = null,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [customerId, setCustomerId] = useState("");
-  const [employeeId, setEmployeeId] = useState(lockEmployeeId ?? "");
+  const [employeeId, setEmployeeId] = useState(
+    lockEmployeeId ?? defaultEmployeeId ?? "",
+  );
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<InteriorExcelParseResult | null>(null);
   const [recognition, setRecognition] = useState<TemplateRecognition | null>(
@@ -81,12 +89,14 @@ export default function InteriorQuoteExcelImportModal({
   const total = supply + vat;
   const excelDifference =
     parsed?.totals.totalAmount == null ? 0 : total - parsed.totals.totalAmount;
-  const hasErrors =
-    items.length === 0 ||
-    items.some(
-      (item) =>
-        !item.itemName.trim() || item.quantity <= 0 || item.unitPrice < 0,
-    );
+  const referenceItemCount = items.filter(isInteriorReferenceItem).length;
+  const saveBlockReason = getInteriorImportBlockingReason({
+    customerId,
+    employeeId,
+    fileReady: Boolean(file && parsed),
+    items,
+    excelDifference,
+  });
   const customerMismatch = Boolean(
     parsed &&
     selectedCustomer &&
@@ -151,19 +161,7 @@ export default function InteriorQuoteExcelImportModal({
     setItems((current) =>
       current.map((item) => {
         if (item.id !== id) return item;
-        const next = { ...item, ...patch };
-        const materialAmount = Math.round(
-          next.quantity * next.materialUnitPrice,
-        );
-        const laborAmount = Math.round(next.quantity * next.laborUnitPrice);
-        return {
-          ...next,
-          materialAmount,
-          laborAmount,
-          unitPrice: next.materialUnitPrice + next.laborUnitPrice,
-          amount: materialAmount + laborAmount,
-          errors: [],
-        };
+        return recalculateInteriorCostItem(item, patch);
       }),
     );
   }
@@ -182,8 +180,8 @@ export default function InteriorQuoteExcelImportModal({
   }
 
   function submit(confirmDuplicate = false) {
-    if (!file || !parsed || !selectedCustomer || hasErrors)
-      return setError("고객·파일·필수 품목 정보를 확인해 주세요.");
+    if (saveBlockReason) return setError(saveBlockReason);
+    if (!file || !parsed || !selectedCustomer) return;
     setError(null);
     startTransition(async () => {
       const form = new FormData();
@@ -216,34 +214,7 @@ export default function InteriorQuoteExcelImportModal({
       );
       form.set(
         "items_json",
-        JSON.stringify(
-          items.map((item, index) => ({
-            id: null,
-            client_key: item.id,
-            trade_name: item.tradeName || "기타공사",
-            item_name: item.itemName,
-            description:
-              [
-                item.specification,
-                item.materialAmount || item.laborAmount
-                  ? `자재 ${money(item.materialAmount)} · 인건비 ${money(item.laborAmount)}`
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" · ") || null,
-            remark: item.remark || null,
-            quantity: item.quantity,
-            unit: item.unit || null,
-            unit_price: item.materialUnitPrice + item.laborUnitPrice,
-            amount: Math.round(item.materialAmount + item.laborAmount),
-            cost_type: "일반",
-            is_lx_material: false,
-            lx_discount_base_amount: 0,
-            lx_discount_type: null,
-            lx_discount_value: null,
-            sort_order: index,
-          })),
-        ),
+        JSON.stringify(buildInteriorQuoteItemsPayload(items)),
       );
       const result = await saveInteriorQuoteImportAction(form);
       if (result.needsDuplicateConfirmation) {
@@ -301,7 +272,10 @@ export default function InteriorQuoteExcelImportModal({
                   onClick={() => {
                     setCustomerId(customer.id);
                     setEmployeeId(
-                      lockEmployeeId ?? customer.assigned_employee_id ?? "",
+                      lockEmployeeId ??
+                        customer.assigned_employee_id ??
+                        defaultEmployeeId ??
+                        "",
                     );
                   }}
                   className={`block w-full border-b p-2 text-left text-sm hover:bg-slate-100 ${customer.id === customerId ? "bg-amber-100 ring-2 ring-inset ring-amber-400" : ""}`}
@@ -464,7 +438,7 @@ export default function InteriorQuoteExcelImportModal({
                         .map((item) => (
                           <tr
                             key={item.id}
-                            className={`border-t hover:bg-slate-100 ${item.errors.length ? "bg-red-50" : ""}`}
+                            className={`border-t hover:bg-slate-100 ${item.errors.length ? "bg-red-50" : isInteriorReferenceItem(item) ? "bg-sky-50" : ""}`}
                           >
                             <td className="p-1">
                               <input
@@ -480,6 +454,11 @@ export default function InteriorQuoteExcelImportModal({
                                 <p className="text-xs text-red-700">
                                   {item.errors.join(" · ")}
                                 </p>
+                              ) : null}
+                              {isInteriorReferenceItem(item) ? (
+                                <span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">
+                                  참고항목 · 금액 미반영
+                                </span>
                               ) : null}
                             </td>
                             <td className="p-1">
@@ -641,6 +620,9 @@ export default function InteriorQuoteExcelImportModal({
             <Summary label="공급가" value={money(supply)} />
             <Summary label="부가세" value={money(vat)} />
             <Summary label="ERP 총액" value={money(total)} />
+            <p className="sm:col-span-5 text-sm text-slate-600">
+              참고항목 {referenceItemCount.toLocaleString("ko-KR")}개는 품목과 설명을 저장하되 견적 합계에서 제외됩니다.
+            </p>
             <p
               className={`sm:col-span-5 text-sm font-medium ${excelDifference ? "text-red-700" : "text-emerald-800"}`}
             >
@@ -671,14 +653,25 @@ export default function InteriorQuoteExcelImportModal({
           </p>
         ) : null}
         <div className="mt-5 flex justify-end">
-          <button
-            type="button"
-            disabled={pending || hasErrors || !customerId || !file}
-            onClick={() => submit(false)}
-            className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-75"
-          >
-            {pending ? "저장 중…" : "정식 견적으로 저장"}
-          </button>
+          <div className="text-right">
+            <button
+              type="button"
+              disabled={pending || Boolean(saveBlockReason)}
+              onClick={() => submit(false)}
+              className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500 disabled:opacity-100"
+            >
+              {pending ? "저장 중…" : "정식 견적으로 저장"}
+            </button>
+            {saveBlockReason ? (
+              <p className="mt-2 text-sm font-medium text-amber-800">
+                {saveBlockReason}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm font-medium text-emerald-700">
+                저장할 준비가 완료되었습니다.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
