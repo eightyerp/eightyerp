@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { mapInteriorCostHeaderBlock } from "@/lib/excel-engine/header-mapper";
 
 export const INTERIOR_EXCEL_MAX_BYTES = 15 * 1024 * 1024;
 export const INTERIOR_EXCEL_EXTENSIONS = ["xlsx", "xls"] as const;
@@ -13,6 +14,10 @@ export type InteriorExcelItem = {
   unit: string;
   unitPrice: number;
   amount: number;
+  materialUnitPrice: number;
+  materialAmount: number;
+  laborUnitPrice: number;
+  laborAmount: number;
   remark: string;
   errors: string[];
 };
@@ -33,13 +38,17 @@ export type InteriorExcelParseResult = {
 };
 
 const HEADER_ALIASES: Record<string, string[]> = {
-  trade: ["공종", "공사명", "구분", "분류"],
+  trade: ["공종", "공사명", "내용", "구분", "분류"],
   item: ["품목", "품명", "항목", "내역", "공사내용"],
-  spec: ["규격", "사양", "스펙"],
+  spec: ["설명", "규격", "사양", "스펙"],
   quantity: ["수량", "물량"],
   unit: ["단위"],
   unitPrice: ["단가", "재료비단가"],
   amount: ["금액", "합계", "공급가액"],
+  materialUnitPrice: ["자재단가"],
+  materialAmount: ["자재금액"],
+  laborUnitPrice: ["인건비단가", "노무단가"],
+  laborAmount: ["인건비금액", "노무금액"],
   remark: ["비고", "메모", "특이사항"],
 };
 
@@ -54,11 +63,20 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function optionalNumber(value: unknown): number | null {
+  if (value == null || String(value).trim() === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const normalized = String(value).replace(/[\s,원₩]/g, "").replace(/[^0-9.+-]/g, "");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizedHeader(value: unknown): string {
   return text(value).replace(/[\s()·\/]/g, "").toLowerCase();
 }
 
-type HeaderMatch = { row: number; columns: Record<string, number>; score: number };
+type HeaderMatch = { row: number; endRow: number; columns: Record<string, number>; score: number };
 
 function findHeader(matrix: unknown[][]): HeaderMatch | null {
   let best: HeaderMatch | null = null;
@@ -67,19 +85,43 @@ function findHeader(matrix: unknown[][]): HeaderMatch | null {
     for (const [columnIndex, cell] of row.entries()) {
       const candidate = normalizedHeader(cell);
       for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
-        if (aliases.some((alias) => candidate === normalizedHeader(alias) || candidate.includes(normalizedHeader(alias)))) {
+        if (aliases.some((alias) => {
+          const normalizedAlias = normalizedHeader(alias);
+          return candidate === normalizedAlias || (normalizedAlias.length >= 3 && candidate.includes(normalizedAlias));
+        })) {
           columns[key] ??= columnIndex;
         }
       }
     }
-    const score = ["item", "quantity", "unitPrice", "amount"].filter((key) => columns[key] != null).length;
-    if (!best || score > best.score) best = { row: rowIndex, columns, score };
+    const score = ["item", "quantity", "unitPrice", "amount", "materialUnitPrice", "materialAmount", "laborUnitPrice", "laborAmount"].filter((key) => columns[key] != null).length;
+    if (!best || score > best.score) best = { row: rowIndex, endRow: rowIndex, columns, score };
   }
-  return best && best.score >= 2 ? best : null;
+  if (!best || best.score < 2) return null;
+  const costs = mapInteriorCostHeaderBlock(matrix, best.row, 3);
+  Object.assign(best.columns, costs);
+  for (let offset = 1; offset <= 2; offset++) {
+    const headerCells = (matrix[best.row + offset] ?? []).map(normalizedHeader).filter(Boolean);
+    const hasCostGroup = headerCells.some((cell) => /^(?:자재비?|인건비|노무비?)$/.test(cell));
+    const costLeafCount = headerCells.filter((cell) => /^(?:단가|금액)$/.test(cell)).length;
+    if (hasCostGroup || costLeafCount >= 2) best.endRow = best.row + offset;
+  }
+  return best;
 }
 
 function sheetMatrix(sheet: XLSX.WorkSheet): unknown[][] {
-  return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
+  const origin = XLSX.utils.decode_range(sheet["!ref"] ?? "A1:A1").s;
+  for (const merge of sheet["!merges"] ?? []) {
+    if (merge.e.c <= merge.s.c) continue;
+    const startRow = merge.s.r - origin.r; const endRow = merge.e.r - origin.r;
+    const startColumn = merge.s.c - origin.c; const endColumn = merge.e.c - origin.c;
+    const value = matrix[startRow]?.[startColumn];
+    if (value == null || !/(?:견적가|자재비|인건비|노무비|단가|금액|내용|품목|설명|수량|단위|비고)/.test(normalizedHeader(value))) continue;
+    for (let row = startRow; row <= endRow; row++) for (let column = startColumn; column <= endColumn; column++) {
+      matrix[row] ??= []; matrix[row][column] ??= value;
+    }
+  }
+  return matrix;
 }
 
 function sheetScore(sheet: XLSX.WorkSheet): number {
@@ -141,16 +183,33 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
   let totalAmount: number | null = null;
   let discountAmount = 0;
 
-  matrix.slice(header.row + 1).forEach((row, offset) => {
-    const rowNumber = header.row + offset + 2;
+  const precedingTrade = text(matrix[header.row - 1]?.[header.columns.trade]);
+  const tradeColumnIsDetail = normalizedHeader(matrix[header.row]?.[header.columns.trade]) === "내용";
+  if (precedingTrade && !/내용|공종|구분/.test(precedingTrade)) currentTrade = precedingTrade;
+
+  matrix.slice(header.endRow + 1).forEach((row, offset) => {
+    const rowNumber = header.endRow + offset + 2;
     const cells = row.map(text);
     const joined = cells.join(" ");
     if (!joined.trim()) return;
-    const amount = numberValue(row[header.columns.amount]);
+    if (/^내\s*용$/i.test(text(row[header.columns.trade])) && /품\s*목/i.test(text(row[header.columns.item]))) return;
+    if (/^(?:자재비|인건비|노무비|단가|금액|견적가|총\s*금액)+$/i.test(joined.replace(/\s+/g, ""))) return;
+    const quantity = numberValue(row[header.columns.quantity]);
+    const rawMaterialUnitPrice = optionalNumber(row[header.columns.materialUnitPrice]);
+    const rawMaterialAmount = optionalNumber(row[header.columns.materialAmount]);
+    const rawLaborUnitPrice = optionalNumber(row[header.columns.laborUnitPrice]);
+    const rawLaborAmount = optionalNumber(row[header.columns.laborAmount]);
+    const explicitAmount = optionalNumber(row[header.columns.amount]);
+    const materialUnitPrice = rawMaterialUnitPrice ?? (rawMaterialAmount != null && quantity > 0 ? rawMaterialAmount / quantity : 0);
+    const laborUnitPrice = rawLaborUnitPrice ?? (rawLaborAmount != null && quantity > 0 ? rawLaborAmount / quantity : 0);
+    const materialAmount = rawMaterialAmount ?? (rawMaterialUnitPrice != null ? quantity * rawMaterialUnitPrice : 0);
+    const laborAmount = rawLaborAmount ?? (rawLaborUnitPrice != null ? quantity * rawLaborUnitPrice : 0);
+    const hasSplitCost = [rawMaterialUnitPrice, rawMaterialAmount, rawLaborUnitPrice, rawLaborAmount].some((value) => value != null);
+    const amount = hasSplitCost ? materialAmount + laborAmount : (explicitAmount ?? 0);
     if (/부가세|VAT/i.test(joined)) { vatAmount = amount || numberValue(row.find((v) => numberValue(v))); return; }
     if (/할인|조정/.test(joined)) { discountAmount = Math.abs(amount || numberValue(row.find((v) => numberValue(v)))); return; }
     if (/총\s*금액|합계금액|견적금액/.test(joined)) { totalAmount = amount || numberValue(row.find((v) => numberValue(v))); return; }
-    if (/공급가|소계/.test(joined) && !text(row[header.columns.item])) {
+    if (/공급가|소\s*계/.test(joined) && !text(row[header.columns.item])) {
       const subtotal = amount || numberValue(row.find((v) => numberValue(v)));
       if (/공급가/.test(joined)) supplyAmount = subtotal;
       else tradeSubtotals[currentTrade] = subtotal;
@@ -159,19 +218,22 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
 
     const trade = text(row[header.columns.trade]);
     const itemName = text(row[header.columns.item]);
-    const quantity = numberValue(row[header.columns.quantity]);
-    const unitPrice = numberValue(row[header.columns.unitPrice]);
-    if (trade && !itemName && quantity === 0 && unitPrice === 0 && amount === 0) { currentTrade = trade; return; }
+    const unitPrice = numberValue(row[header.columns.unitPrice]) || materialUnitPrice + laborUnitPrice;
+    if (trade && !itemName && quantity === 0 && unitPrice === 0 && amount === 0) {
+      if (!tradeColumnIsDetail || /^\d{1,2}\s/.test(trade)) currentTrade = trade;
+      return;
+    }
     if (!itemName && amount === 0) return;
-    if (trade) currentTrade = trade;
+    if (trade && !tradeColumnIsDetail) currentTrade = trade;
 
     const calculated = Math.round(quantity * unitPrice);
-    const resolvedAmount = Math.round(amount || calculated);
+    const resolvedAmount = Math.round(hasSplitCost ? amount : (explicitAmount ?? calculated));
     const errors: string[] = [];
     if (!itemName) errors.push("품목 누락");
     if (quantity <= 0) errors.push("수량 누락");
     if (unitPrice <= 0 && resolvedAmount <= 0) errors.push("단가·금액 누락");
     if (amount && calculated && Math.abs(amount - calculated) > 1) errors.push("수량×단가와 금액 불일치");
+    if (explicitAmount != null && Math.abs(explicitAmount - amount) > 1) errors.push(`Excel 합계금액과 자재·인건비 합계 불일치 (${Math.round(explicitAmount - amount).toLocaleString("ko-KR")}원)`);
     items.push({
       id: `excel-${rowNumber}-${items.length}`,
       sourceRow: rowNumber,
@@ -182,6 +244,10 @@ export function parseInteriorQuoteWorkbook(buffer: ArrayBuffer): InteriorExcelPa
       unit: text(row[header.columns.unit]) || "식",
       unitPrice: Math.round(unitPrice),
       amount: resolvedAmount,
+      materialUnitPrice: Math.round(materialUnitPrice),
+      materialAmount: Math.round(materialAmount),
+      laborUnitPrice: Math.round(laborUnitPrice),
+      laborAmount: Math.round(laborAmount),
       remark: text(row[header.columns.remark]),
       errors,
     });
