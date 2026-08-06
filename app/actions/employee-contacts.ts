@@ -22,14 +22,14 @@ async function requireEmployeeMergeAccess() {
   if (error) throw new Error("회사 역할을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.");
   const role = typeof companyRole === "string" ? companyRole : null;
   const allowed = access.isAdmin || role === "owner" || role === "director" || role === "admin";
-  if (!allowed) throw new Error("권한 부족: owner, admin 또는 super_admin만 직원을 병합할 수 있습니다.");
+  if (!allowed) throw new Error("권한 부족: owner, director, admin 또는 super_admin만 직원을 병합할 수 있습니다.");
   return supabase;
 }
 
 function employeeMergeError(error: unknown): string {
   const message = error instanceof Error ? error.message : "직원 병합에 실패했습니다.";
   const reasons: Array<[RegExp, string]> = [
-    [/관리자만 직원 병합|관리자만 직원을 병합|권한 부족/, "권한 부족: owner, admin 또는 super_admin만 직원을 병합할 수 있습니다."],
+    [/관리자만 직원 병합|관리자만 직원을 병합|권한 부족/, "권한 부족: owner, director, admin 또는 super_admin만 직원을 병합할 수 있습니다."],
     [/현재 로그인한 본인/, "본인 계정에 연결된 직원은 중복 직원으로 병합할 수 없습니다."],
     [/대표\(owner\)|대표.*계정/, "owner 대표 계정이 연결된 직원은 중복 직원으로 병합할 수 없습니다."],
     [/이미 병합된 직원/, "이미 병합된 직원은 다시 병합할 수 없습니다."],

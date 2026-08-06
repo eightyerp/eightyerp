@@ -73,6 +73,24 @@ export type EmployeeMasterEvent = {
   created_at: string;
 };
 
+export const EMPLOYEE_MASTER_REQUIRED_RPCS = [
+  "list_employee_master",
+  "create_employee_master",
+  "update_employee_master",
+  "transfer_employee_assignments",
+  "unlink_employee_login",
+  "update_employee_login_role",
+  "approve_staff_signup",
+  "list_employee_merge_states",
+  "get_employee_merge_impact",
+  "merge_employees",
+] as const;
+
+export function isMissingEmployeeMasterMigrationError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "PGRST202" || error.code === "42883" || /Could not find the function|does not exist/i.test(error.message ?? "");
+}
+
 export async function listEmployeeMasterEvents(): Promise<EmployeeMasterEvent[]> {
   await requireAuthenticatedAccess();
   const supabase = await createClient();
@@ -164,7 +182,6 @@ export async function listCompanyEmployeesForContact(): Promise<{
   let empQuery = supabase
     .from("employees")
     .select(employeeSelect)
-    .eq("is_active", true)
     .order("sort_order", { ascending: true });
 
   if (!canManageAll) {
@@ -181,7 +198,7 @@ export async function listCompanyEmployeesForContact(): Promise<{
         loadError: "연결된 직원 정보가 없습니다.",
       };
     }
-    empQuery = empQuery.eq("id", myId);
+    empQuery = empQuery.eq("id", myId).eq("is_active", true);
   }
 
   const [masterRes, empRes, teamRes, mergeStateRes] = await Promise.all([
@@ -210,19 +227,6 @@ export async function listCompanyEmployeesForContact(): Promise<{
     };
   }
 
-  if (canManageAll && masterRes.error) {
-    return {
-      employees: [],
-      teams: (teamRes.data ?? []) as Team[],
-      currentEmployeeId: access.profile?.employee_id ?? null,
-      canManageAll,
-      canMergeEmployees,
-      canAccessErp: true,
-      isAuthenticated: true,
-      loadError: "직원 Master 마이그레이션 적용이 필요합니다.",
-    };
-  }
-
   const fallbackEmployees = ((empRes.data ?? []) as Employee[]).map((employee) => ({
     ...employee,
     profile_id: null,
@@ -246,7 +250,7 @@ export async function listCompanyEmployeesForContact(): Promise<{
       row,
     ]),
   );
-  const masterEmployees = masterRes.data
+  const masterEmployees = !masterRes.error && masterRes.data
     ? (masterRes.data as Array<Record<string, unknown>>).map((row) => {
         const mergeState = mergeStateByEmployee.get(row.employee_id as string);
         return ({
@@ -289,7 +293,15 @@ export async function listCompanyEmployeesForContact(): Promise<{
     canMergeEmployees,
     canAccessErp: true,
     isAuthenticated: true,
-    loadError: null,
+    loadError: masterRes.error
+      ? isMissingEmployeeMasterMigrationError(masterRes.error)
+        ? "Employee Master Migration(20260804000001)의 list_employee_master RPC가 확인되지 않았습니다."
+        : "통합 로그인·담당 건수 조회에 실패해 기본 직원 목록을 표시합니다. 잠시 후 다시 시도해 주세요."
+      : mergeStateRes.error
+        ? isMissingEmployeeMasterMigrationError(mergeStateRes.error)
+          ? "Employee Merge Migration(20260805000001)의 list_employee_merge_states RPC가 확인되지 않았습니다. 직원 목록은 계속 사용할 수 있습니다."
+          : "병합 상태 조회에 실패했지만 직원 Master 목록은 정상 표시됩니다."
+        : null,
   };
 }
 
