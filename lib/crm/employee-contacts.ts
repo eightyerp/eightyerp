@@ -11,6 +11,80 @@ import {
 } from "@/lib/crm/quote-constants";
 import type { Employee, Team } from "@/types/database";
 
+export type EmployeeMaster = Employee & {
+  merged_into_employee_id: string | null;
+  merged_at: string | null;
+  merged_by: string | null;
+  profile_id: string | null;
+  login_email: string | null;
+  login_linked: boolean;
+  login_active: boolean;
+  approval_status: string | null;
+  role: string | null;
+  permissions: Record<string, boolean>;
+  last_sign_in_at: string | null;
+  customer_count: number;
+  quote_count: number;
+  schedule_count: number;
+};
+
+export type EmployeeMergeReference = {
+  schema: string;
+  table: string;
+  column: string;
+  kind: "business" | "login" | "history";
+  source_count: number;
+  target_count: number;
+  combined_count: number;
+};
+
+export type EmployeeMergeLogin = {
+  profile_id: string;
+  employee_id: string;
+  email: string | null;
+  full_name: string | null;
+  is_active: boolean;
+  role: string;
+};
+
+export type EmployeeMergeImpact = {
+  source: { id: string; name: string; is_active: boolean; merged_into_employee_id: string | null };
+  target: { id: string; name: string; is_active: boolean; merged_into_employee_id: string | null };
+  references: EmployeeMergeReference[];
+  logins: EmployeeMergeLogin[];
+};
+
+export type EmployeeMergeResult = {
+  merge_log_id: string;
+  source_employee_id: string;
+  target_employee_id: string;
+  transferred_counts: Record<string, number>;
+  before_totals: Record<string, number>;
+  after_totals: Record<string, number>;
+};
+
+export type EmployeeMasterEvent = {
+  id: string;
+  employee_id: string;
+  event_type: string;
+  before_data: Record<string, unknown>;
+  after_data: Record<string, unknown>;
+  detail: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function listEmployeeMasterEvents(): Promise<EmployeeMasterEvent[]> {
+  await requireAuthenticatedAccess();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("employee_master_events")
+    .select("id, employee_id, event_type, before_data, after_data, detail, created_at")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as EmployeeMasterEvent[];
+}
+
 function fileExt(name: string): string {
   const ext = (name.split(".").pop() || "").toLowerCase();
   if (ext === "jpg" || ext === "jpeg") return "jpg";
@@ -32,10 +106,11 @@ function assertBusinessCardFile(file: File) {
 }
 
 export async function listCompanyEmployeesForContact(): Promise<{
-  employees: Employee[];
+  employees: EmployeeMaster[];
   teams: Team[];
   currentEmployeeId: string | null;
   canManageAll: boolean;
+  canMergeEmployees: boolean;
   canAccessErp: boolean;
   isAuthenticated: boolean;
   loadError: string | null;
@@ -47,6 +122,7 @@ export async function listCompanyEmployeesForContact(): Promise<{
       teams: [],
       currentEmployeeId: null,
       canManageAll: false,
+      canMergeEmployees: false,
       canAccessErp: false,
       isAuthenticated: false,
       loadError: "로그인이 필요합니다.",
@@ -59,6 +135,7 @@ export async function listCompanyEmployeesForContact(): Promise<{
       teams: [],
       currentEmployeeId: access.profile?.employee_id ?? null,
       canManageAll: false,
+      canMergeEmployees: false,
       canAccessErp: false,
       isAuthenticated: true,
       loadError: "관리자 승인 후 이용할 수 있습니다.",
@@ -70,6 +147,12 @@ export async function listCompanyEmployeesForContact(): Promise<{
   const { data: companyRole } = await supabase.rpc("current_company_role");
   const role = typeof companyRole === "string" ? companyRole : null;
   const canManageAll =
+    access.isAdmin ||
+    role === "owner" ||
+    role === "director" ||
+    role === "admin";
+  // Keep this in sync with get_employee_merge_impact/merge_employees RPC guards.
+  const canMergeEmployees =
     access.isAdmin ||
     role === "owner" ||
     role === "director" ||
@@ -92,6 +175,7 @@ export async function listCompanyEmployeesForContact(): Promise<{
         teams: [],
         currentEmployeeId: null,
         canManageAll: false,
+        canMergeEmployees: false,
         canAccessErp: true,
         isAuthenticated: true,
         loadError: "연결된 직원 정보가 없습니다.",
@@ -100,12 +184,16 @@ export async function listCompanyEmployeesForContact(): Promise<{
     empQuery = empQuery.eq("id", myId);
   }
 
-  const [empRes, teamRes] = await Promise.all([
+  const [masterRes, empRes, teamRes, mergeStateRes] = await Promise.all([
+    canManageAll ? supabase.rpc("list_employee_master") : Promise.resolve({ data: null, error: null }),
     empQuery,
     supabase
       .from("teams")
       .select("id, name, sort_order, created_at")
       .order("sort_order", { ascending: true }),
+    canManageAll
+      ? supabase.rpc("list_employee_merge_states")
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (empRes.error) {
@@ -114,6 +202,7 @@ export async function listCompanyEmployeesForContact(): Promise<{
       teams: [],
       currentEmployeeId: access.profile?.employee_id ?? null,
       canManageAll,
+      canMergeEmployees,
       canAccessErp: true,
       isAuthenticated: true,
       loadError:
@@ -121,11 +210,83 @@ export async function listCompanyEmployeesForContact(): Promise<{
     };
   }
 
+  if (canManageAll && masterRes.error) {
+    return {
+      employees: [],
+      teams: (teamRes.data ?? []) as Team[],
+      currentEmployeeId: access.profile?.employee_id ?? null,
+      canManageAll,
+      canMergeEmployees,
+      canAccessErp: true,
+      isAuthenticated: true,
+      loadError: "직원 Master 마이그레이션 적용이 필요합니다.",
+    };
+  }
+
+  const fallbackEmployees = ((empRes.data ?? []) as Employee[]).map((employee) => ({
+    ...employee,
+    profile_id: null,
+    login_email: null,
+    login_linked: false,
+    login_active: false,
+    approval_status: null,
+    role: null,
+    permissions: {},
+    last_sign_in_at: null,
+    customer_count: 0,
+    quote_count: 0,
+    schedule_count: 0,
+    merged_into_employee_id: null,
+    merged_at: null,
+    merged_by: null,
+  }));
+  const mergeStateByEmployee = new Map(
+    ((mergeStateRes.data ?? []) as Array<Record<string, unknown>>).map((row) => [
+      row.employee_id as string,
+      row,
+    ]),
+  );
+  const masterEmployees = masterRes.data
+    ? (masterRes.data as Array<Record<string, unknown>>).map((row) => {
+        const mergeState = mergeStateByEmployee.get(row.employee_id as string);
+        return ({
+        id: row.employee_id as string,
+        company_id: row.company_id as string,
+        team_id: (row.team_id as string | null) ?? null,
+        name: row.employee_name as string,
+        title: row.employee_title as string,
+        phone: (row.employee_phone as string | null) ?? null,
+        email: (row.employee_email as string | null) ?? null,
+        business_card_path: (row.business_card_path as string | null) ?? null,
+        show_business_card_on_quote: Boolean(row.show_business_card_on_quote),
+        is_active: Boolean(row.employee_is_active),
+        sort_order: Number(row.sort_order ?? 100),
+        created_at: row.employee_created_at as string,
+        updated_at: row.employee_updated_at as string,
+        profile_id: (row.profile_id as string | null) ?? null,
+        login_email: (row.login_email as string | null) ?? null,
+        login_linked: Boolean(row.login_linked),
+        login_active: Boolean(row.login_active),
+        approval_status: (row.approval_status as string | null) ?? null,
+        role: (row.role as string | null) ?? null,
+        permissions: (row.permissions as Record<string, boolean>) ?? {},
+        last_sign_in_at: (row.last_sign_in_at as string | null) ?? null,
+        customer_count: Number(row.customer_count ?? 0),
+        quote_count: Number(row.quote_count ?? 0),
+        schedule_count: Number(row.schedule_count ?? 0),
+        merged_into_employee_id: (mergeState?.merged_into_employee_id as string | null) ?? null,
+        merged_at: (mergeState?.merged_at as string | null) ?? null,
+        merged_by: (mergeState?.merged_by as string | null) ?? null,
+      });
+      })
+    : fallbackEmployees;
+
   return {
-    employees: (empRes.data ?? []) as Employee[],
+    employees: masterEmployees,
     teams: (teamRes.data ?? []) as Team[],
     currentEmployeeId: access.profile?.employee_id ?? null,
     canManageAll,
+    canMergeEmployees,
     canAccessErp: true,
     isAuthenticated: true,
     loadError: null,

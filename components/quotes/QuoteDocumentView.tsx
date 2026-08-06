@@ -47,6 +47,15 @@ function formatSpecDisplay(description?: string | null): string {
   return text || "-";
 }
 
+function formatGlassSpecDisplay(glassSpec?: string | null): string {
+  const text = String(glassSpec ?? "").trim();
+  const withoutDuplicateSize = text.replace(
+    /\s*[·ㆍ]\s*\d+(?:\.\d+)?\s*[xX×]\s*\d+(?:\.\d+)?\s*$/,
+    "",
+  );
+  return withoutDuplicateSize || "-";
+}
+
 function isWindowMaterialDisplayLine(
   line: QuoteDocumentLine,
   quoteType?: string | null,
@@ -353,7 +362,7 @@ function WindowProductTable({
                 {formatSpecDisplay(line.description)}
               </td>
               <td className={`${cell} break-words text-left text-slate-700`}>
-                {meta?.glassSpec || "-"}
+                {formatGlassSpecDisplay(meta?.glassSpec)}
               </td>
               <td className={`${cell} whitespace-nowrap text-right tabular-nums font-medium text-slate-900`}>
                 {meta
@@ -421,7 +430,9 @@ function WindowProductCard({ line }: { line: QuoteDocumentLine }) {
         </div>
         <div>
           <dt className="text-[11px] text-slate-500">유리 사양</dt>
-          <dd className="mt-0.5 font-medium">{meta?.glassSpec || "-"}</dd>
+          <dd className="mt-0.5 font-medium">
+            {formatGlassSpecDisplay(meta?.glassSpec)}
+          </dd>
         </div>
         <div>
           <dt className="text-[11px] text-slate-500">방충망</dt>

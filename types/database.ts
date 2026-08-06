@@ -105,6 +105,9 @@ export type Employee = {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  merged_into_employee_id?: string | null;
+  merged_at?: string | null;
+  merged_by?: string | null;
 };
 
 export type LeadSource = {
@@ -137,7 +140,7 @@ export type Profile = {
 };
 
 export type ProfileWithEmployee = Profile & {
-  employees: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
+  employees: Pick<Employee, "id" | "name" | "title" | "team_id" | "is_active"> | null;
 };
 
 export type Customer = {
