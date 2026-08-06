@@ -245,8 +245,8 @@ export default function QuoteCustomerShareModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
-        <h4 className="text-base font-semibold text-gray-900">고객전송 링크</h4>
-        <p className="mt-1 text-xs text-gray-500">
+        <h4 className="text-base font-semibold text-slate-900">고객전송 링크</h4>
+        <p className="mt-1 text-xs text-slate-600">
           링크를 복사하거나 모바일 공유로 전달하세요. (카카오톡 자동발송은 지원하지
           않습니다.)
         </p>
@@ -257,7 +257,7 @@ export default function QuoteCustomerShareModal({
           </div>
         ) : (
           <>
-            <label className="mt-3 flex items-center gap-2 text-xs text-slate-700">
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-900">
               <input
                 type="checkbox"
                 checked={includeCover}
@@ -273,19 +273,19 @@ export default function QuoteCustomerShareModal({
 
             <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50/70 p-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-500">안내 문구</p>
+                <p className="text-xs font-medium text-slate-600">안내 문구</p>
                 <button
                   type="button"
                   disabled={!guideMessage || pending}
                   onClick={() =>
                     guideMessage && copyText(guideMessage, "안내 문구")
                   }
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-slate-100 disabled:opacity-75"
                 >
                   복사
                 </button>
               </div>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-900">
                 {pending && !guideMessage
                   ? "링크 준비 중…"
                   : (guideMessage ?? "—")}
@@ -300,7 +300,7 @@ export default function QuoteCustomerShareModal({
                     type="button"
                     disabled={pending}
                     onClick={() => copyText(viewUrl, "링크")}
-                    className="rounded-md border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                    className="rounded-md border border-sky-200 bg-white px-2.5 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-75"
                   >
                     링크 복사
                   </button>
@@ -308,7 +308,7 @@ export default function QuoteCustomerShareModal({
                     type="button"
                     disabled={pending}
                     onClick={() => void shareLink()}
-                    className="rounded-md bg-sky-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+                    className="rounded-md bg-sky-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-75"
                   >
                     공유하기
                   </button>
@@ -323,7 +323,7 @@ export default function QuoteCustomerShareModal({
                 </div>
               </div>
             ) : (
-              <div className="mt-2 rounded-lg border border-dashed border-gray-200 px-3 py-3 text-xs text-gray-500">
+              <div className="mt-2 rounded-lg border border-dashed border-gray-200 px-3 py-3 text-xs text-slate-600">
                 {pending
                   ? "링크를 준비하는 중…"
                   : "활성 링크가 없습니다. 아래에서 링크를 다시 준비하거나 재발급하세요."}
@@ -331,7 +331,7 @@ export default function QuoteCustomerShareModal({
                   <button
                     type="button"
                     onClick={loadLink}
-                    className="mt-2 block rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    className="mt-2 block rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
                   >
                     링크 준비
                   </button>
@@ -347,7 +347,7 @@ export default function QuoteCustomerShareModal({
                 <button
                   type="button"
                   onClick={() => copyText(customerPhone, "연락처")}
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-slate-100"
                 >
                   복사
                 </button>
@@ -359,7 +359,7 @@ export default function QuoteCustomerShareModal({
                 type="button"
                 disabled={pending}
                 onClick={handleRegenerate}
-                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-75"
               >
                 새 링크 재발급
               </button>
@@ -367,7 +367,7 @@ export default function QuoteCustomerShareModal({
                 type="button"
                 disabled={pending || !viewUrl}
                 onClick={handleRevoke}
-                className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-75"
               >
                 링크 비활성화
               </button>
@@ -375,7 +375,7 @@ export default function QuoteCustomerShareModal({
 
             {showMarkSent ? (
               <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-600">
                   직접 전달한 뒤 상태를 발송완료로 표시할 수 있습니다.
                 </p>
                 <textarea
@@ -389,7 +389,7 @@ export default function QuoteCustomerShareModal({
                   type="button"
                   disabled={pending}
                   onClick={handleMarkSent}
-                  className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+                  className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
                 >
                   {pending ? "처리 중…" : "발송완료로 표시"}
                 </button>
@@ -407,7 +407,7 @@ export default function QuoteCustomerShareModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 hover:bg-slate-100"
           >
             닫기
           </button>

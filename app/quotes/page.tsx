@@ -8,6 +8,10 @@ import {
 import { isMissingRelationError } from "@/lib/crm/errors";
 import { listQuotes } from "@/lib/crm/quote-mgmt";
 import {
+  listInteriorImportCustomers,
+  type InteriorImportCustomerOption,
+} from "@/lib/crm/interior-quote-import";
+import {
   getScheduleAccess,
   listEmployeesInScope,
 } from "@/lib/crm/schedule-access";
@@ -33,6 +37,7 @@ export default async function QuotesPage() {
   const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
   let quotes: ErpQuote[] = [];
   let employees: Employee[] = [];
+  let importCustomers: InteriorImportCustomerOption[] = [];
   let lockEmployeeId: string | null = null;
   let loadError: string | null = null;
   let tablesMissing = false;
@@ -41,12 +46,14 @@ export default async function QuotesPage() {
     const access = await getScheduleAccess();
     lockEmployeeId =
       !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
-    const [quoteList, employeeList] = await Promise.all([
+    const [quoteList, employeeList, customerList] = await Promise.all([
       listQuotes(),
       listEmployeesInScope(access),
+      listInteriorImportCustomers(),
     ]);
     quotes = quoteList;
     employees = employeeList;
+    importCustomers = customerList;
   } catch {
     tablesMissing = await isQuotesSchemaMissing();
     loadError = tablesMissing
@@ -58,10 +65,10 @@ export default async function QuotesPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+          <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
             견적관리
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-slate-600">
             창호 · 인테리어 견적 등록 · 버전관리 · 발송 · 계약견적 지정
           </p>
         </div>
@@ -85,6 +92,7 @@ export default async function QuotesPage() {
           <QuotesList
             quotes={quotes}
             employees={employees}
+            importCustomers={importCustomers}
             lockEmployeeId={lockEmployeeId}
           />
         )}

@@ -162,7 +162,7 @@ export default function InquiryImportForm({
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       <section className="dashboard-card p-5">
         <h2 className="dashboard-section-title">문의 원문</h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-slate-600">
           온라인 문의, 문자, 카카오톡, LX하우시스 본사 상담내용을 붙여넣으세요.
         </p>
 
@@ -173,12 +173,12 @@ export default function InquiryImportForm({
             onChange={(e) => updateField("raw_text", e.target.value)}
             rows={22}
             placeholder="문의 내용을 붙여넣으세요..."
-            className="w-full resize-y rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
+            className="w-full resize-y rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500"
           />
           <button
             type="submit"
             disabled={analyzing}
-            className="rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-semibold text-navy-900 hover:brightness-105 disabled:opacity-60"
+            className="rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-semibold text-navy-900 hover:brightness-105 disabled:opacity-75"
           >
             {analyzing ? "분석 중..." : "내용 분석"}
           </button>
@@ -193,7 +193,7 @@ export default function InquiryImportForm({
             className={`mt-4 rounded-lg px-4 py-3 text-sm ${
               error
                 ? "border border-red-200 bg-red-50 text-red-700"
-                : "border border-green-200 bg-green-50 text-green-700"
+                : "border border-green-200 bg-emerald-100 text-emerald-900"
             }`}
           >
             {error || successMessage}
@@ -363,7 +363,7 @@ export default function InquiryImportForm({
                     name="assigned_employee_id"
                     value={form.assigned_employee_id}
                   />
-                  <div className={`${inputClass} bg-gray-50 text-gray-700`}>
+                  <div className={`${inputClass} bg-gray-50 text-slate-900`}>
                     {employees.find((e) => e.id === form.assigned_employee_id)
                       ? formatEmployeeLabel(
                           employees.find(
@@ -404,12 +404,12 @@ export default function InquiryImportForm({
               />
             </Field>
             <Field label="해피콜 필요">
-              <div className="flex h-[38px] items-center gap-2 text-sm text-gray-700">
+              <div className="flex h-[38px] items-center gap-2 text-sm text-slate-900">
                 <span
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                     form.happy_call_required
                       ? "bg-red-50 text-red-700"
-                      : "bg-gray-100 text-gray-600"
+                      : "bg-slate-100 text-slate-900"
                   }`}
                 >
                   {form.happy_call_required ? "필요" : "해당없음"}
@@ -433,7 +433,7 @@ export default function InquiryImportForm({
             <button
               type="submit"
               disabled={registering}
-              className="rounded-lg bg-navy-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+              className="rounded-lg bg-navy-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-75"
             >
               {registering ? "등록 중..." : "고객으로 등록"}
             </button>
@@ -447,13 +447,13 @@ export default function InquiryImportForm({
             <button
               type="button"
               onClick={handleReset}
-              className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-slate-100"
             >
               초기화
             </button>
             <Link
               href="/customers"
-              className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-slate-100"
             >
               목록으로
             </Link>
@@ -465,7 +465,7 @@ export default function InquiryImportForm({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
 const textareaClass = `${inputClass} resize-y`;
 
 function Field({
@@ -481,7 +481,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="mb-1 block text-xs font-medium text-gray-500">
+      <label className="mb-1 block text-xs font-medium text-slate-600">
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>

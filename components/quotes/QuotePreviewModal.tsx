@@ -80,12 +80,12 @@ export default function QuotePreviewModal({
               <p className="text-xs text-slate-600">
                 저장하지 않은 현재 작성 내용입니다.
               </p>
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-slate-600">
                 PDF 저장 시 배경 그래픽을 켜고, 머리글과 바닥글을 꺼주세요.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs text-slate-700">
+              <label className="flex items-center gap-1.5 text-xs text-slate-900">
                 <input
                   type="checkbox"
                   checked={showCover}
@@ -122,14 +122,14 @@ export default function QuotePreviewModal({
                 type="button"
                 onClick={startPrint}
                 disabled={isPrinting}
-                className="rounded-lg bg-navy-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-navy-800 disabled:opacity-60"
+                className="rounded-lg bg-navy-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-navy-800 disabled:opacity-75"
               >
                 {isPrinting ? "인쇄 준비 중…" : "인쇄·PDF 저장"}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
               >
                 닫기
               </button>

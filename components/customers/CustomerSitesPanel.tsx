@@ -19,10 +19,10 @@ function empLabel(e: Pick<Employee, "name" | "title"> | null | undefined) {
 const initial: ProjectActionResult = { success: false };
 
 const STATUS_CLASS: Record<string, string> = {
-  준비: "bg-slate-100 text-slate-700",
-  진행중: "bg-blue-50 text-blue-800",
+  준비: "bg-slate-100 text-slate-900",
+  진행중: "bg-sky-100 text-sky-900",
   완료: "bg-emerald-50 text-emerald-800",
-  보류: "bg-amber-50 text-amber-800",
+  보류: "bg-amber-100 text-amber-900",
   취소: "bg-zinc-100 text-zinc-600",
 };
 
@@ -60,7 +60,7 @@ export default function CustomerSitesPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-navy-900">현장 목록</h3>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <p className="mt-0.5 text-xs text-slate-600">
             계약 고객을 현장으로 전환한 뒤 공사 일정을 등록합니다.
           </p>
         </div>
@@ -175,12 +175,12 @@ export default function CustomerSitesPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium text-navy-900">{p.name}</p>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CLASS[p.status] || "bg-gray-100 text-gray-600"}`}
+                  className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CLASS[p.status] || "bg-slate-100 text-slate-900"}`}
                 >
                   {p.status}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-slate-600">
                 {[p.address || "주소 미등록", `담당 ${empLabel(p.employees)}`].join(
                   " · ",
                 )}
@@ -217,7 +217,7 @@ export default function CustomerSitesPanel({
           </article>
         ))}
         {projects.length === 0 && (
-          <p className="rounded-xl border border-dashed p-8 text-center text-sm text-gray-500">
+          <p className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-600">
             등록된 현장이 없습니다. 계약 완료 후 현장을 생성해 주세요.
           </p>
         )}

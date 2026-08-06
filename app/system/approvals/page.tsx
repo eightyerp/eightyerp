@@ -53,13 +53,13 @@ export default async function StaffApprovalsPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 text-slate-900">
         <div>
-          <p className="text-xs font-medium text-gray-400">시스템관리</p>
-          <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+          <p className="text-xs font-medium text-slate-600">시스템관리</p>
+          <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
             가입 승인 관리
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-slate-600">
             대표이사(super_admin)·이사(admin)만 승인·거절·비활성화할 수 있습니다.
           </p>
         </div>

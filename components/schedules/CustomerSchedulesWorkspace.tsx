@@ -89,18 +89,18 @@ const VIEW_TABS: { key: ViewMode; label: string }[] = [
 const initialActionState: ScheduleActionResult = { success: false };
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
 
 function employeeLabel(e: Pick<Employee, "name" | "title">): string {
   return `${e.name} ${e.title}`;
 }
 
 function statusBadgeClass(status: string): string {
-  return SCHEDULE_STATUS_BADGE[status] ?? "bg-gray-100 text-gray-600";
+  return SCHEDULE_STATUS_BADGE[status] ?? "bg-slate-100 text-slate-900";
 }
 
 function priorityBadgeClass(priority: string): string {
-  return PRIORITY_BADGE[priority] ?? "bg-gray-100 text-gray-600";
+  return PRIORITY_BADGE[priority] ?? "bg-slate-100 text-slate-900";
 }
 
 function chipClass(row: CustomerSchedule, all: CustomerSchedule[]): string {
@@ -108,7 +108,7 @@ function chipClass(row: CustomerSchedule, all: CustomerSchedule[]): string {
   const done = row.status === "완료";
   const base =
     "block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium cursor-pointer";
-  if (done) return `${base} bg-gray-100 text-gray-500 opacity-60`;
+  if (done) return `${base} bg-gray-100 text-slate-600 opacity-80`;
   if (warn === "overdue" || warn === "postponed" || warn === "nextContact") {
     return `${base} border border-red-400 bg-red-50 text-red-700`;
   }
@@ -119,8 +119,8 @@ function chipClass(row: CustomerSchedule, all: CustomerSchedule[]): string {
 }
 
 const ASSIGNEE_COLORS = [
-  "bg-sky-100 text-sky-800 border-sky-200",
-  "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "bg-sky-100 text-sky-900 border-sky-200",
+  "bg-emerald-100 text-emerald-900 border-emerald-200",
   "bg-violet-100 text-violet-800 border-violet-200",
   "bg-amber-100 text-amber-900 border-amber-200",
   "bg-rose-100 text-rose-800 border-rose-200",
@@ -535,8 +535,8 @@ export default function CustomerSchedulesWorkspace({
 
       <div className="sticky top-0 z-20 -mx-1 flex flex-wrap items-start justify-between gap-3 bg-[#f5f6f8]/95 px-1 py-3 backdrop-blur">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">고객상담 스케줄</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">고객상담 스케줄</h1>
+          <p className="mt-1 text-sm text-slate-600">
             고객 상담·방문·실측·견적발송 일정을 등록하고 관리합니다.
           </p>
         </div>
@@ -547,7 +547,7 @@ export default function CustomerSchedulesWorkspace({
               const { headers, rows } = exportRows();
               downloadCsv(`에잇티_고객상담스케줄_${dateStamp()}.csv`, headers, rows);
             }}
-            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 sm:min-h-0"
+            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100 sm:min-h-0"
           >
             CSV 내보내기
           </button>
@@ -557,7 +557,7 @@ export default function CustomerSchedulesWorkspace({
               const { headers, rows } = exportRows();
               downloadXls(`에잇티_고객상담스케줄_${dateStamp()}.xls`, headers, rows);
             }}
-            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 sm:min-h-0"
+            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100 sm:min-h-0"
           >
             Excel 내보내기
           </button>
@@ -580,7 +580,7 @@ export default function CustomerSchedulesWorkspace({
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
               view === t.key
                 ? "bg-navy-800 text-white"
-                : "text-gray-500 hover:bg-gray-50 hover:text-navy-800"
+                : "text-slate-600 hover:bg-slate-100 hover:text-navy-800"
             }`}
           >
             {t.label}
@@ -590,15 +590,15 @@ export default function CustomerSchedulesWorkspace({
 
       <div className="dashboard-card grid grid-cols-2 gap-2 p-4 sm:grid-cols-3 lg:grid-cols-7">
         <div>
-          <label className="mb-1 block text-xs text-gray-500">시작일</label>
+          <label className="mb-1 block text-xs text-slate-600">시작일</label>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">종료일</label>
+          <label className="mb-1 block text-xs text-slate-600">종료일</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">담당자</label>
+          <label className="mb-1 block text-xs text-slate-600">담당자</label>
           <select
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
@@ -615,7 +615,7 @@ export default function CustomerSchedulesWorkspace({
         </div>
         {access.canViewAll && (
           <div>
-            <label className="mb-1 block text-xs text-gray-500">팀</label>
+            <label className="mb-1 block text-xs text-slate-600">팀</label>
             <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={inputClass}>
               <option value="">전체</option>
               {teams.map((t) => (
@@ -627,7 +627,7 @@ export default function CustomerSchedulesWorkspace({
           </div>
         )}
         <div>
-          <label className="mb-1 block text-xs text-gray-500">일정유형</label>
+          <label className="mb-1 block text-xs text-slate-600">일정유형</label>
           <select value={scheduleType} onChange={(e) => setScheduleType(e.target.value)} className={inputClass}>
             <option value="">전체</option>
             {CUSTOMER_SCHEDULE_TYPES.map((t) => (
@@ -638,7 +638,7 @@ export default function CustomerSchedulesWorkspace({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">상태</label>
+          <label className="mb-1 block text-xs text-slate-600">상태</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputClass}>
             <option value="">전체</option>
             {CUSTOMER_SCHEDULE_STATUSES.map((s) => (
@@ -649,7 +649,7 @@ export default function CustomerSchedulesWorkspace({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">우선순위</label>
+          <label className="mb-1 block text-xs text-slate-600">우선순위</label>
           <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inputClass}>
             <option value="">전체</option>
             {SCHEDULE_PRIORITIES.map((p) => (
@@ -660,7 +660,7 @@ export default function CustomerSchedulesWorkspace({
           </select>
         </div>
         <div className="col-span-2 sm:col-span-3 lg:col-span-7">
-          <label className="mb-1 block text-xs text-gray-500">검색 (고객명·연락처·주소·제목)</label>
+          <label className="mb-1 block text-xs text-slate-600">검색 (고객명·연락처·주소·제목)</label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="검색어 입력" className={inputClass} />
         </div>
       </div>
@@ -806,7 +806,7 @@ export default function CustomerSchedulesWorkspace({
                   type="button"
                   disabled={quickPending}
                   onClick={() => confirmMove(true)}
-                  className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-75"
                 >
                   {quickPending ? "이동 중..." : "강제 이동"}
                 </button>
@@ -815,7 +815,7 @@ export default function CustomerSchedulesWorkspace({
                   type="button"
                   disabled={quickPending}
                   onClick={() => confirmMove(false)}
-                  className="rounded-lg bg-navy-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="rounded-lg bg-navy-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-75"
                 >
                   {quickPending ? "이동 중..." : "이동"}
                 </button>
@@ -833,7 +833,7 @@ function ToastBanner({ message }: { message: string }) {
   return (
     <div
       className={`rounded-lg border px-4 py-3 text-sm ${
-        isError ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"
+        isError ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-emerald-100 text-emerald-900"
       }`}
     >
       {message}
@@ -883,11 +883,11 @@ function MonthGrid({
             ›
           </button>
         </div>
-        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-gray-500">
+        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-slate-600">
           오늘
         </button>
       </div>
-      <div className="grid grid-cols-7 border-b border-gray-100 text-center text-xs font-medium text-gray-400">
+      <div className="grid grid-cols-7 border-b border-gray-100 text-center text-xs font-medium text-slate-600">
         {WEEKDAY_LABELS_KO.map((w) => (
           <div key={w} className="py-2">
             {w}
@@ -916,10 +916,10 @@ function MonthGrid({
                 setDragOverKey(null);
               }}
               className={`min-h-[92px] cursor-pointer border-b border-r border-gray-100 p-1 text-xs ${
-                inMonth ? "bg-white" : "bg-gray-50 text-gray-300"
+                inMonth ? "bg-white" : "bg-gray-50 text-slate-600"
               } ${dragOverKey === key ? "ring-2 ring-gold-500" : ""}`}
             >
-              <div className={`mb-1 text-right text-[11px] ${isToday ? "font-bold text-gold-600" : "text-gray-400"}`}>
+              <div className={`mb-1 text-right text-[11px] ${isToday ? "font-bold text-gold-600" : "text-slate-600"}`}>
                 {d.getDate()}
               </div>
               <div className="space-y-0.5">
@@ -939,7 +939,7 @@ function MonthGrid({
                   </div>
                 ))}
                 {rows.length > 3 && (
-                  <div className="px-1 text-[10px] text-gray-400">+{rows.length - 3}건 더보기</div>
+                  <div className="px-1 text-[10px] text-slate-600">+{rows.length - 3}건 더보기</div>
                 )}
               </div>
             </div>
@@ -986,7 +986,7 @@ function WeekColumns({
             ›
           </button>
         </div>
-        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-gray-500">
+        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-slate-600">
           오늘
         </button>
       </div>
@@ -1006,7 +1006,7 @@ function WeekColumns({
               }}
               className="min-h-[140px] p-2"
             >
-              <div className={`mb-2 text-xs font-medium ${isToday ? "text-gold-600" : "text-gray-500"}`}>
+              <div className={`mb-2 text-xs font-medium ${isToday ? "text-gold-600" : "text-slate-600"}`}>
                 {formatDayLabel(d)}
               </div>
               <div className="space-y-1">
@@ -1018,11 +1018,11 @@ function WeekColumns({
                     onClick={() => onEventClick(r)}
                     className={`${chipClass(r, allSchedules)} border ${assigneeColorClass(r.assigned_employee_id, colorByAssignee)}`}
                   >
-                    <span className="mr-1 text-[10px] text-gray-400">{formatTime(r.start_at)}</span>
+                    <span className="mr-1 text-[10px] text-slate-600">{formatTime(r.start_at)}</span>
                     {r.customers?.name ?? r.title}
                   </div>
                 ))}
-                {rows.length === 0 && <p className="text-[11px] text-gray-300">일정 없음</p>}
+                {rows.length === 0 && <p className="text-[11px] text-slate-600">일정 없음</p>}
               </div>
             </div>
           );
@@ -1060,7 +1060,7 @@ function DayList({
             ›
           </button>
         </div>
-        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-gray-500">
+        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-slate-600">
           오늘
         </button>
       </div>
@@ -1070,13 +1070,13 @@ function DayList({
             key={r.id}
             type="button"
             onClick={() => onEventClick(r)}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-100"
           >
             <div>
-              <p className={`text-sm font-medium ${r.priority === "긴급" ? "text-red-700" : "text-gray-900"}`}>
+              <p className={`text-sm font-medium ${r.priority === "긴급" ? "text-red-700" : "text-slate-900"}`}>
                 {r.title}
               </p>
-              <p className="mt-0.5 text-xs text-gray-500">
+              <p className="mt-0.5 text-xs text-slate-600">
                 {r.customers?.name} · {r.schedule_type} · {formatTime(r.start_at)}
                 {r.end_at ? `~${formatTime(r.end_at)}` : ""}
               </p>
@@ -1092,7 +1092,7 @@ function DayList({
           </button>
         ))}
         {sorted.length === 0 && (
-          <p className="px-4 py-8 text-center text-sm text-gray-400">해당 일자에 등록된 일정이 없습니다.</p>
+          <p className="px-4 py-8 text-center text-sm text-slate-600">해당 일자에 등록된 일정이 없습니다.</p>
         )}
       </div>
     </div>
@@ -1112,7 +1112,7 @@ function ScheduleTable({
     <div className="dashboard-card overflow-x-auto">
       <table className="w-full min-w-[760px] text-sm">
         <thead>
-          <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
+          <tr className="border-b border-gray-100 text-left text-xs text-slate-600">
             <th className="px-3 py-2">일시</th>
             <th className="px-3 py-2">유형</th>
             <th className="px-3 py-2">제목</th>
@@ -1131,7 +1131,7 @@ function ScheduleTable({
               <tr
                 key={r.id}
                 onClick={() => onRowClick(r)}
-                className={`cursor-pointer border-b border-gray-50 hover:bg-gray-50 ${done ? "opacity-50" : ""} ${
+                className={`cursor-pointer border-b border-gray-50 hover:bg-slate-100 ${done ? "opacity-80" : ""} ${
                   overdue ? "bg-red-50/60" : ""
                 }`}
               >
@@ -1139,7 +1139,7 @@ function ScheduleTable({
                   {new Date(r.start_at).toLocaleDateString("ko-KR")} {formatTime(r.start_at)}
                 </td>
                 <td className="px-3 py-2 text-xs">{r.schedule_type}</td>
-                <td className={`px-3 py-2 font-medium ${r.priority === "긴급" ? "text-red-700" : "text-gray-800"}`}>
+                <td className={`px-3 py-2 font-medium ${r.priority === "긴급" ? "text-red-700" : "text-slate-900"}`}>
                   {r.title}
                 </td>
                 {showCustomerColumn && (
@@ -1164,7 +1164,7 @@ function ScheduleTable({
                     {r.priority}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-500">
+                <td className="px-3 py-2 text-xs text-slate-600">
                   {r.next_contact_at ? new Date(r.next_contact_at).toLocaleDateString("ko-KR") : "-"}
                 </td>
               </tr>
@@ -1172,7 +1172,7 @@ function ScheduleTable({
           })}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={showCustomerColumn ? 8 : 7} className="px-3 py-10 text-center text-sm text-gray-400">
+              <td colSpan={showCustomerColumn ? 8 : 7} className="px-3 py-10 text-center text-sm text-slate-600">
                 조건에 맞는 일정이 없습니다.
               </td>
             </tr>
@@ -1245,7 +1245,7 @@ function ScheduleFormModal({
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-navy-900">{editing ? "일정 수정" : "일정 등록"}</h3>
-          <button type="button" onClick={onClose} className="text-sm text-gray-400">
+          <button type="button" onClick={onClose} className="text-sm text-slate-600">
             닫기
           </button>
         </div>
@@ -1510,7 +1510,7 @@ function ScheduleFormModal({
           )}
 
           <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <button type="submit" disabled={pending} className="min-h-10 rounded-lg bg-navy-800 px-4 py-2 text-sm text-white disabled:opacity-60">
+            <button type="submit" disabled={pending} className="min-h-10 rounded-lg bg-navy-800 px-4 py-2 text-sm text-white disabled:opacity-75">
               {pending ? "저장 중…" : "저장"}
             </button>
             <button type="button" onClick={onClose} className="min-h-10 rounded-lg border px-4 py-2 text-sm">
@@ -1565,7 +1565,7 @@ function DetailModal({
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-base font-semibold text-navy-900">{row.title}</h3>
-            <p className="mt-1 text-xs font-medium text-gray-700">
+            <p className="mt-1 text-xs font-medium text-slate-900">
               {row.schedule_type} · {new Date(row.start_at).toLocaleString("ko-KR")}
               {row.end_at ? ` ~ ${new Date(row.end_at).toLocaleString("ko-KR")}` : ""}
             </p>
@@ -1632,7 +1632,7 @@ function DetailModal({
             disabled={!canEdit || pending}
             title={editDisabledReason ?? undefined}
             onClick={onEdit}
-            className="rounded-lg border border-navy-800 bg-navy-800 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-500"
+            className="rounded-lg border border-navy-800 bg-navy-800 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-slate-600"
           >
             수정
           </button>
@@ -1643,7 +1643,7 @@ function DetailModal({
             type="button"
             disabled={pending}
             onClick={onComplete}
-            className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
           >
             완료 처리
           </button>
@@ -1651,7 +1651,7 @@ function DetailModal({
             type="button"
             disabled={pending}
             onClick={onCancel}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-60"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-slate-900 disabled:opacity-75"
           >
             취소 처리
           </button>
@@ -1659,7 +1659,7 @@ function DetailModal({
             type="button"
             disabled={pending}
             onClick={() => setShowDelete((v) => !v)}
-            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-60"
+            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-75"
           >
             삭제
           </button>
@@ -1667,7 +1667,7 @@ function DetailModal({
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-gray-100 p-3">
-            <p className="text-xs font-medium text-gray-700">연기</p>
+            <p className="text-xs font-medium text-slate-900">연기</p>
             <input
               type="datetime-local"
               step={600}
@@ -1679,13 +1679,13 @@ function DetailModal({
               type="button"
               disabled={pending}
               onClick={() => onPostpone(new Date(postponeAt).toISOString())}
-              className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+              className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
             >
               연기 적용
             </button>
           </div>
           <div className="rounded-lg border border-gray-100 p-3">
-            <p className="text-xs font-medium text-gray-700">다음 연락일 지정</p>
+            <p className="text-xs font-medium text-slate-900">다음 연락일 지정</p>
             <input
               type="datetime-local"
               step={600}
@@ -1697,7 +1697,7 @@ function DetailModal({
               type="button"
               disabled={pending}
               onClick={() => onSetNextContact(nextContactAt ? new Date(nextContactAt).toISOString() : null)}
-              className="mt-2 w-full rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+              className="mt-2 w-full rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
             >
               다음연락일 저장
             </button>
@@ -1718,7 +1718,7 @@ function DetailModal({
               type="button"
               disabled={pending}
               onClick={() => onDelete(deleteReason)}
-              className="mt-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+              className="mt-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
             >
               삭제 확정
             </button>

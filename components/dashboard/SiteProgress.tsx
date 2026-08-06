@@ -1,8 +1,8 @@
 import { siteProgress } from "@/lib/sample-data";
 
 const statusColor: Record<string, string> = {
-  시공중: "bg-blue-100 text-blue-700",
-  자재발주: "bg-amber-100 text-amber-700",
+  시공중: "bg-sky-100 text-sky-900",
+  자재발주: "bg-amber-100 text-amber-900",
   준공검수: "bg-green-100 text-green-700",
   설계확정: "bg-purple-100 text-purple-700",
 };
@@ -16,9 +16,9 @@ export default function SiteProgress() {
         {siteProgress.map((site) => (
           <div key={site.name}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium text-gray-800">{site.name}</p>
+              <p className="text-sm font-medium text-slate-900">{site.name}</p>
               <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[site.status] ?? "bg-gray-100 text-gray-600"}`}
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[site.status] ?? "bg-slate-100 text-slate-900"}`}
               >
                 {site.status}
               </span>
@@ -34,7 +34,7 @@ export default function SiteProgress() {
                 {site.progress}%
               </span>
             </div>
-            <p className="mt-1 text-xs text-gray-400">{site.manager}</p>
+            <p className="mt-1 text-xs text-slate-600">{site.manager}</p>
           </div>
         ))}
       </div>

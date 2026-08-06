@@ -46,7 +46,7 @@ export default async function DashboardPage({ searchParams }: Props) {
         )}
 
         {!bundle && !loadError && (
-          <div className="dashboard-card px-5 py-10 text-center text-sm text-gray-400">
+          <div className="dashboard-card px-5 py-10 text-center text-sm text-slate-600">
             오늘 할 일 데이터를 준비 중입니다.
           </div>
         )}

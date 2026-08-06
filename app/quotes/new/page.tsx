@@ -103,8 +103,8 @@ export default async function NewQuotePage({
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <p className="text-xs font-medium text-gray-400">견적관리</p>
-          <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+          <p className="text-xs font-medium text-slate-600">견적관리</p>
+          <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
             새 견적 등록
           </h1>
         </div>

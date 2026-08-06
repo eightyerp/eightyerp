@@ -8,7 +8,7 @@ export default function StaffPerformanceTable() {
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-xs text-gray-500">
+            <tr className="border-b border-gray-200 text-xs text-slate-600">
               <th className="pb-3 pr-4 font-medium">담당자</th>
               <th className="pb-3 pr-4 font-medium text-center">상담 고객</th>
               <th className="pb-3 pr-4 font-medium text-center">계약 고객</th>
@@ -20,19 +20,19 @@ export default function StaffPerformanceTable() {
             {staffPerformance.map((staff) => (
               <tr
                 key={staff.name}
-                className="border-b border-gray-50 hover:bg-gray-50/80"
+                className="border-b border-gray-50 hover:bg-slate-100/80"
               >
                 <td className="py-3 pr-4">
-                  <p className="font-medium text-gray-800">{staff.name}</p>
-                  <p className="text-xs text-gray-400">{staff.role}</p>
+                  <p className="font-medium text-slate-900">{staff.name}</p>
+                  <p className="text-xs text-slate-600">{staff.role}</p>
                 </td>
-                <td className="py-3 pr-4 text-center text-gray-700">
+                <td className="py-3 pr-4 text-center text-slate-900">
                   {staff.consulting}건
                 </td>
-                <td className="py-3 pr-4 text-center text-gray-700">
+                <td className="py-3 pr-4 text-center text-slate-900">
                   {staff.contracted}건
                 </td>
-                <td className="py-3 pr-4 text-right font-medium text-gray-800">
+                <td className="py-3 pr-4 text-right font-medium text-slate-900">
                   {formatCurrency(staff.amount)}
                 </td>
                 <td className="py-3 text-right text-orange-600">

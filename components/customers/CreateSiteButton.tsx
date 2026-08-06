@@ -108,7 +108,7 @@ export default function CreateSiteButton({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
             <h3 className="text-base font-semibold text-navy-900">현장 생성</h3>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-slate-600">
               계약 고객을 현장으로 전환합니다. 저장 후 공사 스케줄 화면으로 이동합니다.
             </p>
 
@@ -123,7 +123,7 @@ export default function CreateSiteButton({
               <input type="hidden" name="customer_id" value={customerId} />
 
               <div className="sm:col-span-2">
-                <p className="text-xs text-gray-500">고객명</p>
+                <p className="text-xs text-slate-600">고객명</p>
                 <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm text-navy-900">
                   {customerName}
                 </p>
@@ -183,7 +183,7 @@ export default function CreateSiteButton({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-navy-800 px-4 py-2 text-sm text-white disabled:opacity-60"
+                  className="rounded-lg bg-navy-800 px-4 py-2 text-sm text-white disabled:opacity-75"
                 >
                   {pending ? "저장 중…" : "저장"}
                 </button>

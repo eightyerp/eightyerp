@@ -8,7 +8,7 @@ export default function MonthlyRevenue() {
   return (
     <div className="dashboard-card p-5">
       <h3 className="dashboard-section-title">월별 매출 및 순이익 현황</h3>
-      <p className="mt-1 text-xs text-gray-500">단위: 백만원</p>
+      <p className="mt-1 text-xs text-slate-600">단위: 백만원</p>
 
       <div className="mt-6 flex items-end justify-between gap-2 sm:gap-4">
         {monthlyRevenue.map((item) => (
@@ -25,12 +25,12 @@ export default function MonthlyRevenue() {
                 title={`순이익 ${item.profit}`}
               />
             </div>
-            <span className="text-xs text-gray-500">{item.month}</span>
+            <span className="text-xs text-slate-600">{item.month}</span>
           </div>
         ))}
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-6 text-xs text-gray-500">
+      <div className="mt-4 flex items-center justify-center gap-6 text-xs text-slate-600">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-sm bg-navy-700" />
           매출

@@ -209,7 +209,7 @@ export default function ExternalInquiryPasteModal({
                 <h2 className="text-base font-semibold text-navy-900">
                   외부문의 붙여넣기 자동등록
                 </h2>
-                <p className="mt-0.5 text-xs text-gray-500">
+                <p className="mt-0.5 text-xs text-slate-600">
                   {step === "paste"
                     ? "상담문 전체를 붙여 넣은 뒤 내용을 분석합니다."
                     : "미리보기를 수정한 뒤 고객을 등록합니다."}
@@ -243,7 +243,7 @@ export default function ExternalInquiryPasteModal({
                   <button
                     type="submit"
                     disabled={analyzing || !rawText.trim()}
-                    className="min-h-11 w-full rounded-lg bg-navy-800 text-sm font-semibold text-white disabled:opacity-60"
+                    className="min-h-11 w-full rounded-lg bg-navy-800 text-sm font-semibold text-white disabled:opacity-75"
                   >
                     {analyzing ? "분석 중…" : "내용 분석"}
                   </button>
@@ -457,7 +457,7 @@ export default function ExternalInquiryPasteModal({
                             name="assigned_employee_id"
                             value={preview.assigned_employee_id}
                           />
-                          <div className="mt-1 min-h-11 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                          <div className="mt-1 min-h-11 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-slate-900">
                             {employees.find(
                               (e) => e.id === preview.assigned_employee_id,
                             )
@@ -675,7 +675,7 @@ export default function ExternalInquiryPasteModal({
                         (dupMode !== "create" && !selectedExisting) ||
                         (dupMode === "create" && !preview.assigned_employee_id)
                       }
-                      className="min-h-11 flex-1 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white disabled:opacity-60"
+                      className="min-h-11 flex-1 rounded-lg bg-navy-800 px-4 text-sm font-semibold text-white disabled:opacity-75"
                     >
                       {registering
                         ? "처리 중…"

@@ -190,14 +190,14 @@ export default async function CustomerDetailPage({
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs font-medium text-gray-400">고객 상세</p>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+            <p className="text-xs font-medium text-slate-600">고객 상세</p>
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
               {customer.name}
             </h1>
           </div>
           <Link
             href="/customers"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
           >
             목록으로
           </Link>

@@ -458,7 +458,7 @@ export default function QuoteTradeItemsPanel({
     return (
       <div className="min-w-[110px] space-y-1">
         {withCheckbox ? (
-          <label className="flex items-center gap-1 text-xs text-slate-700">
+          <label className="flex items-center gap-1 text-xs text-slate-900">
             <input
               type="checkbox"
               checked={row.is_lx_material}
@@ -466,7 +466,7 @@ export default function QuoteTradeItemsPanel({
               onChange={(e) =>
                 updateRow(row.key, { is_lx_material: e.target.checked })
               }
-              className="h-4 w-4 rounded border-gray-300 text-gold-600 disabled:opacity-40"
+              className="h-4 w-4 rounded border-gray-300 text-gold-600 disabled:opacity-75"
             />
             LX
           </label>
@@ -511,7 +511,7 @@ export default function QuoteTradeItemsPanel({
             )}
           </div>
         ) : (
-          <span className="text-[11px] text-slate-400">-</span>
+          <span className="text-[11px] text-slate-600">-</span>
         )}
       </div>
     );
@@ -521,11 +521,11 @@ export default function QuoteTradeItemsPanel({
   function renderLxBaseAmountCell(row: QuoteLineRow) {
     const amount = rowAmount(row);
     if (!row.is_lx_material || !canCostTypeHaveLx(row.cost_type)) {
-      return <span className="text-xs text-slate-400">-</span>;
+      return <span className="text-xs text-slate-600">-</span>;
     }
     if (row.cost_type === "자재") {
       return (
-        <p className="text-xs font-medium tabular-nums text-slate-700">
+        <p className="text-xs font-medium tabular-nums text-slate-900">
           전액 {formatMoney(amount)}
         </p>
       );
@@ -537,7 +537,7 @@ export default function QuoteTradeItemsPanel({
           : formatComma(row.lx_discount_base_amount);
       return (
         <div className="space-y-1">
-          <p className="text-[10px] leading-tight text-slate-500">
+          <p className="text-[10px] leading-tight text-slate-600">
             항목 총액 {formatMoney(amount)}
           </p>
           <input
@@ -554,7 +554,7 @@ export default function QuoteTradeItemsPanel({
         </div>
       );
     }
-    return <span className="text-xs text-slate-400">-</span>;
+    return <span className="text-xs text-slate-600">-</span>;
   }
 
   function renderRemarkField(row: QuoteLineRow, opts?: { compact?: boolean }) {
@@ -562,7 +562,7 @@ export default function QuoteTradeItemsPanel({
       <div className={opts?.compact ? "space-y-1" : "space-y-1.5"}>
         <label className="block text-[11px] font-medium text-slate-600">
           비고{" "}
-          <span className="font-normal text-slate-400">(선택)</span>
+          <span className="font-normal text-slate-600">(선택)</span>
         </label>
         <textarea
           value={row.remark}
@@ -640,7 +640,7 @@ export default function QuoteTradeItemsPanel({
         <p className="mb-2 text-xs font-medium text-slate-600">
           공종 빠른 추가
           {!isInterior && !isSimple ? (
-            <span className="ml-1 font-normal text-slate-400">(선택)</span>
+            <span className="ml-1 font-normal text-slate-600">(선택)</span>
           ) : null}
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -668,7 +668,7 @@ export default function QuoteTradeItemsPanel({
               addRowForTrade(customTrade);
               setCustomTrade("");
             }}
-            className="shrink-0 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="shrink-0 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100"
           >
             행 추가
           </button>
@@ -682,7 +682,7 @@ export default function QuoteTradeItemsPanel({
             {groups.map((g, i) => (
               <div
                 key={g.tradeLabel}
-                className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white pl-2.5 pr-1 py-1 text-xs text-slate-800"
+                className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white pl-2.5 pr-1 py-1 text-xs text-slate-900"
               >
                 <span className="max-w-[7rem] truncate font-medium">
                   {g.tradeLabel}
@@ -692,7 +692,7 @@ export default function QuoteTradeItemsPanel({
                   aria-label={`${g.tradeLabel} 위로 이동`}
                   disabled={i === 0}
                   onClick={() => moveTrade(g.tradeLabel, "up")}
-                  className="rounded px-1.5 py-0.5 font-semibold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-1.5 py-0.5 font-semibold hover:bg-slate-100 disabled:opacity-75"
                 >
                   ↑
                 </button>
@@ -701,7 +701,7 @@ export default function QuoteTradeItemsPanel({
                   aria-label={`${g.tradeLabel} 아래로 이동`}
                   disabled={i === groups.length - 1}
                   onClick={() => moveTrade(g.tradeLabel, "down")}
-                  className="rounded px-1.5 py-0.5 font-semibold hover:bg-slate-100 disabled:opacity-30"
+                  className="rounded px-1.5 py-0.5 font-semibold hover:bg-slate-100 disabled:opacity-75"
                 >
                   ↓
                 </button>
@@ -713,7 +713,7 @@ export default function QuoteTradeItemsPanel({
 
       <div className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
         <div>
-          <label className="mb-1 block text-xs text-slate-500">
+          <label className="mb-1 block text-xs text-slate-600">
             LX 일괄 할인율(%)
           </label>
           <input
@@ -727,7 +727,7 @@ export default function QuoteTradeItemsPanel({
         <button
           type="button"
           onClick={applyBulkLxRate}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100"
         >
           {bulkSelectedKeys.length > 0
             ? `선택 LX에 적용 (${bulkSelectedKeys.length})`
@@ -746,7 +746,7 @@ export default function QuoteTradeItemsPanel({
               <h3 className="text-sm font-bold text-navy-900">
                 창호 자재항목
               </h3>
-              <p className="mt-0.5 text-[11px] text-slate-500">
+              <p className="mt-0.5 text-[11px] text-slate-600">
                 PL외창·PL내창·통바를 같은 목록에서 수정합니다.
               </p>
             </div>
@@ -755,7 +755,7 @@ export default function QuoteTradeItemsPanel({
             </span>
           </div>
           {windowMaterialRows.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-slate-500">
+            <p className="px-4 py-6 text-center text-xs text-slate-600">
               LX 엑셀을 가져오면 창호 본품과 통바가 여기에 표시됩니다.
             </p>
           ) : (
@@ -793,7 +793,7 @@ export default function QuoteTradeItemsPanel({
                               onClick={() =>
                                 moveWindowMaterialItem(row.key, "up")
                               }
-                              className="rounded border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-30"
+                              className="rounded border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-75"
                             >
                               ↑
                             </button>
@@ -804,7 +804,7 @@ export default function QuoteTradeItemsPanel({
                               onClick={() =>
                                 moveWindowMaterialItem(row.key, "down")
                               }
-                              className="rounded border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-30"
+                              className="rounded border border-slate-200 px-1.5 py-1 text-xs disabled:opacity-75"
                             >
                               ↓
                             </button>
@@ -942,7 +942,7 @@ export default function QuoteTradeItemsPanel({
       ) : null}
 
       {flatRows.length === 0 && isSimple ? (
-        <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+        <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
           {isInterior
             ? "공종 빠른 추가로 항목 행을 추가해 주세요."
             : "항목이 없습니다. 공종 빠른 추가 또는 행 추가로 입력해 주세요."}
@@ -1052,7 +1052,7 @@ export default function QuoteTradeItemsPanel({
                                 className={`mt-0.5 text-[10px] tabular-nums ${
                                   toNumber(row.amount) >= QUOTE_LINE_AMOUNT_WARN
                                     ? "text-amber-700"
-                                    : "text-slate-400"
+                                    : "text-slate-600"
                                 }`}
                               >
                                 {moneyHint(toNumber(row.amount))}
@@ -1151,16 +1151,16 @@ export default function QuoteTradeItemsPanel({
                               }
                               className="flex min-w-0 items-center gap-2 text-left"
                             >
-                              <span className="text-xs text-slate-500">
+                              <span className="text-xs text-slate-600">
                                 {collapsed ? "▶" : "▼"}
                               </span>
                               <span className="text-sm font-bold text-navy-900">
                                 {group.tradeLabel}
                               </span>
-                              <span className="text-xs font-semibold tabular-nums text-slate-700">
+                              <span className="text-xs font-semibold tabular-nums text-slate-900">
                                 소계 {formatMoney(group.subtotal)}
                               </span>
-                              <span className="text-[11px] text-slate-400">
+                              <span className="text-[11px] text-slate-600">
                                 {rows.length}항목
                               </span>
                             </button>
@@ -1172,7 +1172,7 @@ export default function QuoteTradeItemsPanel({
                                 onClick={() =>
                                   moveTrade(group.tradeLabel, "up")
                                 }
-                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-75"
                               >
                                 ↑
                               </button>
@@ -1183,7 +1183,7 @@ export default function QuoteTradeItemsPanel({
                                 onClick={() =>
                                   moveTrade(group.tradeLabel, "down")
                                 }
-                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-75"
                               >
                                 ↓
                               </button>
@@ -1217,7 +1217,7 @@ export default function QuoteTradeItemsPanel({
                               <tr className="border-b border-slate-100">
                                 <td
                                   colSpan={13}
-                                  className="px-3 py-3 text-xs text-slate-400"
+                                  className="px-3 py-3 text-xs text-slate-600"
                                 >
                                   세부항목이 없습니다. 위 ‘+ 항목 추가’로
                                   입력하세요. (비어 있으면 출력에서 제외됩니다)
@@ -1247,7 +1247,7 @@ export default function QuoteTradeItemsPanel({
                               aria-label="항목 위로"
                               disabled={idxInGroup === 0}
                               onClick={() => moveItemInTrade(row.key, "up")}
-                              className="rounded border border-slate-200 px-1 text-[11px] disabled:opacity-30"
+                              className="rounded border border-slate-200 px-1 text-[11px] disabled:opacity-75"
                             >
                               ↑
                             </button>
@@ -1256,7 +1256,7 @@ export default function QuoteTradeItemsPanel({
                               aria-label="항목 아래로"
                               disabled={idxInGroup === rows.length - 1}
                               onClick={() => moveItemInTrade(row.key, "down")}
-                              className="rounded border border-slate-200 px-1 text-[11px] disabled:opacity-30"
+                              className="rounded border border-slate-200 px-1 text-[11px] disabled:opacity-75"
                             >
                               ↓
                             </button>
@@ -1374,7 +1374,7 @@ export default function QuoteTradeItemsPanel({
                               className={`mt-0.5 text-[10px] tabular-nums ${
                                 toNumber(row.unit_price) >= QUOTE_LINE_AMOUNT_WARN
                                   ? "text-amber-700"
-                                  : "text-slate-400"
+                                  : "text-slate-600"
                               }`}
                             >
                               {moneyHint(toNumber(row.unit_price))}
@@ -1393,7 +1393,7 @@ export default function QuoteTradeItemsPanel({
                               >
                                 {formatComma(computedAmount)}
                               </p>
-                              <p className="mt-0.5 text-[10px] text-slate-400">
+                              <p className="mt-0.5 text-[10px] text-slate-600">
                                 수량×단가(원)
                               </p>
                             </div>
@@ -1422,7 +1422,7 @@ export default function QuoteTradeItemsPanel({
                                 is_lx_material: e.target.checked,
                               })
                             }
-                            className="h-4 w-4 rounded border-gray-300 text-gold-600 disabled:opacity-40"
+                            className="h-4 w-4 rounded border-gray-300 text-gold-600 disabled:opacity-75"
                             aria-label="LX 자재"
                           />
                         </td>
@@ -1512,7 +1512,7 @@ export default function QuoteTradeItemsPanel({
                     ) : null}
                   </div>
                   {collapsed ? null : rows.length === 0 ? (
-                    <p className="px-1 py-2 text-[11px] text-slate-400">
+                    <p className="px-1 py-2 text-[11px] text-slate-600">
                       세부항목 없음 (출력 제외)
                     </p>
                   ) : (
@@ -1533,7 +1533,7 @@ export default function QuoteTradeItemsPanel({
                             <p className="truncate text-sm font-semibold text-slate-900">
                               {row.item_name || "품목 미입력"}
                             </p>
-                            <p className="mt-0.5 text-xs text-slate-500">
+                            <p className="mt-0.5 text-xs text-slate-600">
                               {group.tradeLabel}
                             </p>
                           </div>
@@ -1621,7 +1621,7 @@ export default function QuoteTradeItemsPanel({
                               className={`text-[11px] tabular-nums ${
                                 computedAmount >= QUOTE_LINE_AMOUNT_WARN
                                   ? "text-amber-700"
-                                  : "text-slate-500"
+                                  : "text-slate-600"
                               }`}
                             >
                               금액 {moneyHint(computedAmount)}
@@ -1645,7 +1645,7 @@ export default function QuoteTradeItemsPanel({
                                 aria-label="항목 위로"
                                 disabled={idxInGroup === 0}
                                 onClick={() => moveItemInTrade(row.key, "up")}
-                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-75"
                               >
                                 ↑
                               </button>
@@ -1656,7 +1656,7 @@ export default function QuoteTradeItemsPanel({
                                 onClick={() =>
                                   moveItemInTrade(row.key, "down")
                                 }
-                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                                className="rounded border border-slate-200 px-2 py-1 text-xs disabled:opacity-75"
                               >
                                 ↓
                               </button>

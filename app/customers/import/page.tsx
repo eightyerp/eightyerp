@@ -36,17 +36,17 @@ export default async function CustomerImportPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
               문의 자동등록
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-slate-600">
               온라인·문자·카카오톡·LX하우시스 본사 문의를 분석해 고객으로
               등록합니다.
             </p>
           </div>
           <Link
             href="/customers"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
           >
             목록으로
           </Link>

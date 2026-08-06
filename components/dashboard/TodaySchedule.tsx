@@ -20,7 +20,7 @@ export default function TodaySchedule({ items = [] }: Props) {
 
       <div className="mt-4 space-y-3">
         {items.length === 0 && (
-          <p className="py-4 text-center text-sm text-gray-400">
+          <p className="py-4 text-center text-sm text-slate-600">
             오늘 예정된 상담 일정이 없습니다.
           </p>
         )}
@@ -36,12 +36,12 @@ export default function TodaySchedule({ items = [] }: Props) {
               })}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-800">{item.title}</p>
+              <p className="text-sm font-medium text-slate-900">{item.title}</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-navy-800/5 px-2 py-0.5 text-xs font-medium text-navy-800">
                   {item.schedule_type}
                 </span>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-slate-600">
                   {item.customers?.name ?? "-"}
                   {item.employees ? ` · ${item.employees.name}` : ""}
                 </span>

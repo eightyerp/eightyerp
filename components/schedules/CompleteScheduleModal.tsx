@@ -6,7 +6,7 @@ import { CUSTOMER_FORM_STATUSES } from "@/lib/crm/constants";
 import type { CustomerSchedule } from "@/types/database";
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
 
 type Props = {
   row: CustomerSchedule;
@@ -39,11 +39,11 @@ export default function CompleteScheduleModal({ row, onClose, onDone }: Props) {
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-navy-900">일정 완료 처리</h3>
-          <button type="button" onClick={onClose} className="text-sm text-gray-400">
+          <button type="button" onClick={onClose} className="text-sm text-slate-600">
             닫기
           </button>
         </div>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-slate-600">
           {row.customers?.name ?? "고객"} · {row.title} · {row.schedule_type}
         </p>
 
@@ -91,7 +91,7 @@ export default function CompleteScheduleModal({ row, onClose, onDone }: Props) {
             />
           </label>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-slate-900">
             <input
               type="checkbox"
               checked={changeStatus}
@@ -135,7 +135,7 @@ export default function CompleteScheduleModal({ row, onClose, onDone }: Props) {
             <button
               type="submit"
               disabled={pending}
-              className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+              className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-75"
             >
               {pending ? "저장 중..." : "완료 처리"}
             </button>

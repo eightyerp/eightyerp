@@ -96,14 +96,14 @@ const VIEW_TABS: { key: ViewMode; label: string }[] = [
 const initialActionState: ScheduleActionResult = { success: false };
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
 
 function employeeLabel(e: Pick<Employee, "name" | "title">): string {
   return `${e.name} ${e.title}`;
 }
 
 function statusBadgeClass(status: string): string {
-  return SCHEDULE_STATUS_BADGE[status] ?? "bg-gray-100 text-gray-600";
+  return SCHEDULE_STATUS_BADGE[status] ?? "bg-slate-100 text-slate-900";
 }
 
 function projectSiteName(row: ProjectProcessSchedule): string {
@@ -125,10 +125,10 @@ function chipClass(row: ProjectProcessSchedule): string {
   const base =
     "block w-full truncate rounded border px-1.5 py-0.5 text-left text-[11px] font-semibold cursor-pointer";
   if (cancelled) {
-    return `${base} border-gray-300 bg-gray-100 text-gray-500 line-through`;
+    return `${base} border-gray-300 bg-gray-100 text-slate-600 line-through`;
   }
   if (done) {
-    return `${base} border-gray-200 bg-gray-50 text-gray-500 opacity-70`;
+    return `${base} border-gray-200 bg-gray-50 text-slate-600 opacity-80`;
   }
   if (delayed) {
     return `${base} border-2 border-red-500 ${tone.bg} ${tone.text}`;
@@ -437,7 +437,7 @@ export default function ProcessSchedulesWorkspace({
       <div className="flex flex-wrap items-start justify-between gap-3">
         {!fixedProjectId ? (
           <div>
-            <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">공사 스케줄</h1>
+            <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">공사 스케줄</h1>
             <p className="mt-1 text-sm text-gray-600">
               현장별 공사·공종 일정을 관리합니다. 일정 색상은 현장 기준으로 구분됩니다.
             </p>
@@ -456,7 +456,7 @@ export default function ProcessSchedulesWorkspace({
               const { headers, rows } = exportRows();
               downloadCsv(`construction-schedules-${dateStamp()}.csv`, headers, rows);
             }}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100"
           >
             CSV 내보내기
           </button>
@@ -466,7 +466,7 @@ export default function ProcessSchedulesWorkspace({
               const { headers, rows } = exportRows();
               downloadXls(`construction-schedules-${dateStamp()}.xls`, headers, rows);
             }}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100"
           >
             Excel 내보내기
           </button>
@@ -479,7 +479,7 @@ export default function ProcessSchedulesWorkspace({
                 ? "현장을 먼저 등록해 주세요."
                 : undefined
             }
-            className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-75"
           >
             + 공사 일정 등록
           </button>
@@ -491,7 +491,7 @@ export default function ProcessSchedulesWorkspace({
           <p className="text-base font-semibold text-navy-900">
             등록된 공사 일정이 없습니다
           </p>
-          <p className="mt-2 text-sm text-gray-700">
+          <p className="mt-2 text-sm text-slate-900">
             현장관리에서 현장을 먼저 등록해주세요.
           </p>
           {projectsTableMissing && (
@@ -502,7 +502,7 @@ export default function ProcessSchedulesWorkspace({
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Link
               href="/customers"
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-navy-900 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-navy-900 hover:bg-slate-100"
             >
               고객·현장 관리로 이동
             </Link>
@@ -519,7 +519,7 @@ export default function ProcessSchedulesWorkspace({
             type="button"
             onClick={() => setView(t.key)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              view === t.key ? "bg-navy-800 text-white" : "text-gray-500 hover:bg-gray-50 hover:text-navy-800"
+              view === t.key ? "bg-navy-800 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-navy-800"
             }`}
           >
             {t.label}
@@ -529,15 +529,15 @@ export default function ProcessSchedulesWorkspace({
 
       <div className="dashboard-card grid grid-cols-2 gap-2 p-4 sm:grid-cols-3 lg:grid-cols-7">
         <div>
-          <label className="mb-1 block text-xs text-gray-500">시작일</label>
+          <label className="mb-1 block text-xs text-slate-600">시작일</label>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">종료일</label>
+          <label className="mb-1 block text-xs text-slate-600">종료일</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">담당자</label>
+          <label className="mb-1 block text-xs text-slate-600">담당자</label>
           <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} disabled={lockEmployee} className={inputClass}>
             <option value="">전체</option>
             {employees.map((e) => (
@@ -549,7 +549,7 @@ export default function ProcessSchedulesWorkspace({
         </div>
         {(access.canViewAll || access.canViewTeam) && (
           <div>
-            <label className="mb-1 block text-xs text-gray-500">팀</label>
+            <label className="mb-1 block text-xs text-slate-600">팀</label>
             <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={inputClass}>
               <option value="">전체</option>
               {teams.map((t) => (
@@ -562,7 +562,7 @@ export default function ProcessSchedulesWorkspace({
         )}
         {!fixedProjectId && (
           <div>
-            <label className="mb-1 block text-xs text-gray-500">현장</label>
+            <label className="mb-1 block text-xs text-slate-600">현장</label>
             <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={inputClass}>
               <option value="">전체</option>
               {projects.map((p) => (
@@ -574,7 +574,7 @@ export default function ProcessSchedulesWorkspace({
           </div>
         )}
         <div>
-          <label className="mb-1 block text-xs text-gray-500">공종</label>
+          <label className="mb-1 block text-xs text-slate-600">공종</label>
           <select value={processName} onChange={(e) => setProcessName(e.target.value)} className={inputClass}>
             <option value="">전체</option>
             {processNameOptions.map((p) => (
@@ -585,7 +585,7 @@ export default function ProcessSchedulesWorkspace({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">상태</label>
+          <label className="mb-1 block text-xs text-slate-600">상태</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputClass}>
             <option value="">전체</option>
             {PROCESS_SCHEDULE_STATUSES.map((s) => (
@@ -600,7 +600,7 @@ export default function ProcessSchedulesWorkspace({
           지연만 보기
         </label>
         <div className="col-span-2 sm:col-span-3 lg:col-span-6">
-          <label className="mb-1 block text-xs text-gray-500">검색 (고객명·현장명·주소·공정명·제목)</label>
+          <label className="mb-1 block text-xs text-slate-600">검색 (고객명·현장명·주소·공정명·제목)</label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="검색어 입력" className={inputClass} />
         </div>
       </div>
@@ -661,7 +661,7 @@ export default function ProcessSchedulesWorkspace({
             <ProcessCard key={r.id} row={r} onClick={() => setDetail(r)} />
           ))}
           {visible.length === 0 && (
-            <p className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-gray-500">
+            <p className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-slate-600">
               {noSchedules
                 ? "등록된 공사 일정이 없습니다. 상단에서 공사 일정을 등록해 주세요."
                 : "조건에 맞는 공사 일정이 없습니다."}
@@ -738,7 +738,7 @@ function ToastBanner({ message }: { message: string }) {
   return (
     <div
       className={`rounded-lg border px-4 py-3 text-sm ${
-        isError ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"
+        isError ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-emerald-100 text-emerald-900"
       }`}
     >
       {message}
@@ -758,7 +758,7 @@ function ProcessCard({ row, onClick }: { row: ProjectProcessSchedule; onClick: (
       onDragStart={(e) => e.dataTransfer.setData("text/plain", row.id)}
       className={`cursor-pointer rounded-lg border p-3 text-xs transition hover:shadow-sm ${
         cancelled
-          ? "border-gray-300 bg-gray-100 opacity-70"
+          ? "border-gray-300 bg-gray-100 opacity-80"
           : delayed
             ? `border-2 border-red-500 ${tone.bg}`
             : done
@@ -775,7 +775,7 @@ function ProcessCard({ row, onClick }: { row: ProjectProcessSchedule; onClick: (
           {row.status}
         </span>
       </div>
-      <p className={`mt-1.5 font-semibold ${cancelled ? "text-gray-500 line-through" : "text-navy-900"}`}>
+      <p className={`mt-1.5 font-semibold ${cancelled ? "text-slate-600 line-through" : "text-navy-900"}`}>
         공종: {row.process_name}
       </p>
       <p className="mt-1 font-medium text-navy-900">
@@ -785,7 +785,7 @@ function ProcessCard({ row, onClick }: { row: ProjectProcessSchedule; onClick: (
         {new Date(row.start_at).toLocaleDateString("ko-KR")} {formatTimeRange(row)}
       </p>
       {row.title && (
-        <p className="mt-1 truncate text-gray-700">{row.title}</p>
+        <p className="mt-1 truncate text-slate-900">{row.title}</p>
       )}
       <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/70">
         <div className="h-1.5 rounded-full bg-navy-700" style={{ width: `${row.progress}%` }} />
@@ -807,7 +807,7 @@ function GroupedView({
   emptyLabel: string;
 }) {
   if (groups.length === 0) {
-    return <p className="dashboard-card p-8 text-center text-sm text-gray-400">{emptyLabel}</p>;
+    return <p className="dashboard-card p-8 text-center text-sm text-slate-600">{emptyLabel}</p>;
   }
   return (
     <div className="space-y-4">
@@ -815,7 +815,7 @@ function GroupedView({
         <div key={g.key} className="dashboard-card p-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-navy-900">{g.label}</h3>
-            <span className="text-xs text-gray-400">{g.rows.length}건</span>
+            <span className="text-xs text-slate-600">{g.rows.length}건</span>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {g.rows.map((r) => (
@@ -864,11 +864,11 @@ function MonthGrid({
             ›
           </button>
         </div>
-        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-gray-500">
+        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-slate-600">
           오늘
         </button>
       </div>
-      <div className="grid grid-cols-7 border-b border-gray-100 text-center text-xs font-medium text-gray-400">
+      <div className="grid grid-cols-7 border-b border-gray-100 text-center text-xs font-medium text-slate-600">
         {WEEKDAY_LABELS_KO.map((w) => (
           <div key={w} className="py-2">
             {w}
@@ -896,10 +896,10 @@ function MonthGrid({
                 setDragOverKey(null);
               }}
               className={`min-h-[92px] border-b border-r border-gray-100 p-1 text-xs ${
-                inMonth ? "bg-white" : "bg-gray-50 text-gray-300"
+                inMonth ? "bg-white" : "bg-gray-50 text-slate-600"
               } ${dragOverKey === key ? "ring-2 ring-gold-500" : ""}`}
             >
-              <div className={`mb-1 text-right text-[11px] ${isToday ? "font-bold text-gold-600" : "text-gray-400"}`}>
+              <div className={`mb-1 text-right text-[11px] ${isToday ? "font-bold text-gold-600" : "text-slate-600"}`}>
                 {d.getDate()}
               </div>
               <div className="space-y-0.5">
@@ -915,7 +915,7 @@ function MonthGrid({
                     {chipLabel(r)}
                   </div>
                 ))}
-                {rows.length > 3 && <div className="px-1 text-[10px] text-gray-400">+{rows.length - 3}건 더보기</div>}
+                {rows.length > 3 && <div className="px-1 text-[10px] text-slate-600">+{rows.length - 3}건 더보기</div>}
               </div>
             </div>
           );
@@ -957,7 +957,7 @@ function WeekColumns({
             ›
           </button>
         </div>
-        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-gray-500">
+        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-slate-600">
           오늘
         </button>
       </div>
@@ -977,7 +977,7 @@ function WeekColumns({
               }}
               className="min-h-[140px] p-2"
             >
-              <div className={`mb-2 text-xs font-medium ${isToday ? "text-gold-600" : "text-gray-500"}`}>{formatDayLabel(d)}</div>
+              <div className={`mb-2 text-xs font-medium ${isToday ? "text-gold-600" : "text-slate-600"}`}>{formatDayLabel(d)}</div>
               <div className="space-y-1">
                 {rows.map((r) => (
                   <div
@@ -992,7 +992,7 @@ function WeekColumns({
                     {chipLabel(r)}
                   </div>
                 ))}
-                {rows.length === 0 && <p className="text-[11px] text-gray-300">일정 없음</p>}
+                {rows.length === 0 && <p className="text-[11px] text-slate-600">일정 없음</p>}
               </div>
             </div>
           );
@@ -1013,13 +1013,13 @@ function ganttBarStyle(r: ProjectProcessSchedule): {
   const base = "cursor-pointer truncate rounded border px-1 py-1 text-[10px] font-semibold";
   if (cancelled) {
     return {
-      className: `${base} border-gray-300 bg-gray-200 text-gray-500 line-through`,
+      className: `${base} border-gray-300 bg-gray-200 text-slate-600 line-through`,
       style: {},
     };
   }
   if (done) {
     return {
-      className: `${base} border-gray-200 bg-gray-100 text-gray-600 opacity-80`,
+      className: `${base} border-gray-200 bg-slate-100 text-slate-900 opacity-80`,
       style: {},
     };
   }
@@ -1073,7 +1073,7 @@ function GanttView({
             ›
           </button>
         </div>
-        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-gray-500">
+        <button type="button" onClick={onToday} className="rounded border px-2 py-1 text-xs text-slate-600">
           오늘
         </button>
       </div>
@@ -1091,14 +1091,14 @@ function GanttView({
             <div
               key={toDateKeyFromIso(d.toISOString())}
               style={{ gridRow: 1, gridColumn: i + 2 }}
-              className="border-b border-gray-100 text-center text-[10px] text-gray-400"
+              className="border-b border-gray-100 text-center text-[10px] text-slate-600"
             >
               {d.getDate()}
             </div>
           ))}
 
           {inRange.length === 0 && (
-            <div style={{ gridRow: 2, gridColumn: `1 / span ${totalDays + 1}` }} className="py-6 text-center text-sm text-gray-400">
+            <div style={{ gridRow: 2, gridColumn: `1 / span ${totalDays + 1}` }} className="py-6 text-center text-sm text-slate-600">
               해당 월에 표시할 공정이 없습니다.
             </div>
           )}
@@ -1186,7 +1186,7 @@ function ProcessFormModal({
           <h3 className="text-base font-semibold text-navy-900">
             {editing ? "공사 일정 수정" : "공사 일정 등록"}
           </h3>
-          <button type="button" onClick={onClose} className="text-sm text-gray-400">
+          <button type="button" onClick={onClose} className="text-sm text-slate-600">
             닫기
           </button>
         </div>
@@ -1233,7 +1233,7 @@ function ProcessFormModal({
                     setCustomProcess(false);
                   }}
                   className={`rounded-full border px-2.5 py-1 text-[11px] ${
-                    processName === s && !customProcess ? "border-navy-800 bg-navy-800 text-white" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    processName === s && !customProcess ? "border-navy-800 bg-navy-800 text-white" : "border-gray-200 text-gray-600 hover:bg-slate-100"
                   }`}
                 >
                   {s}
@@ -1387,7 +1387,7 @@ function ProcessFormModal({
           )}
 
           <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <button type="submit" disabled={pending || !projectId} className="min-h-10 rounded-lg bg-navy-800 px-4 py-2 text-sm text-white disabled:opacity-60">
+            <button type="submit" disabled={pending || !projectId} className="min-h-10 rounded-lg bg-navy-800 px-4 py-2 text-sm text-white disabled:opacity-75">
               {pending ? "저장 중…" : "저장"}
             </button>
             <button type="button" onClick={onClose} className="min-h-10 rounded-lg border px-4 py-2 text-sm">
@@ -1439,7 +1439,7 @@ function DetailModal({
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-base font-semibold text-navy-900">{row.title}</h3>
-            <p className="mt-1 text-xs font-medium text-gray-700">
+            <p className="mt-1 text-xs font-medium text-slate-900">
               {row.process_name} · {new Date(row.start_at).toLocaleString("ko-KR")}
               {row.end_at ? ` ~ ${new Date(row.end_at).toLocaleString("ko-KR")}` : ""}
             </p>
@@ -1539,30 +1539,30 @@ function DetailModal({
             type="button"
             disabled={pending}
             onClick={() => onProgress(progress)}
-            className="mt-2 w-full rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+            className="mt-2 w-full rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
           >
             진행률 저장
           </button>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={pending} onClick={onEdit} className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-60">
+          <button type="button" disabled={pending} onClick={onEdit} className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-75">
             수정
           </button>
-          <button type="button" disabled={pending} onClick={onComplete} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-60">
+          <button type="button" disabled={pending} onClick={onComplete} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-75">
             완료 처리
           </button>
-          <button type="button" disabled={pending} onClick={onDelay} className="rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white disabled:opacity-60">
+          <button type="button" disabled={pending} onClick={onDelay} className="rounded-lg bg-red-500 px-3 py-2 text-xs font-medium text-white disabled:opacity-75">
             지연 처리
           </button>
-          <button type="button" disabled={pending} onClick={onCancel} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 disabled:opacity-60">
+          <button type="button" disabled={pending} onClick={onCancel} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 disabled:opacity-75">
             취소 처리
           </button>
           <button
             type="button"
             disabled={pending}
             onClick={() => setShowDelete((v) => !v)}
-            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-60"
+            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-75"
           >
             삭제
           </button>
@@ -1582,7 +1582,7 @@ function DetailModal({
               type="button"
               disabled={pending}
               onClick={() => onDelete(deleteReason)}
-              className="mt-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+              className="mt-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-75"
             >
               삭제 확정
             </button>

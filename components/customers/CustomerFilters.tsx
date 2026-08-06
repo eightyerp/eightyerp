@@ -69,7 +69,7 @@ export default function CustomerFilters({
       className="dashboard-card grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4"
     >
       <div className="md:col-span-2 xl:col-span-2">
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           검색
         </label>
         <input
@@ -82,7 +82,7 @@ export default function CustomerFilters({
 
       {canFilterByAssignee && (
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">
+          <label className="mb-1 block text-xs font-medium text-slate-600">
             담당자
           </label>
           <select
@@ -101,7 +101,7 @@ export default function CustomerFilters({
       )}
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           상담상태
         </label>
         <select
@@ -119,7 +119,7 @@ export default function CustomerFilters({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           유입경로
         </label>
         <select
@@ -137,7 +137,7 @@ export default function CustomerFilters({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           관심공종
         </label>
         <select
@@ -155,7 +155,7 @@ export default function CustomerFilters({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           등록일 시작
         </label>
         <input
@@ -167,7 +167,7 @@ export default function CustomerFilters({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           등록일 종료
         </label>
         <input
@@ -179,7 +179,7 @@ export default function CustomerFilters({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+        <label className="mb-1 block text-xs font-medium text-slate-600">
           연락일정
         </label>
         <select
@@ -199,14 +199,14 @@ export default function CustomerFilters({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-60"
+          className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700 disabled:opacity-75"
         >
           {pending ? "조회 중..." : "조회"}
         </button>
         <button
           type="button"
           onClick={handleReset}
-          className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
         >
           초기화
         </button>
@@ -216,4 +216,4 @@ export default function CustomerFilters({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";

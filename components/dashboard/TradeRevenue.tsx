@@ -9,8 +9,8 @@ export default function TradeRevenue() {
         {tradeRevenue.map((item) => (
           <div key={item.trade}>
             <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-gray-700">{item.trade}</span>
-              <span className="text-gray-500">{formatCurrency(item.amount)}</span>
+              <span className="font-medium text-slate-900">{item.trade}</span>
+              <span className="text-slate-600">{formatCurrency(item.amount)}</span>
             </div>
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100">
               <div
@@ -18,7 +18,7 @@ export default function TradeRevenue() {
                 style={{ width: `${item.ratio}%` }}
               />
             </div>
-            <p className="mt-0.5 text-right text-xs text-gray-400">
+            <p className="mt-0.5 text-right text-xs text-slate-600">
               {item.ratio}%
             </p>
           </div>

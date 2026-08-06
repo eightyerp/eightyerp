@@ -58,7 +58,7 @@ type TodayWorkBundle = {
 };
 
 const inputClass =
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
 
 const FOCUS_CARDS: {
   key: TodayFocus;
@@ -66,10 +66,10 @@ const FOCUS_CARDS: {
   countKey: keyof TodayWorkBundle["summary"];
   accent: string;
 }[] = [
-  { key: "consult", label: "오늘 상담", countKey: "todayConsult", accent: "border-sky-200 bg-sky-50 text-sky-800" },
+  { key: "consult", label: "오늘 상담", countKey: "todayConsult", accent: "border-sky-200 bg-sky-100 text-sky-900" },
   { key: "survey", label: "오늘 실측", countKey: "todaySurvey", accent: "border-indigo-200 bg-indigo-50 text-indigo-800" },
   { key: "quote_write", label: "오늘 견적작성", countKey: "todayQuoteWrite", accent: "border-violet-200 bg-violet-50 text-violet-800" },
-  { key: "quote_send", label: "오늘 견적발송", countKey: "todayQuoteSend", accent: "border-blue-200 bg-blue-50 text-blue-800" },
+  { key: "quote_send", label: "오늘 견적발송", countKey: "todayQuoteSend", accent: "border-blue-200 bg-sky-100 text-sky-900" },
   { key: "contract", label: "오늘 계약상담", countKey: "todayContract", accent: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { key: "overdue", label: "지난 미처리", countKey: "overdue", accent: "border-red-200 bg-red-50 text-red-700" },
   { key: "contact", label: "오늘 다음 연락", countKey: "todayContact", accent: "border-gold-300 bg-gold-50 text-navy-900" },
@@ -88,13 +88,13 @@ const LIST_FILTERS: { key: TodayFocus; label: string }[] = [
 ];
 
 const BADGE_CLASS: Record<string, string> = {
-  상담: "bg-sky-100 text-sky-800",
+  상담: "bg-sky-100 text-sky-900",
   실측: "bg-indigo-100 text-indigo-800",
   견적: "bg-violet-100 text-violet-800",
   연락: "bg-gold-100 text-navy-900",
-  내부업무: "bg-slate-100 text-slate-700",
+  내부업무: "bg-slate-100 text-slate-900",
   경고: "bg-red-100 text-red-700",
-  계약: "bg-emerald-100 text-emerald-800",
+  계약: "bg-emerald-100 text-emerald-900",
 };
 
 type Props = {
@@ -242,7 +242,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
           className={`rounded-lg border px-4 py-3 text-sm ${
             /실패|오류|없|권한/.test(toast)
               ? "border-red-200 bg-red-50 text-red-700"
-              : "border-green-200 bg-green-50 text-green-700"
+              : "border-green-200 bg-emerald-100 text-emerald-900"
           }`}
         >
           {toast}
@@ -252,8 +252,8 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 lg:text-2xl">오늘 할 일</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">오늘 할 일</h1>
+          <p className="mt-1 text-sm text-slate-600">
             {todayDate}
             {bundle.access.userName ? ` · ${bundle.access.userName}` : ""}
             {nowLabel ? ` · ${nowLabel}` : ""}
@@ -264,7 +264,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
             type="button"
             onClick={refresh}
             disabled={pending}
-            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 sm:min-h-0"
+            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100 sm:min-h-0"
           >
             새로고침
           </button>
@@ -274,7 +274,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
               const { headers, rows } = exportRows();
               downloadCsv(`에잇티_오늘할일_${dateStamp()}.csv`, headers, rows);
             }}
-            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 sm:min-h-0"
+            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100 sm:min-h-0"
           >
             CSV
           </button>
@@ -284,7 +284,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
               const { headers, rows } = exportRows();
               downloadXls(`에잇티_오늘할일_${dateStamp()}.xls`, headers, rows);
             }}
-            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 sm:min-h-0"
+            className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-100 sm:min-h-0"
           >
             Excel
           </button>
@@ -320,7 +320,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
       {(bundle.access.canViewAll || bundle.access.canViewTeam) && (
         <div className="dashboard-card flex flex-wrap items-end gap-3 p-4">
           {bundle.access.canViewAll && (
-            <label className="text-xs text-gray-500">
+            <label className="text-xs text-slate-600">
               팀
               <select
                 value={teamId}
@@ -336,7 +336,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
               </select>
             </label>
           )}
-          <label className="text-xs text-gray-500">
+          <label className="text-xs text-slate-600">
             담당자
             <select
               value={employeeId}
@@ -366,7 +366,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
       <div className="dashboard-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-navy-900">오늘의 진행률</h2>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-slate-600">
             전체 {bundle.progress.total} · 완료 {bundle.progress.completed} · 미완료{" "}
             {bundle.progress.incomplete}
           </p>
@@ -419,14 +419,14 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                   className={`rounded-full px-3 py-1.5 text-xs font-medium ${
                     focus === f.key
                       ? "bg-navy-800 text-white"
-                      : "bg-white text-gray-500 ring-1 ring-gray-200"
+                      : "bg-white text-slate-600 ring-1 ring-gray-200"
                   }`}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <label className="flex items-center gap-2 text-xs text-gray-500">
+            <label className="flex items-center gap-2 text-xs text-slate-600">
               <input
                 type="checkbox"
                 checked={showCompleted}
@@ -438,7 +438,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
 
           {visible.length === 0 ? (
             <div className="dashboard-card px-5 py-10 text-center">
-              <p className="text-sm text-gray-500">오늘 예정된 업무가 없습니다.</p>
+              <p className="text-sm text-slate-600">오늘 예정된 업무가 없습니다.</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Link href="/schedules/customers" className="rounded-lg bg-navy-800 px-3 py-2 text-xs text-white">
                   새 상담 일정
@@ -495,7 +495,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
           <section className="dashboard-card p-4">
             <h3 className="text-sm font-semibold text-red-700">지난 미처리 일정</h3>
             {bundle.overdueSchedules.length === 0 ? (
-              <p className="mt-3 text-xs text-gray-400">미처리 일정이 없습니다.</p>
+              <p className="mt-3 text-xs text-slate-600">미처리 일정이 없습니다.</p>
             ) : (
               <ul className="mt-3 space-y-2">
                 {bundle.overdueSchedules.slice(0, 8).map((s) => (
@@ -506,10 +506,10 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                     <p className="text-xs font-semibold text-red-700">
                       {formatOverdueLabel(s.start_at)} · {s.customers?.name ?? "-"}
                     </p>
-                    <p className="mt-0.5 text-xs text-gray-700">
+                    <p className="mt-0.5 text-xs text-slate-900">
                       {s.schedule_type} · {s.title}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-gray-500">
+                    <p className="mt-0.5 text-[11px] text-slate-600">
                       {new Date(s.start_at).toLocaleString("ko-KR")}
                       {s.employees ? ` · ${s.employees.name}` : ""}
                     </p>
@@ -552,7 +552,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                   <h3 className="text-sm font-semibold text-navy-900">
                     담당자별 현황
                   </h3>
-                  <p className="mt-0.5 text-[11px] text-gray-400">
+                  <p className="mt-0.5 text-[11px] text-slate-600">
                     업무 누락 확인용 · 클릭 시 필터
                   </p>
                 </div>
@@ -561,7 +561,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                     <li key={a.employeeId}>
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-slate-100"
                         onClick={() => {
                           setEmployeeId(a.employeeId);
                           const params = new URLSearchParams();
@@ -573,7 +573,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                         }}
                       >
                         <div>
-                          <p className="text-sm font-medium text-gray-800">
+                          <p className="text-sm font-medium text-slate-900">
                             {a.employeeName}
                             {a.hasUrgent && (
                               <span className="ml-1 text-[10px] font-semibold text-red-600">
@@ -581,12 +581,12 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                               </span>
                             )}
                             {a.hasNoSchedule && (
-                              <span className="ml-1 text-[10px] text-gray-400">
+                              <span className="ml-1 text-[10px] text-slate-600">
                                 일정없음
                               </span>
                             )}
                           </p>
-                          <p className="text-[11px] text-gray-400">
+                          <p className="text-[11px] text-slate-600">
                             오늘 {a.todayCount} · 미처리 {a.overdueCount}
                             {a.oldestOverdueHours != null
                               ? ` · 최장 ${Math.round(a.oldestOverdueHours)}h`
@@ -622,7 +622,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-navy-900">내부 할 일 등록</h3>
-              <button type="button" onClick={() => setTaskOpen(false)} className="text-sm text-gray-400">
+              <button type="button" onClick={() => setTaskOpen(false)} className="text-sm text-slate-600">
                 닫기
               </button>
             </div>
@@ -689,7 +689,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                 <button
                   type="submit"
                   disabled={taskPending}
-                  className="rounded-lg bg-navy-800 px-3 py-2 text-sm text-white disabled:opacity-60"
+                  className="rounded-lg bg-navy-800 px-3 py-2 text-sm text-white disabled:opacity-75"
                 >
                   {taskPending ? "저장 중..." : "등록"}
                 </button>
@@ -720,7 +720,7 @@ function WorkCard({
     : item.isUrgent
       ? "border-red-300 bg-red-50/20"
       : item.isCompleted
-        ? "border-gray-100 bg-gray-50 opacity-70"
+        ? "border-gray-100 bg-gray-50 opacity-80"
         : item.badge === "경고" || item.kind === "expiring"
           ? "border-orange-200 bg-orange-50/40"
           : "border-sky-100 bg-white";
@@ -732,7 +732,7 @@ function WorkCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                BADGE_CLASS[item.badge] ?? "bg-gray-100 text-gray-600"
+                BADGE_CLASS[item.badge] ?? "bg-slate-100 text-slate-900"
               }`}
             >
               {item.badge}
@@ -746,11 +746,11 @@ function WorkCard({
               <span className="text-[11px] font-semibold text-red-600">긴급</span>
             )}
             {item.status && (
-              <span className="text-[11px] text-gray-400">{item.status}</span>
+              <span className="text-[11px] text-slate-600">{item.status}</span>
             )}
           </div>
-          <p className="mt-1 text-sm font-semibold text-gray-900">{item.title}</p>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <p className="mt-1 text-sm font-semibold text-slate-900">{item.title}</p>
+          <p className="mt-0.5 text-xs text-slate-600">
             {item.startAt
               ? new Date(item.startAt).toLocaleString("ko-KR", {
                   month: "short",
@@ -763,7 +763,7 @@ function WorkCard({
             {item.employeeName ? ` · ${item.employeeName}` : ""}
           </p>
           {(item.phone || item.address) && (
-            <p className="mt-0.5 text-xs text-gray-400">
+            <p className="mt-0.5 text-xs text-slate-600">
               {item.phone ?? ""}
               {item.address ? ` · ${item.address}` : ""}
             </p>
@@ -774,7 +774,7 @@ function WorkCard({
             </p>
           )}
           {item.recentConsult && (
-            <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+            <p className="mt-1 line-clamp-2 text-xs text-slate-600">
               최근 상담: {item.recentConsult}
             </p>
           )}
@@ -785,7 +785,7 @@ function WorkCard({
         {item.customerId && (
           <Link
             href={`/customers/${item.customerId}`}
-            className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs font-medium text-gray-700 sm:min-h-0 sm:py-1.5"
+            className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs font-medium text-slate-900 sm:min-h-0 sm:py-1.5"
           >
             고객 상세
           </Link>

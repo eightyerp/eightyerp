@@ -103,10 +103,10 @@ export default function QuoteAssigneeContactBlock({
         isPrint ? "text-[10px]" : "text-[11px] sm:text-[12px]"
       } ${className}`}
     >
-      <div className="min-w-0 space-y-1 text-slate-800">
+      <div className="min-w-0 space-y-1 text-slate-900">
         {label ? (
           <p className="leading-snug">
-            <span className="text-slate-500">담당자</span>
+            <span className="text-slate-600">담당자</span>
             <span
               className={`ml-2 font-bold text-navy-900 ${
                 isPrint ? "text-[12px]" : "text-[13px] sm:text-[14px]"
@@ -116,12 +116,12 @@ export default function QuoteAssigneeContactBlock({
             </span>
           </p>
         ) : phoneIsCompanyOnly ? (
-          <p className="text-slate-500">대표번호</p>
+          <p className="text-slate-600">대표번호</p>
         ) : null}
         {phoneNode}
         {email ? (
           <p className="text-slate-600">
-            <span className="text-slate-500">E.</span> {email}
+            <span className="text-slate-600">E.</span> {email}
           </p>
         ) : null}
       </div>

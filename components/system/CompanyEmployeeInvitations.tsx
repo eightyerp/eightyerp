@@ -28,7 +28,7 @@ const dateFormatter = new Intl.DateTimeFormat("ko-KR", {
 });
 
 const fieldClassName =
-  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-gold-500 focus:ring-2 focus:ring-gold-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-700 disabled:opacity-100";
+  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-gold-500 focus:ring-2 focus:ring-gold-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-900 disabled:opacity-100";
 
 const selectClassName = `${fieldClassName} text-slate-900`;
 
@@ -48,7 +48,7 @@ function getInvitationStatus(invitation: CompanyEmployeeInvitation) {
   if (invitation.use_count >= invitation.max_uses) {
     return {
       label: "사용 완료",
-      className: "bg-slate-200 text-slate-800",
+      className: "bg-slate-200 text-slate-900",
     };
   }
 
@@ -68,7 +68,7 @@ function getInvitationStatus(invitation: CompanyEmployeeInvitation) {
 
   return {
     label: "비활성",
-    className: "bg-slate-200 text-slate-800",
+    className: "bg-slate-200 text-slate-900",
   };
 }
 
@@ -166,7 +166,7 @@ export default function CompanyEmployeeInvitations({
           className="mt-5 grid gap-4 md:grid-cols-3"
         >
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">
+            <span className="text-sm font-medium text-slate-900">
               기본 직급
             </span>
             <input
@@ -181,7 +181,7 @@ export default function CompanyEmployeeInvitations({
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">
+            <span className="text-sm font-medium text-slate-900">
               소속 팀
             </span>
             <select
@@ -206,7 +206,7 @@ export default function CompanyEmployeeInvitations({
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">
+            <span className="text-sm font-medium text-slate-900">
               유효기간
             </span>
             <select
@@ -237,7 +237,7 @@ export default function CompanyEmployeeInvitations({
             <button
               type="submit"
               disabled={createPending}
-              className="rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-75"
             >
               {createPending ? "생성 중..." : "직원 초대 링크 생성"}
             </button>
@@ -265,7 +265,7 @@ export default function CompanyEmployeeInvitations({
                 type="text"
                 readOnly
                 value={inviteUrl}
-                className="min-w-0 flex-1 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm text-slate-800"
+                className="min-w-0 flex-1 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm text-slate-900"
               />
               <button
                 type="button"
@@ -314,7 +314,7 @@ export default function CompanyEmployeeInvitations({
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
-                <tr className="text-left text-xs font-semibold tracking-wide text-slate-700">
+                <tr className="text-left text-xs font-semibold tracking-wide text-slate-900">
                   <th className="px-5 py-3">직급·팀</th>
                   <th className="px-5 py-3">상태</th>
                   <th className="px-5 py-3">사용</th>
@@ -344,13 +344,13 @@ export default function CompanyEmployeeInvitations({
                           {status.label}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-slate-800">
+                      <td className="whitespace-nowrap px-5 py-4 text-slate-900">
                         {invitation.use_count}/{invitation.max_uses}
                       </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                      <td className="whitespace-nowrap px-5 py-4 text-slate-900">
                         {formatDate(invitation.created_at)}
                       </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                      <td className="whitespace-nowrap px-5 py-4 text-slate-900">
                         {formatDate(invitation.expires_at)}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-right">
@@ -369,7 +369,7 @@ export default function CompanyEmployeeInvitations({
                                   invitation.invitation_id,
                                 )
                               }
-                              className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-800 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-800 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-75"
                             >
                               {revokePending ? "처리 중..." : "초대 취소"}
                             </button>
