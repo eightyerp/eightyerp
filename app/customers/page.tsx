@@ -6,11 +6,11 @@ import CustomerPagination from "@/components/customers/CustomerPagination";
 import CustomerTable from "@/components/customers/CustomerTable";
 import ExternalInquiryPasteModal from "@/components/customers/ExternalInquiryPasteModal";
 import { getCurrentUserAccess } from "@/lib/crm/access";
-import { CUSTOMER_PAGE_SIZE } from "@/lib/crm/constants";
+import { CUSTOMER_LIST_PAGE_SIZE } from "@/lib/crm/customer-list-query";
 import {
   getCustomers,
-  getEmployees,
-  getLeadSources,
+  getCustomerListEmployees,
+  getCustomerListLeadSources,
 } from "@/lib/crm/customers";
 import {
   schemaMissingDevHint,
@@ -20,8 +20,8 @@ import { toCrmErrorMessage } from "@/lib/crm/errors";
 import type {
   CustomerStatus,
   CustomerWithRelations,
-  Employee,
-  LeadSource,
+  EmployeeOption,
+  LeadSourceOption,
 } from "@/types/database";
 
 type CustomersPageProps = {
@@ -51,12 +51,24 @@ export default async function CustomersPage({
   let customers: CustomerWithRelations[] = [];
   let total = 0;
   let totalPages = 1;
-  let employees: Employee[] = [];
-  let leadSources: LeadSource[] = [];
+  let employees: EmployeeOption[] = [];
+  let leadSources: LeadSourceOption[] = [];
   let loadError: string | null = null;
+  let lookupWarning = false;
 
-  try {
-    const [listResult, empList, sourceList] = await Promise.all([
+  const employeeOptionsPromise = access.isAdmin
+    ? getCustomerListEmployees()
+    : Promise.resolve(
+        access.profile?.employees
+          ? [{
+              id: access.profile.employees.id,
+              name: access.profile.employees.name,
+              title: access.profile.employees.title,
+            }]
+          : [],
+      );
+
+  const [listResult, employeeResult, sourceResult] = await Promise.allSettled([
       getCustomers({
         q: params.q,
         employeeId: params.employeeId,
@@ -73,19 +85,25 @@ export default async function CustomersPage({
             ? params.contact
             : "",
         page,
-        pageSize: CUSTOMER_PAGE_SIZE,
+        pageSize: CUSTOMER_LIST_PAGE_SIZE,
       }),
-      getEmployees(),
-      getLeadSources(),
+      employeeOptionsPromise,
+      getCustomerListLeadSources(),
     ]);
-    customers = listResult.customers;
-    total = listResult.total;
-    totalPages = listResult.totalPages;
-    employees = empList;
-    leadSources = sourceList;
-  } catch (error) {
-    loadError = toCrmErrorMessage(error);
+
+  if (listResult.status === "fulfilled") {
+    customers = listResult.value.customers;
+    total = listResult.value.total;
+    totalPages = listResult.value.totalPages;
+  } else {
+    loadError = toCrmErrorMessage(listResult.reason);
   }
+
+  if (employeeResult.status === "fulfilled") employees = employeeResult.value;
+  else lookupWarning = true;
+
+  if (sourceResult.status === "fulfilled") leadSources = sourceResult.value;
+  else lookupWarning = true;
 
   const tablesMissing = loadError === "CRM_TABLES_MISSING";
   const attentionCount = customers.filter((c) => c.needs_attention).length;
@@ -173,6 +191,12 @@ export default async function CustomersPage({
           </div>
         )}
 
+        {lookupWarning && !loadError && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            일부 검색 조건을 불러오지 못했습니다. 고객 목록은 계속 이용할 수 있습니다.
+          </div>
+        )}
+
         {!tablesMissing && !loadError && (
           <>
             <Suspense
@@ -183,6 +207,7 @@ export default async function CustomersPage({
               }
             >
               <CustomerFilters
+                key={params.q ?? ""}
                 employees={employees}
                 leadSources={leadSources}
                 canFilterByAssignee={access.isAdmin}

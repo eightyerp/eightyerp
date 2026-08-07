@@ -1,17 +1,21 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useTransition } from "react";
+import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import {
   CUSTOMER_STATUSES,
   INTEREST_ITEMS,
   formatEmployeeLabel,
 } from "@/lib/crm/constants";
-import type { Employee, LeadSource } from "@/types/database";
+import {
+  buildCustomerSearchHref,
+  CUSTOMER_SEARCH_DEBOUNCE_MS,
+} from "@/lib/crm/customer-list-query";
+import type { EmployeeOption, LeadSourceOption } from "@/types/database";
 
 type CustomerFiltersProps = {
-  employees: Employee[];
-  leadSources: LeadSource[];
+  employees: EmployeeOption[];
+  leadSources: LeadSourceOption[];
   /** Bundle E: 관리자만 담당자 필터 표시 */
   canFilterByAssignee?: boolean;
 };
@@ -24,6 +28,31 @@ export default function CustomerFilters({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
+  const queryFromUrl = searchParams.get("q") ?? "";
+  const [query, setQuery] = useState(queryFromUrl);
+  const lastSubmittedQuery = useRef(queryFromUrl.trim());
+  const searchSequence = useRef(0);
+
+  useEffect(() => {
+    const normalizedQuery = query.trim();
+    if (normalizedQuery === lastSubmittedQuery.current) return;
+
+    const sequence = ++searchSequence.current;
+    const timer = window.setTimeout(() => {
+      if (sequence !== searchSequence.current) return;
+
+      lastSubmittedQuery.current = normalizedQuery;
+
+      startTransition(() => {
+        router.replace(
+          buildCustomerSearchHref(searchParams.toString(), normalizedQuery),
+          { scroll: false },
+        );
+      });
+    }, CUSTOMER_SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [query, router, searchParams]);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -46,6 +75,9 @@ export default function CustomerFilters({
       if (value) params.set(field, value);
     }
 
+    lastSubmittedQuery.current = String(formData.get("q") ?? "").trim();
+    searchSequence.current += 1;
+
     // preserve contact from URL if form doesn't include it but dashboard linked here
     const contactFromUrl = searchParams.get("contact");
     if (!params.get("contact") && contactFromUrl) {
@@ -58,6 +90,9 @@ export default function CustomerFilters({
   }
 
   function handleReset() {
+    setQuery("");
+    lastSubmittedQuery.current = "";
+    searchSequence.current += 1;
     startTransition(() => {
       router.push("/customers");
     });
@@ -74,8 +109,10 @@ export default function CustomerFilters({
         </label>
         <input
           name="q"
-          defaultValue={searchParams.get("q") ?? ""}
-          placeholder="고객명 · 연락처 · 공사주소"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="고객명 · 연락처 · 주소 · 현장명"
+          aria-busy={pending}
           className={inputClass}
         />
       </div>

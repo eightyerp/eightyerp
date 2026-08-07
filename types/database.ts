@@ -118,6 +118,9 @@ export type LeadSource = {
   created_at: string;
 };
 
+export type EmployeeOption = Pick<Employee, "id" | "name" | "title">;
+export type LeadSourceOption = Pick<LeadSource, "id" | "name">;
+
 export type Profile = {
   id: string;
   employee_id: string | null;

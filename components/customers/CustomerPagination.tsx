@@ -7,7 +7,7 @@ type CustomerPaginationProps = {
   searchParams: Record<string, string | undefined>;
 };
 
-function buildHref(
+export function buildCustomerPaginationHref(
   page: number,
   searchParams: Record<string, string | undefined>,
 ): string {
@@ -42,7 +42,7 @@ export default function CustomerPagination({
       </p>
       <div className="flex flex-wrap items-center gap-1">
         <Link
-          href={buildHref(prev, searchParams)}
+          href={buildCustomerPaginationHref(prev, searchParams)}
           aria-disabled={page <= 1}
           className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
             page <= 1
@@ -61,7 +61,7 @@ export default function CustomerPagination({
                 <span className="px-1 text-xs text-slate-600">…</span>
               )}
               <Link
-                href={buildHref(p, searchParams)}
+                href={buildCustomerPaginationHref(p, searchParams)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
                   p === page
                     ? "bg-navy-800 text-white"
@@ -74,7 +74,7 @@ export default function CustomerPagination({
           );
         })}
         <Link
-          href={buildHref(next, searchParams)}
+          href={buildCustomerPaginationHref(next, searchParams)}
           aria-disabled={page >= totalPages}
           className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
             page >= totalPages
