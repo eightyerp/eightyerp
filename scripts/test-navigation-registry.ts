@@ -1,0 +1,101 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  ADMIN_ROLES,
+  NAVIGATION_REGISTRY,
+  filterNavigation,
+  getActiveNavigationItemId,
+  isNavigationRouteActive,
+} from "../lib/modules/navigation";
+import { ERP_MODULE_IDS, ERP_MODULES } from "../lib/modules/registry";
+
+const appDirectory = path.join(process.cwd(), "app");
+const pageFiles: string[] = [];
+
+function collectPageFiles(directory: string) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) collectPageFiles(entryPath);
+    if (entry.isFile() && entry.name === "page.tsx") pageFiles.push(entryPath);
+  }
+}
+
+function pageFileToRoutePattern(pageFile: string) {
+  const segments = path
+    .relative(appDirectory, path.dirname(pageFile))
+    .split(path.sep)
+    .filter((segment) => segment && !segment.startsWith("(") && !segment.startsWith("@"));
+
+  const pattern = segments.map((segment) => {
+    if (/^\[\[\.\.\..+\]\]$/.test(segment)) return "(?:/.*)?";
+    if (/^\[\.\.\..+\]$/.test(segment)) return "/.+";
+    if (/^\[.+\]$/.test(segment)) return "/[^/]+";
+    return `/${segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+  }).join("");
+
+  return new RegExp(`^${pattern || "/"}$`);
+}
+
+function isExternalRoute(route: string) {
+  return /^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(route);
+}
+
+collectPageFiles(appDirectory);
+const appRoutePatterns = pageFiles.map(pageFileToRoutePattern);
+const items = NAVIGATION_REGISTRY.flatMap((group) => group.items);
+const readyItems = items.filter((item) => item.status !== "coming_soon");
+const internalReadyItems = readyItems.filter(
+  (item) => item.route && item.route.startsWith("/") && !isExternalRoute(item.route),
+);
+
+assert.equal(new Set(ERP_MODULE_IDS).size, ERP_MODULE_IDS.length, "모듈 ID는 중복될 수 없음");
+assert.equal(ERP_MODULES.length, ERP_MODULE_IDS.length, "모든 모듈 정의 필요");
+assert.equal(new Set(items.map((item) => item.id)).size, items.length, "메뉴 ID는 중복될 수 없음");
+
+for (const item of items) {
+  assert.ok(ERP_MODULE_IDS.includes(item.moduleId), `${item.id}: 유효한 moduleId 필요`);
+  if (item.status === "coming_soon") {
+    assert.equal(item.route, null, `${item.id}: coming_soon 메뉴는 클릭 route를 가질 수 없음`);
+  }
+}
+
+const missingReadyRoutes = internalReadyItems.filter((item) => {
+  const pathname = new URL(item.route!, "https://navigation.test").pathname;
+  return !appRoutePatterns.some((pattern) => pattern.test(pathname));
+});
+
+assert.deepEqual(
+  missingReadyRoutes.map((item) => ({ id: item.id, route: item.route })),
+  [],
+  "모든 ready 내부 route는 실제 Next.js app route와 일치해야 함",
+);
+
+for (const role of ADMIN_ROLES) {
+  const labels = filterNavigation(role).flatMap((group) => group.items.map((item) => item.label));
+  for (const label of ["직원 Master", "가입 승인", "직원 초대", "월 마감"]) {
+    assert.ok(labels.includes(label), `${role}: ${label} 메뉴 필요`);
+  }
+}
+
+const staffLabels = filterNavigation("staff").flatMap((group) => group.items.map((item) => item.label));
+assert.ok(staffLabels.includes("직원 Master"));
+assert.ok(!staffLabels.includes("가입 승인"));
+assert.ok(!staffLabels.includes("월 마감"));
+
+assert.ok(isNavigationRouteActive("/quotes/abc", "/quotes"));
+assert.ok(!isNavigationRouteActive("/customers", "/quotes"));
+assert.equal(
+  getActiveNavigationItemId(items, "/quotes/new", new URLSearchParams("type=interior")),
+  "interior-quote",
+  "query route active 판정 유지",
+);
+
+assert.ok(internalReadyItems.some((item) => item.route === "/schedules/customers"));
+assert.ok(internalReadyItems.some((item) => item.route === "/schedules/processes"));
+assert.ok(!internalReadyItems.some((item) => item.route === "/schedules"));
+assert.ok(!internalReadyItems.some((item) => item.route?.startsWith("/finance")));
+
+console.log(
+  `PASS: ${ERP_MODULES.length} modules, ${NAVIGATION_REGISTRY.length} groups, ${readyItems.length} ready routes, ${missingReadyRoutes.length} missing ready routes`,
+);
