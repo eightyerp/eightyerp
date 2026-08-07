@@ -15,15 +15,15 @@ import {
 import type { InquiryMissingField } from "@/lib/crm/parse-inquiry";
 import type {
   CustomerStatus,
-  Employee,
+  EmployeeOption,
   InquirySourceType,
-  LeadSource,
+  LeadSourceOption,
   ParsedInquiryData,
 } from "@/types/database";
 
 type Props = {
-  employees: Employee[];
-  leadSources: LeadSource[];
+  employees: EmployeeOption[];
+  leadSources: LeadSourceOption[];
   defaultAssignedEmployeeId?: string | null;
   canChangeAssignee?: boolean;
 };

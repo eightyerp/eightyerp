@@ -10,6 +10,11 @@ import {
 import { getContactBucket } from "@/lib/crm/contact";
 import { normalizePhone } from "@/lib/crm/parse-inquiry";
 import { CUSTOMER_PAGE_SIZE } from "@/lib/crm/constants";
+import {
+  buildCustomerSearchFilter,
+  CUSTOMER_LIST_SELECT,
+  normalizeCustomerSearchTerm,
+} from "@/lib/crm/customer-list-query";
 import type {
   ActivityType,
   ContactScheduleItem,
@@ -25,9 +30,11 @@ import type {
   CustomerWithRelations,
   DashboardCrmStats,
   Employee,
+  EmployeeOption,
   InquiryMessage,
   InquirySourceType,
   LeadSource,
+  LeadSourceOption,
   ParsedInquiryData,
 } from "@/types/database";
 
@@ -217,6 +224,30 @@ export async function getEmployees(): Promise<Employee[]> {
   return (data ?? []) as Employee[];
 }
 
+export async function getCustomerListEmployees(): Promise<EmployeeOption[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("employees")
+    .select("id, name, title")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as EmployeeOption[];
+}
+
+export async function getCustomerListLeadSources(): Promise<LeadSourceOption[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lead_sources")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LeadSourceOption[];
+}
+
 export async function getCustomers(
   filters: CustomerListFilters = {},
 ): Promise<CustomerListResult> {
@@ -227,19 +258,31 @@ export async function getCustomers(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  const searchTerm = filters.q
+    ? normalizeCustomerSearchTerm(filters.q)
+    : "";
+  let projectCustomerIds: string[] = [];
+
+  if (searchTerm) {
+    const { data: projectMatches, error: projectSearchError } = await supabase
+      .from("projects")
+      .select("customer_id")
+      .ilike("name", `%${searchTerm}%`)
+      .is("deleted_at", null);
+
+    if (projectSearchError) throw new Error(projectSearchError.message);
+    projectCustomerIds = (projectMatches ?? []).map((project) => project.customer_id);
+  }
+
   let query = supabase
     .from("customers")
-    .select(
-      `
-      *,
-      lead_sources ( id, name ),
-      employees ( id, name, title ),
-      customer_checklists ( id, is_completed ),
-      customer_activities ( id, created_at )
-    `,
-      { count: "exact" },
-    )
-    .order("created_at", { ascending: false });
+    .select(CUSTOMER_LIST_SELECT, { count: "exact" })
+    .order("created_at", { ascending: false })
+    .order("created_at", {
+      referencedTable: "customer_activities",
+      ascending: false,
+    })
+    .limit(1, { referencedTable: "customer_activities" });
 
   if (filters.deletedOnly) {
     if (!access.isAdmin) {
@@ -260,9 +303,8 @@ export async function getCustomers(
     query = query.eq("assigned_employee_id", filters.employeeId);
   }
 
-  if (filters.q?.trim()) {
-    const q = filters.q.trim().replace(/[%_,]/g, "");
-    query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%,address.ilike.%${q}%`);
+  if (searchTerm) {
+    query = query.or(buildCustomerSearchFilter(searchTerm, projectCustomerIds));
   }
   if (filters.leadSourceId) {
     query = query.eq("lead_source_id", filters.leadSourceId);
@@ -303,7 +345,9 @@ export async function getCustomers(
   const { data, error, count } = await query.range(from, to);
   if (error) throw new Error(error.message);
 
-  const customers = ((data ?? []) as CustomerWithRelations[]).map(enrichCustomer);
+  const customers = ((data ?? []) as unknown as CustomerWithRelations[]).map(
+    enrichCustomer,
+  );
   const total = count ?? customers.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
