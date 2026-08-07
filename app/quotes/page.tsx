@@ -1,12 +1,11 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import QuotesList from "@/components/quotes/QuotesList";
-import { getCurrentUserAccess } from "@/lib/crm/access";
 import {
   schemaMissingDevHint,
   schemaMissingStaffMessage,
 } from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
-import { listQuotes } from "@/lib/crm/quote-mgmt";
+import { listQuotesPage } from "@/lib/crm/quote-mgmt";
 import {
   listInteriorImportCustomers,
   type InteriorImportCustomerOption,
@@ -32,34 +31,70 @@ async function isQuotesSchemaMissing(): Promise<boolean> {
   }
 }
 
-export default async function QuotesPage() {
-  const userAccess = await getCurrentUserAccess();
-  const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
+type QuotesPageProps = {
+  searchParams: Promise<{
+    q?: string;
+    quoteType?: string;
+    status?: string;
+    employeeId?: string;
+    lxOnly?: string;
+    contractOnly?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    page?: string;
+  }>;
+};
+
+export default async function QuotesPage({ searchParams }: QuotesPageProps) {
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page ?? "1") || 1);
   let quotes: ErpQuote[] = [];
+  let total = 0;
+  let totalPages = 1;
   let employees: Employee[] = [];
   let importCustomers: InteriorImportCustomerOption[] = [];
   let lockEmployeeId: string | null = null;
   let loadError: string | null = null;
   let tablesMissing = false;
+  let isAdmin = false;
 
   try {
     const access = await getScheduleAccess();
+    isAdmin = access.isAdmin;
     lockEmployeeId =
       !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
-    const [quoteList, employeeList, customerList] = await Promise.all([
-      listQuotes(),
+    const [employeeList, customerList] = await Promise.all([
       listEmployeesInScope(access),
       listInteriorImportCustomers(),
     ]);
-    quotes = quoteList;
     employees = employeeList;
     importCustomers = customerList;
+    const result = await listQuotesPage(
+      {
+        q: params.q,
+        quoteType: params.quoteType,
+        status: params.status,
+        employeeId: lockEmployeeId ?? params.employeeId,
+        lxOnly: params.lxOnly === "true",
+        contractOnly: params.contractOnly === "true",
+        createdFrom: params.createdFrom,
+        createdTo: params.createdTo,
+      },
+      page,
+      access,
+      employeeList,
+    );
+    quotes = result.quotes;
+    total = result.total;
+    totalPages = result.totalPages;
   } catch {
     tablesMissing = await isQuotesSchemaMissing();
     loadError = tablesMissing
       ? null
       : "견적 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
+
+  const devHint = schemaMissingDevHint(MIGRATION_PATH, isAdmin);
 
   return (
     <DashboardLayout>
@@ -94,6 +129,10 @@ export default async function QuotesPage() {
             employees={employees}
             importCustomers={importCustomers}
             lockEmployeeId={lockEmployeeId}
+            initialFilters={params}
+            page={page}
+            total={total}
+            totalPages={totalPages}
           />
         )}
       </div>
