@@ -5,6 +5,7 @@ import { requireAuthenticatedAccess } from "@/lib/crm/access";
 import {
   getScheduleAccess,
   listEmployeesInScope,
+  type ScheduleAccess,
 } from "@/lib/crm/schedule-access";
 import {
   DEFAULT_QUOTE_VAT_RATE,
@@ -32,6 +33,10 @@ import type {
   ErpQuoteStatus,
   ErpQuoteType,
 } from "@/types/database";
+import {
+  QUOTE_LIST_PAGE_SIZE,
+  QUOTE_LIST_SELECT,
+} from "@/lib/crm/quote-list-query";
 
 /** createQuote 성공 시 최소 반환 (FULL getQuoteById / SELECT_FULL 없음) */
 export type CreatedQuoteResult = {
@@ -450,6 +455,101 @@ export type QuoteListFilters = {
   createdTo?: string;
   customerId?: string;
 };
+
+export type QuoteListPageResult = {
+  quotes: ErpQuote[];
+  total: number;
+  totalPages: number;
+};
+
+function normalizeQuoteSearch(value: string | undefined): string {
+  return (value ?? "").trim().replace(/[%_,()]/g, "");
+}
+
+export async function listQuotesPage(
+  filters: QuoteListFilters,
+  page: number,
+  access: ScheduleAccess,
+  scopedEmployees: readonly { id: string }[],
+): Promise<QuoteListPageResult> {
+  const supabase = await createClient();
+  const safePage = Math.max(1, page);
+  const scopedIds = scopedEmployees.map((employee) => employee.id);
+  const q = normalizeQuoteSearch(filters.q);
+
+  if (
+    filters.employeeId &&
+    !access.canViewAll &&
+    !scopedIds.includes(filters.employeeId)
+  ) {
+    return { quotes: [], total: 0, totalPages: 1 };
+  }
+
+  const customerScopePromise =
+    access.canViewAll || scopedIds.length === 0
+      ? Promise.resolve([] as string[])
+      : supabase
+          .from("customers")
+          .select("id")
+          .in("assigned_employee_id", scopedIds)
+          .is("deleted_at", null)
+          .then(({ data, error }) => {
+            if (error) throw new Error("견적 조회 범위를 확인하지 못했습니다.");
+            return (data ?? []).map((row) => String(row.id));
+          });
+  const searchCustomerPromise = q
+    ? supabase
+        .from("customers")
+        .select("id")
+        .ilike("name", `%${q}%`)
+        .is("deleted_at", null)
+        .then(({ data, error }) => {
+          if (error) throw new Error("견적 고객 검색에 실패했습니다.");
+          return (data ?? []).map((row) => String(row.id));
+        })
+    : Promise.resolve([] as string[]);
+
+  const [customerScopeIds, searchCustomerIds] = await Promise.all([
+    customerScopePromise,
+    searchCustomerPromise,
+  ]);
+
+  let query = supabase
+    .from("quotes")
+    .select(QUOTE_LIST_SELECT, { count: "exact" })
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  if (!access.canViewAll) {
+    const scope = [`created_by.eq.${access.userId}`];
+    if (scopedIds.length > 0) scope.push(`assigned_employee_id.in.(${scopedIds.join(",")})`);
+    if (customerScopeIds.length > 0) scope.push(`customer_id.in.(${customerScopeIds.join(",")})`);
+    query = query.or(scope.join(","));
+  }
+  if (q) {
+    const search = [`quote_number.ilike.%${q}%`, `title.ilike.%${q}%`];
+    if (searchCustomerIds.length > 0) search.push(`customer_id.in.(${searchCustomerIds.join(",")})`);
+    query = query.or(search.join(","));
+  }
+  if (filters.quoteType) query = query.eq("quote_type", filters.quoteType);
+  if (filters.status) query = query.eq("status", filters.status);
+  if (filters.employeeId) query = query.eq("assigned_employee_id", filters.employeeId);
+  if (filters.lxOnly) query = query.eq("is_lx_material", true);
+  if (filters.contractOnly) query = query.eq("is_contract_quote", true);
+  if (filters.createdFrom) query = query.gte("created_at", `${filters.createdFrom}T00:00:00`);
+  if (filters.createdTo) query = query.lte("created_at", `${filters.createdTo}T23:59:59`);
+
+  const from = (safePage - 1) * QUOTE_LIST_PAGE_SIZE;
+  const { data, error, count } = await query.range(from, from + QUOTE_LIST_PAGE_SIZE - 1);
+  if (error) throw new Error("견적 목록을 불러오지 못했습니다.");
+
+  const total = count ?? 0;
+  return {
+    quotes: (data ?? []) as unknown as ErpQuote[],
+    total,
+    totalPages: Math.max(1, Math.ceil(total / QUOTE_LIST_PAGE_SIZE)),
+  };
+}
 
 function quoteInScope(
   row: ErpQuote,

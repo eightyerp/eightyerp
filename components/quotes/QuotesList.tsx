@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_STATUS_BADGE,
@@ -11,6 +11,8 @@ import {
 } from "@/lib/crm/quote-constants";
 import { formatEmployeeLabel } from "@/lib/crm/constants";
 import { calcQuoteSummary, isQuoteExpired } from "@/lib/crm/quote-mgmt-client";
+import { QUOTE_SEARCH_DEBOUNCE_MS } from "@/lib/crm/quote-list-query";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import { consumeQuoteListFlash } from "@/lib/crm/quote-list-flash";
 import InteriorQuoteExcelImportModal from "@/components/quotes/InteriorQuoteExcelImportModal";
 import type { InteriorImportCustomerOption } from "@/lib/crm/interior-quote-import";
@@ -24,6 +26,10 @@ type QuotesListProps = {
   emptyMessage?: string;
   lockEmployeeId?: string | null;
   importCustomers?: InteriorImportCustomerOption[];
+  initialFilters?: Record<string, string | undefined>;
+  page?: number;
+  total?: number;
+  totalPages?: number;
 };
 
 type Filters = {
@@ -73,17 +79,73 @@ export default function QuotesList({
   emptyMessage = "등록된 견적이 없습니다.",
   lockEmployeeId = null,
   importCustomers = [],
+  initialFilters,
+  page = 1,
+  total = quotes.length,
+  totalPages = 1,
 }: QuotesListProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
   const [filters, setFilters] = useState<Filters>({
-    ...EMPTY_FILTERS,
-    employeeId: lockEmployeeId ?? "",
+    q: initialFilters?.q ?? "",
+    quoteType: initialFilters?.quoteType ?? "",
+    status: initialFilters?.status ?? "",
+    employeeId: lockEmployeeId ?? initialFilters?.employeeId ?? "",
+    lxOnly: initialFilters?.lxOnly === "true",
+    contractOnly: initialFilters?.contractOnly === "true",
+    createdFrom: initialFilters?.createdFrom ?? "",
+    createdTo: initialFilters?.createdTo ?? "",
   });
   const [sort, setSort] = useState<SortKey>("recent");
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [highlightQuoteId, setHighlightQuoteId] = useState<string | null>(null);
   const [interiorImportOpen, setInteriorImportOpen] = useState(false);
   const highlightTimerRef = useRef<number | null>(null);
+  const lastSubmittedQuery = useRef(filters.q.trim());
+  const searchSequence = useRef(0);
+
+  function navigateWithFilters(next: Filters) {
+    const params = new URLSearchParams(searchParams.toString());
+    const values: Record<string, string> = {
+      q: next.q.trim(),
+      quoteType: next.quoteType,
+      status: next.status,
+      employeeId: lockEmployeeId ? "" : next.employeeId,
+      lxOnly: next.lxOnly ? "true" : "",
+      contractOnly: next.contractOnly ? "true" : "",
+      createdFrom: next.createdFrom,
+      createdTo: next.createdTo,
+    };
+    for (const [key, value] of Object.entries(values)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    params.delete("page");
+    const query = params.toString();
+    startTransition(() => {
+      router.replace(query ? `/quotes?${query}` : "/quotes", { scroll: false });
+    });
+  }
+
+  useEffect(() => {
+    const normalizedQuery = filters.q.trim();
+    if (normalizedQuery === lastSubmittedQuery.current) return;
+    const sequence = ++searchSequence.current;
+    const timer = window.setTimeout(() => {
+      if (sequence !== searchSequence.current) return;
+      lastSubmittedQuery.current = normalizedQuery;
+      const params = new URLSearchParams(searchParams.toString());
+      if (normalizedQuery) params.set("q", normalizedQuery);
+      else params.delete("q");
+      params.delete("page");
+      const query = params.toString();
+      startTransition(() => {
+        router.replace(query ? `/quotes?${query}` : "/quotes", { scroll: false });
+      });
+    }, QUOTE_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [filters.q, router, searchParams]);
 
   useEffect(() => {
     const flash = consumeQuoteListFlash();
@@ -114,7 +176,9 @@ export default function QuotesList({
   }, [router]);
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    const next = { ...filters, [key]: value };
+    setFilters(next);
+    if (key !== "q") navigateWithFilters(next);
   }
 
   const filtered = useMemo(() => {
@@ -211,8 +275,8 @@ export default function QuotesList({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
-          총 {filtered.length}건
-          {hasActiveFilters && ` (전체 ${quotes.length}건 중)`}
+          총 {total}건
+          {hasActiveFilters && ` (현재 페이지 ${filtered.length}건)`}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -340,12 +404,16 @@ export default function QuotesList({
         <div className="flex items-end">
           <button
             type="button"
-            onClick={() =>
-              setFilters({
+            onClick={() => {
+              const next = {
                 ...EMPTY_FILTERS,
                 employeeId: lockEmployeeId ?? "",
-              })
-            }
+              };
+              searchSequence.current += 1;
+              lastSubmittedQuery.current = "";
+              setFilters(next);
+              navigateWithFilters(next);
+            }}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100"
           >
             필터 초기화
@@ -603,6 +671,13 @@ export default function QuotesList({
           </div>
         </div>
       )}
+      {totalPages > 1 ? (
+        <QuotePagination
+          page={page}
+          totalPages={totalPages}
+          searchParams={searchParams}
+        />
+      ) : null}
       <InteriorQuoteExcelImportModal
         open={interiorImportOpen}
         onClose={() => setInteriorImportOpen(false)}
@@ -611,6 +686,49 @@ export default function QuotesList({
         lockEmployeeId={lockEmployeeId}
       />
     </div>
+  );
+}
+
+function QuotePagination({
+  page,
+  totalPages,
+  searchParams,
+}: {
+  page: number;
+  totalPages: number;
+  searchParams: ReadonlyURLSearchParams;
+}) {
+  function href(targetPage: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (targetPage > 1) params.set("page", String(targetPage));
+    else params.delete("page");
+    const query = params.toString();
+    return query ? `/quotes?${query}` : "/quotes";
+  }
+
+  return (
+    <nav
+      aria-label="견적 목록 페이지"
+      className="flex items-center justify-center gap-2"
+    >
+      <Link
+        href={href(Math.max(1, page - 1))}
+        aria-disabled={page <= 1}
+        className={page <= 1 ? disabledPageClass : pageClass}
+      >
+        이전
+      </Link>
+      <span className="text-sm text-slate-600">
+        {page} / {totalPages}
+      </span>
+      <Link
+        href={href(Math.min(totalPages, page + 1))}
+        aria-disabled={page >= totalPages}
+        className={page >= totalPages ? disabledPageClass : pageClass}
+      >
+        다음
+      </Link>
+    </nav>
   );
 }
 
@@ -638,3 +756,8 @@ const filterLabelClass =
 
 const inputClass =
   "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[15px] text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
+
+const pageClass =
+  "rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100";
+const disabledPageClass =
+  "pointer-events-none rounded-lg border border-gray-100 px-3 py-1.5 text-sm font-medium text-slate-400";
