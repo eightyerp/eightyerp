@@ -127,6 +127,7 @@ export type LeadSourceOption = Pick<LeadSource, "id" | "name">;
 export type Profile = {
   id: string;
   employee_id: string | null;
+  active_company_id?: string | null;
   role: UserRole;
   permissions: Record<string, boolean>;
   is_active: boolean;
@@ -147,7 +148,7 @@ export type Profile = {
 
 export type ProfileWithEmployee = Profile & {
   employees:
-    | (Pick<Employee, "id" | "name" | "title" | "team_id" | "is_active"> &
+    | (Pick<Employee, "id" | "company_id" | "name" | "title" | "team_id" | "is_active"> &
         Partial<Pick<Employee, "teams">>)
     | null;
 };

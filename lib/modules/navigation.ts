@@ -2,8 +2,10 @@ import type { UserRole } from "@/types/database";
 import type { ErpModuleId } from "./registry";
 
 export type NavigationRole = UserRole;
+export type CompanyNavigationRole = "owner" | "director" | "admin" | "manager" | "employee";
 
 const NAVIGATION_ROLES = ["super_admin", "admin", "manager", "staff"] as const satisfies readonly UserRole[];
+const COMPANY_NAVIGATION_ROLES = ["owner", "director", "admin", "manager", "employee"] as const satisfies readonly CompanyNavigationRole[];
 
 export type NavigationItem = {
   id: string;
@@ -12,6 +14,7 @@ export type NavigationItem = {
   icon: string;
   moduleId: ErpModuleId;
   roles?: readonly NavigationRole[];
+  companyRoles?: readonly CompanyNavigationRole[];
   featureFlag?: string;
   status?: "ready" | "coming_soon";
   match?: "exact" | "prefix";
@@ -24,6 +27,8 @@ export type NavigationGroup = {
 };
 
 export const ADMIN_ROLES: readonly NavigationRole[] = ["super_admin", "admin"];
+export const COMPANY_ADMIN_ROLES: readonly CompanyNavigationRole[] = ["owner", "director", "admin"];
+export const COMPANY_APPROVAL_ROLES: readonly CompanyNavigationRole[] = ["owner", "director"];
 
 export const NAVIGATION_REGISTRY: readonly NavigationGroup[] = [
   { id: "dashboard", label: "대시보드", items: [{ id: "dashboard", label: "대시보드", route: "/dashboard", icon: "▦", moduleId: "core", match: "exact" }] },
@@ -64,25 +69,39 @@ export const NAVIGATION_REGISTRY: readonly NavigationGroup[] = [
   ] },
   { id: "system", label: "시스템관리", items: [
     { id: "employees", label: "직원 Master", route: "/system/employees", icon: "♙", moduleId: "hr" },
-    { id: "approvals", label: "계정 재연결", route: "/system/approvals", icon: "✓", moduleId: "system", roles: ADMIN_ROLES },
-    { id: "invitations", label: "직원 초대", route: "/system/invitations", icon: "+", moduleId: "system", roles: ADMIN_ROLES },
-    { id: "company-permissions", label: "회사·권한", route: null, icon: "⚙", moduleId: "system", status: "coming_soon", roles: ADMIN_ROLES },
-    { id: "system-status", label: "시스템 상태", route: null, icon: "●", moduleId: "system", status: "coming_soon", roles: ADMIN_ROLES },
+    { id: "approvals", label: "계정 재연결", route: "/system/approvals", icon: "✓", moduleId: "system", companyRoles: COMPANY_APPROVAL_ROLES },
+    { id: "invitations", label: "직원 초대", route: "/system/invitations", icon: "+", moduleId: "system", companyRoles: COMPANY_ADMIN_ROLES },
+    { id: "company-permissions", label: "회사·권한", route: null, icon: "⚙", moduleId: "system", status: "coming_soon", companyRoles: COMPANY_ADMIN_ROLES },
+    { id: "system-status", label: "시스템 상태", route: null, icon: "●", moduleId: "system", status: "coming_soon", companyRoles: COMPANY_ADMIN_ROLES },
   ] },
 ] as const;
 
-export function filterNavigation(role: NavigationRole | null, featureFlags: ReadonlySet<string> = new Set()) {
+export function filterNavigation(
+  role: NavigationRole | null,
+  featureFlags: ReadonlySet<string> = new Set(),
+  companyRole: CompanyNavigationRole | null = null,
+) {
   return NAVIGATION_REGISTRY.map((group) => ({
     ...group,
-    items: group.items.filter((item) =>
-      (!item.roles || (role != null && item.roles.includes(role))) &&
-      (!item.featureFlag || featureFlags.has(item.featureFlag)),
-    ),
+    items: group.items.filter((item) => {
+      const roleAllowed =
+        (!item.roles && !item.companyRoles) ||
+        (role != null && item.roles?.includes(role) === true) ||
+        (companyRole != null &&
+          item.companyRoles?.includes(companyRole) === true);
+
+      return roleAllowed &&
+        (!item.featureFlag || featureFlags.has(item.featureFlag));
+    }),
   })).filter((group) => group.items.length > 0);
 }
 
 export function isNavigationRole(value: unknown): value is NavigationRole {
   return typeof value === "string" && NAVIGATION_ROLES.some((role) => role === value);
+}
+
+export function isCompanyNavigationRole(value: unknown): value is CompanyNavigationRole {
+  return typeof value === "string" && COMPANY_NAVIGATION_ROLES.some((role) => role === value);
 }
 
 export function isNavigationRouteActive(

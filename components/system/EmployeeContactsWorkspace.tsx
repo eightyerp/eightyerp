@@ -236,21 +236,22 @@ export default function EmployeeContactsWorkspace({
               <div className="mt-5 border-t pt-4">
                 <h4 className="text-sm font-semibold">비활성화 영향 분석 및 담당업무 이전</h4>
                 <p className="mt-1 text-sm text-slate-600">
-                  현재 담당: 고객 {selected.customer_count}건 · 견적 {selected.quote_count}건 · 일정 {selected.schedule_count}건
+                  표시 카운트: 고객 {selected.customer_count}건 · 견적 {selected.quote_count}건 · 일정 {selected.schedule_count}건
                 </p>
-                {selected.customer_count + selected.quote_count + selected.schedule_count > 0 ? (
-                  <form action={(formData) => {
-                    const targetId = String(formData.get("target_employee_id") ?? "");
-                    if (!targetId || !confirm("고객·견적·일정 담당자를 선택한 직원으로 일괄 이전합니다. 계속할까요?")) return;
-                    run(() => transferEmployeeAssignmentsAction(selected.id, targetId), "담당 업무를 이전했습니다.");
-                  }} className="mt-2 flex gap-2">
-                    <select name="target_employee_id" required className="min-w-56 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
-                      <option value="">이전 대상 선택</option>
-                      {employees.filter((employee) => employee.id !== selected.id && employee.is_active && !employee.merged_into_employee_id).map((employee) => <option key={employee.id} value={employee.id}>{employeeMasterLabel(employee, teams)}</option>)}
-                    </select>
-                    <button type="submit" disabled={pending} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-75">담당업무 일괄 이전</button>
-                  </form>
-                ) : <p className="mt-2 text-xs text-emerald-700">담당 업무가 없어 안전하게 비활성화할 수 있습니다.</p>}
+                <p className="mt-1 text-xs text-slate-500">
+                  프로젝트·계약·직원 할 일·레거시 견적·대기 알림도 실행 시 함께 확인합니다.
+                </p>
+                <form action={(formData) => {
+                  const targetId = String(formData.get("target_employee_id") ?? "");
+                  if (!targetId || !confirm("모든 지원 업무의 담당자를 선택한 직원으로 일괄 이전합니다. 계속할까요?")) return;
+                  run(() => transferEmployeeAssignmentsAction(selected.id, targetId), "담당 업무를 이전했습니다.");
+                }} className="mt-2 flex gap-2">
+                  <select name="target_employee_id" required className="min-w-56 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
+                    <option value="">이전 대상 선택</option>
+                    {employees.filter((employee) => employee.id !== selected.id && employee.is_active && !employee.merged_into_employee_id).map((employee) => <option key={employee.id} value={employee.id}>{employeeMasterLabel(employee, teams)}</option>)}
+                  </select>
+                  <button type="submit" disabled={pending} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-75">담당업무 일괄 이전</button>
+                </form>
               </div>
             ) : null}
             {selected?.role ? (

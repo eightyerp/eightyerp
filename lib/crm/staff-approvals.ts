@@ -1,5 +1,7 @@
-import { createClient } from "@/lib/supabase-server";
-import { requireAdminAccess } from "@/lib/crm/access";
+import {
+  getCurrentCompanyAccess,
+  requireCurrentCompanyRoleAccess,
+} from "@/lib/crm/access";
 import { isMissingEmployeeMergeColumnError } from "@/lib/crm/employee-master-shared";
 import type { Employee, Profile, Team, UserRole } from "@/types/database";
 
@@ -7,17 +9,22 @@ export type PendingSignup = Profile & {
   employees: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
 };
 
+const APPROVAL_COMPANY_ROLES = ["owner", "director"] as const;
+
+function requireApprovalAccess() {
+  return requireCurrentCompanyRoleAccess(
+    APPROVAL_COMPANY_ROLES,
+    "현재 회사의 owner·director만 계정 연결을 관리할 수 있습니다.",
+  );
+}
+
 export async function getApprovalActorCompanyRole(): Promise<string | null> {
-  await requireAdminAccess();
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("current_company_role");
-  if (error) throw new Error(error.message);
-  return typeof data === "string" ? data : null;
+  const { companyRole } = await getCurrentCompanyAccess();
+  return companyRole;
 }
 
 export async function listPendingSignups(): Promise<PendingSignup[]> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
   const { data, error } = await supabase.rpc(
     "list_pending_company_signups",
   );
@@ -29,8 +36,7 @@ export async function listPendingSignups(): Promise<PendingSignup[]> {
 }
 
 export async function listManagedProfiles(): Promise<PendingSignup[]> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
   const { data, error } = await supabase.rpc(
     "list_managed_company_profiles",
   );
@@ -54,8 +60,7 @@ export type ApproveSignupInput = {
 export async function approveSignup(
   input: ApproveSignupInput,
 ): Promise<Profile> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
 
   if (input.mode === "link") {
     const employeeId = input.employeeId?.trim();
@@ -110,8 +115,7 @@ export async function rejectSignup(
   userId: string,
   reason?: string,
 ): Promise<Profile> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
   const { data, error } = await supabase.rpc("reject_staff_signup", {
     p_user_id: userId,
     p_reason: reason?.trim() || null,
@@ -121,8 +125,7 @@ export async function rejectSignup(
 }
 
 export async function deactivateUser(userId: string): Promise<Profile> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
   const { data, error } = await supabase.rpc("deactivate_staff_user", {
     p_user_id: userId,
   });
@@ -131,8 +134,7 @@ export async function deactivateUser(userId: string): Promise<Profile> {
 }
 
 export async function listEmployeesForApproval(): Promise<Employee[]> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
   const load = (filterMerged: boolean) => {
     let query = supabase
       .from("employees")
@@ -152,8 +154,7 @@ export async function listEmployeesForApproval(): Promise<Employee[]> {
 }
 
 export async function listTeamsForApproval(): Promise<Team[]> {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireApprovalAccess();
   const { data, error } = await supabase
     .from("teams")
     .select("*")

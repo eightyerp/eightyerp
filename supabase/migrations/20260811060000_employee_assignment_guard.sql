@@ -12,6 +12,319 @@
 
 begin;
 
+-- Company membership is the authoritative company-scoped role store. Keep
+-- manager distinct from ordinary employee so switching companies cannot carry
+-- a global profiles.role='manager' privilege into another company.
+alter table public.company_memberships
+  drop constraint if exists company_memberships_role_check;
+alter table public.company_memberships
+  add constraint company_memberships_role_check
+  check (role in ('owner', 'director', 'admin', 'manager', 'employee'));
+
+-- Preserve existing managers only in the explicitly active, employee-aligned
+-- company. Secondary memberships remain ordinary employees until separately
+-- approved as managers in that company.
+update public.company_memberships membership_row
+set role = 'manager',
+    updated_at = now()
+from public.profiles profile_row
+where profile_row.id = membership_row.user_id
+  and profile_row.role = 'manager'
+  and profile_row.is_active = true
+  and profile_row.is_approved = true
+  and profile_row.approval_status = 'approved'
+  and profile_row.active_company_id = membership_row.company_id
+  and profile_row.employee_id is not null
+  and membership_row.employee_id is not distinct from profile_row.employee_id
+  and membership_row.status = 'active'
+  and membership_row.role = 'employee';
+
+-- Legacy RLS policies call these helpers throughout CRM, quotes, schedules,
+-- contracts, and materials. Resolve them from the active company membership so
+-- a global profile role cannot leak privileges across a company switch, while a
+-- self-service owner whose profile.role remains staff receives owner access.
+create or replace function public.current_company_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select profile_row.active_company_id
+  from public.profiles profile_row
+  join public.company_memberships membership_row
+    on membership_row.user_id = profile_row.id
+   and membership_row.company_id = profile_row.active_company_id
+   and membership_row.status = 'active'
+  join public.companies company_row
+    on company_row.id = membership_row.company_id
+   and company_row.status = 'active'
+  left join public.employees employee_row
+    on employee_row.id = membership_row.employee_id
+   and employee_row.company_id = membership_row.company_id
+  where profile_row.id = auth.uid()
+    and auth.uid() is not null
+    and profile_row.active_company_id is not null
+    and profile_row.is_active = true
+    and profile_row.is_approved = true
+    and profile_row.approval_status = 'approved'
+    and membership_row.role in ('owner', 'director', 'admin', 'manager', 'employee')
+    and membership_row.employee_id is not distinct from profile_row.employee_id
+    and (
+      (
+        membership_row.employee_id is null
+        and membership_row.role in ('owner', 'director', 'admin')
+      )
+      or (
+        employee_row.id is not null
+        and employee_row.is_active = true
+        and employee_row.merged_into_employee_id is null
+      )
+    )
+  limit 1;
+$$;
+
+create or replace function public.current_company_role()
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select membership_row.role
+  from public.company_memberships membership_row
+  where membership_row.user_id = auth.uid()
+    and auth.uid() is not null
+    and membership_row.company_id = public.current_company_id()
+    and membership_row.status = 'active'
+    and membership_row.role in ('owner', 'director', 'admin', 'manager', 'employee')
+  limit 1;
+$$;
+
+-- Resource mutations are always evaluated in the explicitly selected company.
+-- An active secondary membership must not authorize SECURITY DEFINER RPCs
+-- against that company's rows while a different company is current.
+create or replace function public.is_company_member(p_company_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    auth.uid() is not null
+    and p_company_id is not null
+    and p_company_id = public.current_company_id(),
+    false
+  );
+$$;
+
+-- Assignment-scoped tables such as employee_tasks do not all carry a
+-- company_id column. Resolve tenant ownership through the globally unique
+-- assignee employee before applying the current-company role/team scope.
+create or replace function public.can_access_schedule_assignee(
+  p_employee_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(exists (
+    select 1
+    from public.profiles profile_row
+    join public.company_memberships membership_row
+      on membership_row.user_id = profile_row.id
+     and membership_row.company_id = profile_row.active_company_id
+     and membership_row.status = 'active'
+    left join public.employees actor_employee
+      on actor_employee.id = membership_row.employee_id
+     and actor_employee.company_id = membership_row.company_id
+     and actor_employee.is_active = true
+     and actor_employee.merged_into_employee_id is null
+    join public.employees assignee_employee
+      on assignee_employee.id = p_employee_id
+     and assignee_employee.company_id = membership_row.company_id
+     and assignee_employee.is_active = true
+     and assignee_employee.merged_into_employee_id is null
+    where profile_row.id = auth.uid()
+      and auth.uid() is not null
+      and membership_row.company_id = public.current_company_id()
+      and profile_row.is_active = true
+      and profile_row.is_approved = true
+      and profile_row.approval_status = 'approved'
+      and membership_row.employee_id is not distinct from profile_row.employee_id
+      and (
+        membership_row.role in ('owner', 'director', 'admin')
+        or membership_row.employee_id = p_employee_id
+        or (
+          membership_row.role = 'manager'
+          and actor_employee.id is not null
+          and actor_employee.team_id is not null
+          and assignee_employee.team_id = actor_employee.team_id
+        )
+      )
+  ), false);
+$$;
+
+create or replace function public.is_manager_or_above()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    public.current_company_role() in ('owner', 'director', 'admin', 'manager'),
+    false
+  );
+$$;
+
+-- Switching companies cannot retain an employee identity from another
+-- company. NULL/NULL remains valid for self-service company owners.
+create or replace function public.set_active_company(p_company_id uuid)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_updated integer;
+  v_target_employee_id uuid;
+  v_target_role text;
+begin
+  if auth.uid() is null or p_company_id is null then
+    return false;
+  end if;
+
+  select membership_row.employee_id,
+         membership_row.role
+  into v_target_employee_id,
+       v_target_role
+  from public.company_memberships membership_row
+  join public.companies company_row
+    on company_row.id = membership_row.company_id
+   and company_row.status = 'active'
+  left join public.employees employee_row
+    on employee_row.id = membership_row.employee_id
+   and employee_row.company_id = membership_row.company_id
+  where membership_row.user_id = auth.uid()
+    and membership_row.company_id = p_company_id
+    and membership_row.status = 'active'
+    and membership_row.role in ('owner', 'director', 'admin', 'manager', 'employee')
+    and (
+      (
+        membership_row.employee_id is null
+        and membership_row.role in ('owner', 'director', 'admin')
+      )
+      or (
+        employee_row.id is not null
+        and employee_row.is_active = true
+        and employee_row.merged_into_employee_id is null
+      )
+    )
+  limit 1;
+
+  if not found then
+    return false;
+  end if;
+
+  update public.profiles profile_row
+  set active_company_id = p_company_id,
+      employee_id = v_target_employee_id,
+      updated_at = now()
+  where profile_row.id = auth.uid()
+    and profile_row.is_active = true
+    and profile_row.is_approved = true
+    and profile_row.approval_status = 'approved'
+    and v_target_role is not null;
+
+  get diagnostics v_updated = row_count;
+  return v_updated = 1;
+end;
+$$;
+
+-- Only list memberships that set_active_company() can project safely. This
+-- prevents an employee-role/NULL membership from becoming a one-way lockout.
+create or replace function public.get_my_company_options()
+returns table (
+  company_id uuid,
+  company_name text,
+  business_number_display text,
+  membership_role text,
+  is_current boolean
+)
+language sql
+stable
+security definer
+set search_path = ''
+rows 20
+as $$
+  select company_row.id,
+         company_row.name,
+         company_row.business_number_display,
+         membership_row.role,
+         coalesce(profile_row.active_company_id = company_row.id, false)
+  from public.profiles profile_row
+  join public.company_memberships membership_row
+    on membership_row.user_id = profile_row.id
+   and membership_row.status = 'active'
+  join public.companies company_row
+    on company_row.id = membership_row.company_id
+   and company_row.status = 'active'
+  left join public.employees employee_row
+    on employee_row.id = membership_row.employee_id
+   and employee_row.company_id = membership_row.company_id
+  where auth.uid() is not null
+    and profile_row.id = auth.uid()
+    and profile_row.is_active = true
+    and profile_row.is_approved = true
+    and profile_row.approval_status = 'approved'
+    and membership_row.role in ('owner', 'director', 'admin', 'manager', 'employee')
+    and (
+      (
+        membership_row.employee_id is null
+        and membership_row.role in ('owner', 'director', 'admin')
+      )
+      or (
+        employee_row.id is not null
+        and employee_row.is_active = true
+        and employee_row.merged_into_employee_id is null
+      )
+    )
+  order by
+    case when profile_row.active_company_id = company_row.id then 0 else 1 end,
+    company_row.name,
+    company_row.id;
+$$;
+
+revoke all on function public.is_manager_or_above()
+from public, anon, authenticated, service_role;
+grant execute on function public.is_manager_or_above()
+to anon, authenticated, service_role;
+
+revoke all on function public.is_company_member(uuid)
+from public, anon, authenticated, service_role;
+grant execute on function public.is_company_member(uuid)
+to authenticated, service_role;
+
+revoke all on function public.can_access_schedule_assignee(uuid)
+from public, anon, authenticated, service_role;
+grant execute on function public.can_access_schedule_assignee(uuid)
+to authenticated, service_role;
+
+revoke all on function public.set_active_company(uuid)
+from public, anon, authenticated, service_role;
+grant execute on function public.set_active_company(uuid)
+to authenticated;
+
+revoke all on function public.get_my_company_options()
+from public, anon, authenticated, service_role;
+grant execute on function public.get_my_company_options()
+to authenticated, service_role;
+
 -- The application supports exactly two signup state-machine entries:
 -- self-service company owners and one-time company invitations. Reject missing
 -- or unknown metadata before auth.users is inserted so handle_new_user() can
@@ -136,6 +449,7 @@ begin
 
   v_membership_role := case
     when p_role = 'admin' then 'admin'
+    when p_role = 'manager' then 'manager'
     else 'employee'
   end;
 
@@ -616,7 +930,6 @@ begin
      and new.role is not distinct from old.role
      and new.is_approved is not distinct from old.is_approved
      and new.is_active is not distinct from old.is_active
-     and new.employee_id is not distinct from old.employee_id
      and new.permissions is not distinct from old.permissions
      and new.approval_status is not distinct from old.approval_status
      and new.approved_at is not distinct from old.approved_at
@@ -631,7 +944,22 @@ begin
        where membership_row.user_id = auth.uid()
          and membership_row.company_id = new.active_company_id
          and membership_row.status = 'active'
+         and membership_row.employee_id is not distinct from new.employee_id
          and company_row.status = 'active'
+         and (
+           (
+             membership_row.employee_id is null
+             and membership_row.role in ('owner', 'director', 'admin')
+           )
+           or exists (
+             select 1
+             from public.employees employee_row
+             where employee_row.id = membership_row.employee_id
+               and employee_row.company_id = membership_row.company_id
+               and employee_row.is_active = true
+               and employee_row.merged_into_employee_id is null
+           )
+         )
      )
   then
     return new;

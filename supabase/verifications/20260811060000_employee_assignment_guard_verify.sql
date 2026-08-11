@@ -9,6 +9,11 @@ declare
   v_reject_definition text;
   v_deactivate_definition text;
   v_signup_guard_definition text;
+  v_manager_definition text;
+  v_member_definition text;
+  v_schedule_definition text;
+  v_switch_definition text;
+  v_profile_guard_definition text;
   v_config text[];
 begin
   if v_approve_oid is null then
@@ -40,6 +45,106 @@ begin
      or has_function_privilege('anon', v_approve_oid, 'EXECUTE')
      or has_function_privilege('service_role', v_approve_oid, 'EXECUTE') then
     raise exception 'approve_staff_signup EXECUTE ACL이 올바르지 않습니다.';
+  end if;
+
+  select pg_catalog.lower(pg_get_functiondef('public.is_manager_or_above()'::regprocedure)),
+         pg_catalog.lower(pg_get_functiondef('public.is_company_member(uuid)'::regprocedure)),
+         pg_catalog.lower(pg_get_functiondef('public.can_access_schedule_assignee(uuid)'::regprocedure)),
+         pg_catalog.lower(pg_get_functiondef('public.set_active_company(uuid)'::regprocedure)),
+         pg_catalog.lower(pg_get_functiondef('public.profiles_enforce_security()'::regprocedure))
+  into v_manager_definition,
+       v_member_definition,
+       v_schedule_definition,
+       v_switch_definition,
+       v_profile_guard_definition;
+
+  if position(
+       'current_company_role() in (''owner'', ''director'', ''admin'', ''manager'')'
+       in v_manager_definition
+     ) = 0
+     or v_manager_definition ilike '%profile_row.role%'
+     or v_manager_definition ilike '%from public.profiles%' then
+    raise exception 'manager 권한이 현재 회사 멤버십 역할만 사용하지 않습니다.';
+  end if;
+
+  if position(
+       'p_company_id = public.current_company_id()'
+       in v_member_definition
+     ) = 0 then
+    raise exception 'is_company_member가 현재 활성 회사만 허용하지 않습니다.';
+  end if;
+
+  if position(
+       'membership_row.role = ''manager'''
+       in v_schedule_definition
+     ) = 0
+     or position(
+       'membership_row.company_id = public.current_company_id()'
+       in v_schedule_definition
+     ) = 0
+     or position(
+       'assignee_employee.company_id = membership_row.company_id'
+       in v_schedule_definition
+     ) = 0
+     or v_schedule_definition ilike '%profile_row.role = ''manager''%' then
+    raise exception '일정 담당자 접근의 회사별 manager 계약이 올바르지 않습니다.';
+  end if;
+
+  if position(
+       'employee_id = v_target_employee_id'
+       in v_switch_definition
+     ) = 0
+     or position(
+       'membership_row.employee_id is not distinct from new.employee_id'
+       in v_profile_guard_definition
+     ) = 0 then
+    raise exception '회사 전환의 직원 회사 정합성 검증이 누락되었습니다.';
+  end if;
+
+  if exists (
+    select 1
+    from pg_proc function_row
+    where function_row.oid in (
+      'public.is_manager_or_above()'::regprocedure,
+      'public.is_company_member(uuid)'::regprocedure,
+      'public.can_access_schedule_assignee(uuid)'::regprocedure,
+      'public.set_active_company(uuid)'::regprocedure
+    )
+      and (
+        not function_row.prosecdef
+        or function_row.proconfig is distinct from array['search_path=""']::text[]
+      )
+  ) then
+    raise exception '회사 역할 헬퍼의 SECURITY DEFINER/search_path 계약이 올바르지 않습니다.';
+  end if;
+
+  if not has_function_privilege(
+       'authenticated',
+       'public.is_company_member(uuid)'::regprocedure,
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'service_role',
+       'public.is_company_member(uuid)'::regprocedure,
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.is_company_member(uuid)'::regprocedure,
+       'EXECUTE'
+     ) then
+    raise exception 'is_company_member EXECUTE ACL이 올바르지 않습니다.';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint constraint_row
+    where constraint_row.conrelid = 'public.company_memberships'::regclass
+      and constraint_row.conname = 'company_memberships_role_check'
+      and pg_catalog.pg_get_constraintdef(constraint_row.oid)
+        ilike '%manager%'
+  ) then
+    raise exception '회사 멤버십 manager 역할 제약이 누락되었습니다.';
   end if;
 
   if to_regprocedure('public.enforce_supported_auth_signup_type()') is null then
@@ -209,6 +314,24 @@ begin
   end if;
 end;
 $$;
+
+-- 060 deliberately leaves the legacy global-profile is_admin definition in
+-- place. The company-role widening is installed only at the end of 070, in the
+-- same transaction as every tenantless policy cleanup.
+-- BEGIN 060 INTERMEDIATE IS_ADMIN GUARD
+do $$
+declare
+  v_intermediate_is_admin text := pg_catalog.lower(pg_get_functiondef(
+    'public.is_admin()'::regprocedure
+  ));
+begin
+  if position('public.current_company_role()' in v_intermediate_is_admin) > 0
+     or position('from public.profiles' in v_intermediate_is_admin) = 0 then
+    raise exception '070 tenant cleanup 전에 is_admin 회사 역할이 확대되었습니다.';
+  end if;
+end;
+$$;
+-- END 060 INTERMEDIATE IS_ADMIN GUARD
 
 select
   (

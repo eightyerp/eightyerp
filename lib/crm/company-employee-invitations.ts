@@ -1,4 +1,8 @@
-import { getCurrentUserAccess, requireAdminAccess } from "@/lib/crm/access";
+import {
+  getCurrentCompanyAccess,
+  getCurrentUserAccess,
+  requireCurrentCompanyRoleAccess,
+} from "@/lib/crm/access";
 import { createClient } from "@/lib/supabase-server";
 import type { Team } from "@/types/database";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -40,10 +44,20 @@ export type CreateCompanyEmployeeInvitationInput = {
 
 export type CompanyEmployeeInvitationsPageData = {
   access: Awaited<ReturnType<typeof getCurrentUserAccess>>;
+  canManageInvitations: boolean;
   invitations: CompanyEmployeeInvitation[];
   teams: Team[];
   loadError: string | null;
 };
+
+const INVITATION_COMPANY_ROLES = ["owner", "director", "admin"] as const;
+
+function requireInvitationAccess() {
+  return requireCurrentCompanyRoleAccess(
+    INVITATION_COMPANY_ROLES,
+    "현재 회사의 owner·director·admin만 직원 초대를 관리할 수 있습니다.",
+  );
+}
 
 async function fetchCompanyEmployeeInvitationsList(
   supabase: SupabaseClient,
@@ -81,18 +95,33 @@ async function fetchTeamsForInvitationForm(
 export async function loadCompanyEmployeeInvitationsPageData(): Promise<CompanyEmployeeInvitationsPageData> {
   const access = await getCurrentUserAccess();
 
-  if (!access.canAccessErp || !access.isAdmin) {
+  if (!access.canAccessErp) {
     return {
       access,
+      canManageInvitations: false,
       invitations: [],
       teams: [],
       loadError: null,
     };
   }
 
-  const supabase = await createClient();
-
   try {
+    const { companyRole, supabase } = await getCurrentCompanyAccess();
+    const canManageInvitations =
+      companyRole !== null &&
+      INVITATION_COMPANY_ROLES.includes(
+        companyRole as (typeof INVITATION_COMPANY_ROLES)[number],
+      );
+    if (!canManageInvitations) {
+      return {
+        access,
+        canManageInvitations: false,
+        invitations: [],
+        teams: [],
+        loadError: null,
+      };
+    }
+
     const [invitations, teams] = await Promise.all([
       fetchCompanyEmployeeInvitationsList(supabase),
       fetchTeamsForInvitationForm(supabase),
@@ -100,6 +129,7 @@ export async function loadCompanyEmployeeInvitationsPageData(): Promise<CompanyE
 
     return {
       access,
+      canManageInvitations: true,
       invitations,
       teams,
       loadError: null,
@@ -107,6 +137,7 @@ export async function loadCompanyEmployeeInvitationsPageData(): Promise<CompanyE
   } catch {
     return {
       access,
+      canManageInvitations: false,
       invitations: [],
       teams: [],
       loadError: "직원 초대 정보를 불러오지 못했습니다.",
@@ -117,9 +148,7 @@ export async function loadCompanyEmployeeInvitationsPageData(): Promise<CompanyE
 export async function createCompanyEmployeeInvitation(
   input: CreateCompanyEmployeeInvitationInput,
 ): Promise<CreatedCompanyEmployeeInvitation> {
-  await requireAdminAccess();
-
-  const supabase = await createClient();
+  const { supabase } = await requireInvitationAccess();
   const expiresInDays =
     typeof input.expiresInDays === "number" &&
     Number.isInteger(input.expiresInDays)
@@ -152,17 +181,14 @@ export async function createCompanyEmployeeInvitation(
 export async function listCompanyEmployeeInvitations(): Promise<
   CompanyEmployeeInvitation[]
 > {
-  await requireAdminAccess();
-  const supabase = await createClient();
+  const { supabase } = await requireInvitationAccess();
   return fetchCompanyEmployeeInvitationsList(supabase);
 }
 
 export async function revokeCompanyEmployeeInvitation(
   invitationId: string,
 ): Promise<boolean> {
-  await requireAdminAccess();
-
-  const supabase = await createClient();
+  const { supabase } = await requireInvitationAccess();
   const { data, error } = await supabase.rpc(
     "revoke_company_employee_invitation",
     {

@@ -14,6 +14,19 @@ const inviteMigration = readFileSync(
   "supabase/migrations/20260803000026_company_employee_invitations.sql",
   "utf8",
 );
+const verification = readFileSync(
+  "supabase/verifications/20260811060000_employee_assignment_guard_verify.sql",
+  "utf8",
+);
+const postScenarioVerification = verification.replace(
+  /-- BEGIN 060 INTERMEDIATE IS_ADMIN GUARD[\s\S]*?-- END 060 INTERMEDIATE IS_ADMIN GUARD/,
+  "",
+);
+assert.notEqual(
+  postScenarioVerification,
+  verification,
+  "060 intermediate is_admin verifier section is missing",
+);
 
 function extractSqlFunction(source, functionName) {
   const start = source.indexOf(
@@ -56,6 +69,8 @@ await db.exec(`
 
   create table public.companies (
     id uuid primary key,
+    name text not null default '테스트회사',
+    business_number_display text,
     status text not null,
     created_by uuid
   );
@@ -218,7 +233,65 @@ await db.exec(`
     for each row execute function public.handle_new_user();
 `);
 
+// Legacy releases stored manager only in profiles.role and flattened the
+// company membership to employee. The migration must preserve the manager in
+// exactly the currently active, employee-aligned company.
+await db.exec(`
+  insert into public.companies(id, name, status)
+  values ('70000000-0000-0000-0000-000000000001', '레거시회사', 'active');
+  insert into public.employees(
+    id, company_id, name, title, is_active
+  ) values (
+    '71000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000001',
+    '레거시매니저',
+    '팀장',
+    true
+  );
+  insert into public.profiles(
+    id, employee_id, active_company_id, role,
+    is_active, is_approved, approval_status
+  ) values (
+    '72000000-0000-0000-0000-000000000001',
+    '71000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000001',
+    'manager',
+    true,
+    true,
+    'approved'
+  );
+  insert into public.company_memberships(
+    company_id, user_id, employee_id, role, status
+  ) values (
+    '70000000-0000-0000-0000-000000000001',
+    '72000000-0000-0000-0000-000000000001',
+    '71000000-0000-0000-0000-000000000001',
+    'employee',
+    'active'
+  );
+`);
+
 await db.exec(migration);
+
+// 060 must not widen is_admin before the tenant-policy cleanup in 070 commits.
+// Supabase applies migration files independently, so a failing 070 must leave
+// the legacy global-role helper in place rather than a partially widened role.
+const intermediateAdminDefinition = await db.query(`
+  select lower(pg_get_functiondef('public.is_admin()'::regprocedure)) as definition
+`);
+assert.match(intermediateAdminDefinition.rows[0].definition, /from public\.profiles/);
+assert.doesNotMatch(
+  intermediateAdminDefinition.rows[0].definition,
+  /current_company_role\(\)/,
+);
+
+const preservedLegacyManager = await db.query(`
+  select role
+  from public.company_memberships
+  where user_id = '72000000-0000-0000-0000-000000000001'
+`);
+assert.equal(preservedLegacyManager.rows[0].role, "manager");
+await db.exec(verification);
 
 const signupGuardIds = {
   owner: "60000000-0000-0000-0000-000000000001",
@@ -364,6 +437,10 @@ assert.deepEqual(rolledBackInvites.rows[0], {
 
 await db.exec(extractSqlFunction(companyScopeMigration, "update_employee_contact_profile"));
 await db.exec(extractSqlFunction(companyScopeMigration, "unlink_employee_login"));
+// The production 070 migration installs this only after its tenant policy
+// cleanup. The fixture has no legacy tenantless surfaces, so applying the final
+// helper here models the post-070 role behavior exercised below.
+await db.exec(extractSqlFunction(companyScopeMigration, "is_admin"));
 
 const ids = {
   companyA: "10000000-0000-0000-0000-000000000001",
@@ -396,6 +473,7 @@ const ids = {
   rejectOtherSuspended: "40000000-0000-0000-0000-000000000020",
   crossActive: "40000000-0000-0000-0000-000000000021",
   crossSuspended: "40000000-0000-0000-0000-000000000022",
+  managerMulti: "40000000-0000-0000-0000-000000000023",
   empSuccess: "50000000-0000-0000-0000-000000000001",
   empDirectorAdmin: "50000000-0000-0000-0000-000000000002",
   empSuperRole: "50000000-0000-0000-0000-000000000003",
@@ -409,6 +487,8 @@ const ids = {
   empStaffSelf: "50000000-0000-0000-0000-000000000011",
   empPeerA: "50000000-0000-0000-0000-000000000012",
   empCompanyB: "50000000-0000-0000-0000-000000000013",
+  empManagerA: "50000000-0000-0000-0000-000000000014",
+  empManagerB: "50000000-0000-0000-0000-000000000015",
 };
 
 const q = (value) => `'${value}'::uuid`;
@@ -433,21 +513,27 @@ await db.exec(`
     (${q(ids.empGlobalAdminStaff)}, ${q(ids.companyA)}, ${q(ids.teamA)}, '전역관리자회사직원', '팀원'),
     (${q(ids.empStaffSelf)}, ${q(ids.companyA)}, ${q(ids.teamA)}, '본인수정직원', '팀원'),
     (${q(ids.empPeerA)}, ${q(ids.companyA)}, ${q(ids.teamA)}, '동료직원', '팀원'),
-    (${q(ids.empCompanyB)}, ${q(ids.companyB)}, ${q(ids.teamB)}, '타회사직원', '팀원');
+    (${q(ids.empCompanyB)}, ${q(ids.companyB)}, ${q(ids.teamB)}, '타회사직원', '팀원'),
+    (${q(ids.empManagerA)}, ${q(ids.companyA)}, ${q(ids.teamA)}, 'A회사매니저', '팀장'),
+    (${q(ids.empManagerB)}, ${q(ids.companyB)}, ${q(ids.teamB)}, 'B회사직원', '팀원');
 
   insert into public.profiles(
-    id, active_company_id, role, is_active, is_approved, approval_status, email
+    id, employee_id, active_company_id, role,
+    is_active, is_approved, approval_status, email
   ) values
-    (${q(ids.ownerA)}, ${q(ids.companyA)}, 'staff', true, true, 'approved', 'owner-a@test.local'),
-    (${q(ids.directorA)}, ${q(ids.companyA)}, 'admin', true, true, 'approved', 'director-a@test.local'),
-    (${q(ids.adminA)}, ${q(ids.companyA)}, 'admin', true, true, 'approved', 'admin-a@test.local'),
-    (${q(ids.ownerB)}, ${q(ids.companyB)}, 'admin', true, true, 'approved', 'owner-b@test.local');
-  insert into public.company_memberships(company_id, user_id, role, status) values
-    (${q(ids.companyA)}, ${q(ids.ownerA)}, 'owner', 'active'),
-    (${q(ids.companyA)}, ${q(ids.directorA)}, 'director', 'active'),
-    (${q(ids.companyB)}, ${q(ids.directorA)}, 'employee', 'active'),
-    (${q(ids.companyA)}, ${q(ids.adminA)}, 'admin', 'active'),
-    (${q(ids.companyB)}, ${q(ids.ownerB)}, 'owner', 'active');
+    (${q(ids.ownerA)}, null, ${q(ids.companyA)}, 'staff', true, true, 'approved', 'owner-a@test.local'),
+    (${q(ids.directorA)}, null, ${q(ids.companyA)}, 'admin', true, true, 'approved', 'director-a@test.local'),
+    (${q(ids.adminA)}, null, ${q(ids.companyA)}, 'admin', true, true, 'approved', 'admin-a@test.local'),
+    (${q(ids.ownerB)}, null, ${q(ids.companyB)}, 'admin', true, true, 'approved', 'owner-b@test.local'),
+    (${q(ids.managerMulti)}, ${q(ids.empManagerA)}, ${q(ids.companyA)}, 'manager', true, true, 'approved', 'manager-multi@test.local');
+  insert into public.company_memberships(company_id, user_id, employee_id, role, status) values
+    (${q(ids.companyA)}, ${q(ids.ownerA)}, null, 'owner', 'active'),
+    (${q(ids.companyA)}, ${q(ids.directorA)}, null, 'director', 'active'),
+    (${q(ids.companyB)}, ${q(ids.directorA)}, ${q(ids.empCompanyB)}, 'employee', 'active'),
+    (${q(ids.companyA)}, ${q(ids.adminA)}, null, 'admin', 'active'),
+    (${q(ids.companyB)}, ${q(ids.ownerB)}, null, 'owner', 'active'),
+    (${q(ids.companyA)}, ${q(ids.managerMulti)}, ${q(ids.empManagerA)}, 'manager', 'active'),
+    (${q(ids.companyB)}, ${q(ids.managerMulti)}, ${q(ids.empManagerB)}, 'employee', 'active');
 
   insert into public.profiles(id, role, is_active, is_approved, approval_status, email, phone) values
     (${q(ids.success)}, 'staff', false, false, 'pending', 'success@test.local', '010-1111-0001'),
@@ -555,6 +641,16 @@ assert.equal(meta.rows[0].anon_exec, false);
 assert.equal(meta.rows[0].service_exec, false);
 
 await asUser(ids.ownerA);
+const ownerCompanyAdmin = await db.query(`
+  select public.current_company_role() as company_role,
+         public.is_admin() as is_admin,
+         public.is_manager_or_above() as is_manager_or_above
+`);
+assert.deepEqual(ownerCompanyAdmin.rows[0], {
+  company_role: "owner",
+  is_admin: true,
+  is_manager_or_above: true,
+});
 const pending = await db.query("select id from public.list_pending_company_signups()");
 const pendingIds = new Set(pending.rows.map((row) => row.id));
 assert.equal(pendingIds.has(ids.success), true);
@@ -961,15 +1057,71 @@ const unchangedRole = await db.query(
 );
 assert.equal(unchangedRole.rows[0].role, "admin");
 
-await db.query(
-  "update public.profiles set active_company_id = $1 where id = $2",
-  [ids.companyB, ids.directorA],
+const directorSwitch = await db.query(
+  "select public.set_active_company($1) as switched",
+  [ids.companyB],
 );
+assert.equal(directorSwitch.rows[0].switched, true);
 const switchedCompany = await db.query(
-  "select active_company_id from public.profiles where id = $1",
+  "select active_company_id, employee_id from public.profiles where id = $1",
   [ids.directorA],
 );
 assert.equal(switchedCompany.rows[0].active_company_id, ids.companyB);
+assert.equal(switchedCompany.rows[0].employee_id, ids.empCompanyB);
+const employeeRoleAfterSwitch = await db.query(`
+  select public.current_company_role() as company_role,
+         public.is_admin() as is_admin,
+         public.is_manager_or_above() as is_manager_or_above
+`);
+assert.deepEqual(employeeRoleAfterSwitch.rows[0], {
+  company_role: "employee",
+  is_admin: false,
+  is_manager_or_above: false,
+});
+
+await asUser(ids.managerMulti);
+const managerInA = await db.query(`
+  select public.current_company_role() as company_role,
+         public.is_manager_or_above() as is_manager_or_above
+`);
+assert.deepEqual(managerInA.rows[0], {
+  company_role: "manager",
+  is_manager_or_above: true,
+});
+const managerSwitch = await db.query(
+  "select public.set_active_company($1) as switched",
+  [ids.companyB],
+);
+assert.equal(managerSwitch.rows[0].switched, true);
+const managerInB = await db.query(`
+  select public.current_company_role() as company_role,
+         public.is_admin() as is_admin,
+         public.is_manager_or_above() as is_manager_or_above,
+         (select employee_id from public.profiles where id = auth.uid()) as employee_id
+`);
+assert.deepEqual(managerInB.rows[0], {
+  company_role: "employee",
+  is_admin: false,
+  is_manager_or_above: false,
+  employee_id: ids.empManagerB,
+});
+const managerReturn = await db.query(
+  "select public.set_active_company($1) as switched",
+  [ids.companyA],
+);
+assert.equal(managerReturn.rows[0].switched, true);
+
+await db.query("update public.companies set status = 'inactive' where id = $1", [
+  ids.companyA,
+]);
+const inactiveCompanyScheduleAccess = await db.query(
+  "select public.can_access_schedule_assignee($1) as allowed",
+  [ids.empManagerA],
+);
+assert.equal(inactiveCompanyScheduleAccess.rows[0].allowed, false);
+await db.query("update public.companies set status = 'active' where id = $1", [
+  ids.companyA,
+]);
 
 await expectReject(
   () => db.query(
@@ -987,10 +1139,13 @@ await db.query(
   "update public.company_memberships set status = 'rejected' where company_id = $1 and user_id = any($2::uuid[])",
   [ids.companyB, [ids.otherActive]],
 );
-await db.query(
-  "update public.profiles set active_company_id = $1 where id = $2",
-  [ids.companyA, ids.directorA],
+await asUser(ids.directorA);
+const directorReturn = await db.query(
+  "select public.set_active_company($1) as switched",
+  [ids.companyA],
 );
+assert.equal(directorReturn.rows[0].switched, true);
+await asUser(ids.ownerA);
 
 const policies = await db.query(`
   select policyname, qual, with_check
@@ -1002,11 +1157,6 @@ for (const policy of policies.rows) {
   assert.match(policy.qual ?? policy.with_check ?? "", /auth\.uid\(\)/);
   assert.doesNotMatch(`${policy.qual ?? ""} ${policy.with_check ?? ""}`, /is_admin/);
 }
-
-const verification = readFileSync(
-  "supabase/verifications/20260811060000_employee_assignment_guard_verify.sql",
-  "utf8",
-);
 
 // The verifier must fail when trusted app metadata says a pending identity is
 // not an owner but it has no nonterminal membership. Create a valid owner first,
@@ -1026,12 +1176,12 @@ await db.query(`
   where id = $1
 `, [signupGuardIds.orphan]);
 await expectReject(
-  () => db.exec(verification),
+  () => db.exec(postScenarioVerification),
   /회사 멤버십이 없는 직원 승인 대기 프로필/,
 );
 await db.query("delete from public.profiles where id = $1", [signupGuardIds.orphan]);
 await db.query("delete from auth.users where id = $1", [signupGuardIds.orphan]);
-await db.exec(verification);
+await db.exec(postScenarioVerification);
 
 await db.close();
 console.log("Local PostgreSQL approval integration tests: PASS");

@@ -21,6 +21,16 @@ const duplicateLookup = assignmentGuardMigration.slice(
   assignmentGuardMigration.indexOf("if v_duplicate is not null"),
 );
 
+function extractSqlFunction(source, functionName) {
+  const start = source.indexOf(
+    `create or replace function public.${functionName}(`,
+  );
+  assert.ok(start >= 0, `${functionName} replacement is missing`);
+  const end = source.indexOf("\n$$;", start);
+  assert.ok(end >= 0, `${functionName} replacement end is missing`);
+  return source.slice(start, end + 4);
+}
+
 assert.match(workspace, /canMergeEmployees\s*\?\s*<button[\s\S]*직원 병합/);
 for (const role of ["owner", "director", "admin"]) {
   assert.match(data, new RegExp(`role === ["']${role}["']`), `UI data missing ${role}`);
@@ -40,7 +50,23 @@ for (const rpc of ["list_employee_merge_states", "get_employee_merge_impact", "m
 assert.doesNotMatch(data, /access\.isAdmin/, "UI data must not use a global profile role as company authority");
 assert.doesNotMatch(actions, /access\.isAdmin/, "server action must not use a global profile role as company authority");
 assert.match(actions, /현재 회사의 owner, director 또는 admin/, "role error message must describe company-scoped merge roles");
-assert.doesNotMatch(companyScopeGuardMigration, /public\.is_admin\(\)\s+or/i, "replacement RPCs must not accept global admin as a company-role bypass");
+const employeeRpcBodies = [
+  "list_employee_master",
+  "create_employee_master",
+  "update_employee_master",
+  "transfer_employee_assignments",
+  "unlink_employee_login",
+  "update_employee_login_role",
+  "get_employee_merge_impact",
+  "merge_employees",
+  "list_employee_merge_states",
+  "update_employee_contact_profile",
+].map((name) => extractSqlFunction(companyScopeGuardMigration, name)).join("\n");
+assert.doesNotMatch(
+  employeeRpcBodies,
+  /public\.is_admin\(\)\s+or/i,
+  "replacement Employee RPCs must not accept global admin as a company-role bypass",
+);
 for (const reason of ["권한 부족", "본인 계정", "owner 대표 계정", "이미 병합된 직원", "양쪽 직원", "다른 회사"]) {
   assert.match(actions, new RegExp(reason), `missing user-facing merge reason: ${reason}`);
 }

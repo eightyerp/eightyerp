@@ -55,9 +55,17 @@ assert.ok(
   "Approval must lock the employee before the profile to match merge lock order",
 );
 
+const approvalAclStart = sql.indexOf(
+  "revoke all\non function public.approve_staff_signup(uuid, text, uuid, text, text, uuid)",
+);
+assert.ok(approvalAclStart >= 0, "Approval RPC ACL block is missing");
+const approvalAclEnd = sql.indexOf(";", sql.indexOf("grant execute", approvalAclStart)) + 1;
+const approvalAcl = sql.slice(approvalAclStart, approvalAclEnd);
+assert.match(approvalAcl, /from public, anon, authenticated, service_role/i);
+assert.match(approvalAcl, /grant execute[\s\S]*to authenticated/i);
 assert.doesNotMatch(
-  sql,
-  /grant execute[\s\S]{0,160}to\s+(?:public|anon|service_role)/i,
+  approvalAcl,
+  /grant execute[\s\S]*to\s+(?:public|anon|service_role)/i,
   "Privileged approval RPC must not be executable by public, anon, or service_role",
 );
 

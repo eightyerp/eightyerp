@@ -19,24 +19,22 @@ import type { UserRole } from "@/types/database";
 export default async function StaffApprovalsPage() {
   const access = await getCurrentUserAccess();
   if (!access.canAccessErp) redirect("/pending-approval");
-  if (!access.isAdmin) redirect("/dashboard");
 
   let pending: Awaited<ReturnType<typeof listPendingSignups>> = [];
   let allProfiles: Awaited<ReturnType<typeof listManagedProfiles>> = [];
   let employees: Awaited<ReturnType<typeof listEmployeesForApproval>> = [];
   let teams: Awaited<ReturnType<typeof listTeamsForApproval>> = [];
-  let companyRole: string | null = null;
   let loadError: string | null = null;
   let schemaMissing = false;
-  const migrationDevHint = schemaMissingDevHint(
-    "supabase/migrations/20260811060000_employee_assignment_guard.sql",
-    access.isAdmin,
-  );
 
-  companyRole = await getApprovalActorCompanyRole();
+  const companyRole = await getApprovalActorCompanyRole();
   if (companyRole !== "owner" && companyRole !== "director") {
     redirect("/dashboard");
   }
+  const migrationDevHint = schemaMissingDevHint(
+    "supabase/migrations/20260811060000_employee_assignment_guard.sql",
+    true,
+  );
 
   try {
     [pending, allProfiles, employees, teams] = await Promise.all([
