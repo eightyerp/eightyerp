@@ -201,12 +201,12 @@ export type CustomerActivity = {
   customer_id: string;
   activity_type: ActivityType | string;
   content: string | null;
-  result: string | null;
-  next_contact_at: string | null;
+  result?: string | null;
+  next_contact_at?: string | null;
   previous_status: string | null;
   new_status: string | null;
-  previous_assignee_id: string | null;
-  new_assignee_id: string | null;
+  previous_assignee_id?: string | null;
+  new_assignee_id?: string | null;
   employee_id: string | null;
   created_by: string | null;
   created_at: string;

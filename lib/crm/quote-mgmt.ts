@@ -428,11 +428,11 @@ function resolveQuoteAmounts(
 }
 
 const SELECT_FULL =
-  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id, phone, email, business_card_path, show_business_card_on_quote ), quote_files (*), quote_items (*)";
+  "*, customers:customers!quotes_customer_id_fkey ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id, phone, email, business_card_path, show_business_card_on_quote ), quote_files (*), quote_items (*)";
 
 /** quote_files / quote_items 미적용 환경용 — 목록·고객상세는 동작 유지 */
 const SELECT_BASIC =
-  "*, customers ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id, phone, email, business_card_path, show_business_card_on_quote )";
+  "*, customers:customers!quotes_customer_id_fkey ( id, name, phone, address, assigned_employee_id, status ), employees ( id, name, title, team_id, phone, email, business_card_path, show_business_card_on_quote )";
 
 function sortNested(q: ErpQuote): ErpQuote {
   q.quote_files = [...(q.quote_files ?? [])]

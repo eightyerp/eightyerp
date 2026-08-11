@@ -24,11 +24,11 @@ export default async function EmployeeMasterPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <p className="text-xs font-medium text-slate-600">시스템 관리</p>
-          <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
+          <p className="text-sm font-semibold text-slate-700">시스템 관리</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-slate-950">
             직원 Master
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <p className="mt-2 max-w-5xl text-[15px] leading-relaxed text-slate-700">
             직원 연락처를 기준으로 로그인 계정 연결·재연결, 권한과 마지막 로그인을 통합 관리합니다.
             계정 연결을 바꿔도 기존 고객·견적·일정·정산 데이터는 직원에게 그대로 유지됩니다.
           </p>

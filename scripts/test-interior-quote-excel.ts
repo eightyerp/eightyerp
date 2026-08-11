@@ -9,6 +9,7 @@ import {
   parseInteriorQuoteWorkbook,
   recalculateInteriorCostItem,
 } from "../lib/crm/interior-quote-excel";
+import { INTERIOR_IMPORT_CUSTOMER_SELECT } from "../lib/crm/interior-quote-import";
 
 function workbookBuffer(rows: unknown[][], options?: { extraSheet?: boolean; merge?: XLSX.Range; merges?: XLSX.Range[] }) {
   const workbook = XLSX.utils.book_new();
@@ -144,6 +145,16 @@ const importActionSource = fs.readFileSync("app/actions/interior-quote-import.ts
 assert.match(importActionSource, /await createQuote\(/, "기존 createQuote 저장 경로 재사용");
 assert.doesNotMatch(importActionSource, /create_interior_quote_from_excel/, "미적용 전용 RPC 의존성 없음");
 assert.match(importActionSource, /\[interior-quote-import\] save-failed/, "서버 오류 원문 관리자 로그");
+assert.match(
+  INTERIOR_IMPORT_CUSTOMER_SELECT,
+  /projects:projects!projects_customer_id_fkey\s*\(/,
+  "복수 projects→customers FK 환경에서 현장 관계를 명시해야 합니다.",
+);
+assert.doesNotMatch(
+  INTERIOR_IMPORT_CUSTOMER_SELECT,
+  /(^|[,(]\s*)projects\s*\(/m,
+  "모호한 projects 자동 관계 선택을 다시 사용하면 안 됩니다.",
+);
 const importUiSource = fs.readFileSync("components/quotes/InteriorQuoteExcelImportModal.tsx", "utf8");
 assert.match(importUiSource, /참고항목 · 금액 미반영/, "0원 참고항목 배지");
 assert.match(importUiSource, /disabled=\{pending \|\| Boolean\(saveBlockReason\)\}/, "저장 사유별 버튼 차단");

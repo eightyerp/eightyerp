@@ -11,6 +11,10 @@ import { getContactBucket } from "@/lib/crm/contact";
 import { normalizePhone } from "@/lib/crm/parse-inquiry";
 import { CUSTOMER_PAGE_SIZE } from "@/lib/crm/constants";
 import {
+  buildCustomerActivityContent,
+  buildCustomerActivityWritePayload,
+} from "@/lib/crm/customer-schema-compat";
+import {
   buildCustomerSearchFilter,
   CUSTOMER_LIST_SELECT,
   normalizeCustomerSearchTerm,
@@ -478,12 +482,21 @@ export async function createCustomerConsultLog(input: {
     if (nextError) throw new Error(nextError.message);
   }
 
-  // optional column — ignore if schema not yet migrated
+  // Mirror the consultation timestamp into the baseline activity table. This
+  // keeps list/dashboard "last activity" derivation current without relying on
+  // the optional customers.last_contact_at column. The consultation log is the
+  // primary record, so a secondary activity failure must not invite duplicates.
   await supabase
-    .from("customers")
-    .update({ last_contact_at: new Date().toISOString() })
-    .eq("id", input.customer_id)
-    .is("deleted_at", null);
+    .from("customer_activities")
+    .insert(
+      buildCustomerActivityWritePayload({
+        customer_id: input.customer_id,
+        activity_type: input.consult_type,
+        content,
+        employee_id: access.profile?.employee_id ?? null,
+        created_by: access.userId,
+      }),
+    );
 
   await writeAuditLog({
     entity_type: "customer_consult_log",
@@ -608,27 +621,33 @@ export async function updateCustomer(id: string, input: CustomerInsert) {
   const customer = data as Customer;
 
   if (previous.status !== customer.status) {
-    await supabase.from("customer_activities").insert({
-      customer_id: id,
-      activity_type: "상태변경" satisfies ActivityType,
-      content: `상담상태 변경: ${previous.status} → ${customer.status}`,
-      previous_status: previous.status,
-      new_status: customer.status,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: id,
+          activity_type: "상태변경" satisfies ActivityType,
+          content: `상담상태 변경: ${previous.status} → ${customer.status}`,
+          previous_status: previous.status,
+          new_status: customer.status,
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   if (previous.assigned_employee_id !== customer.assigned_employee_id) {
-    await supabase.from("customer_activities").insert({
-      customer_id: id,
-      activity_type: "담당자변경" satisfies ActivityType,
-      content: "담당자가 변경되었습니다.",
-      previous_assignee_id: previous.assigned_employee_id,
-      new_assignee_id: customer.assigned_employee_id,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: id,
+          activity_type: "담당자변경" satisfies ActivityType,
+          content: "담당자가 변경되었습니다.",
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   await writeAuditLog({
@@ -661,7 +680,6 @@ export async function registerConsultation(input: {
     throw new Error("고객을 찾을 수 없습니다.");
   }
 
-  const nowIso = new Date().toISOString();
   const nextStatus = input.status || previous.status;
   let nextAssignee =
     input.employee_id !== undefined && input.employee_id !== null
@@ -683,10 +701,6 @@ export async function registerConsultation(input: {
 
   const customerPatch: Record<string, unknown> = {};
 
-  // last_contact_at / consultation_result 는 migration 적용 시에만 존재
-  if ("last_contact_at" in previous) {
-    customerPatch.last_contact_at = nowIso;
-  }
   if (input.next_contact_at !== undefined) {
     customerPatch.next_contact_at = input.next_contact_at || null;
   }
@@ -699,10 +713,6 @@ export async function registerConsultation(input: {
   ) {
     customerPatch.assigned_employee_id = input.employee_id || null;
   }
-  if (input.result && "consultation_result" in previous) {
-    customerPatch.consultation_result = input.result;
-  }
-
   if (Object.keys(customerPatch).length > 0) {
     const { error: updateError } = await supabase
       .from("customers")
@@ -715,47 +725,55 @@ export async function registerConsultation(input: {
 
   const { data: activity, error: activityError } = await supabase
     .from("customer_activities")
-    .insert({
-      customer_id: input.customer_id,
-      activity_type: input.activity_type,
-      content: input.content,
-      result: input.result ?? null,
-      next_contact_at: input.next_contact_at ?? null,
-      previous_status: previous.status,
-      new_status: nextStatus,
-      previous_assignee_id: previous.assigned_employee_id,
-      new_assignee_id: nextAssignee,
-      employee_id:
-        input.employee_id || access.profile?.employee_id || null,
-      created_by: access.userId,
-    })
+    .insert(
+      buildCustomerActivityWritePayload({
+        customer_id: input.customer_id,
+        activity_type: input.activity_type,
+        content: buildCustomerActivityContent({
+          content: input.content,
+          result: input.result,
+          nextContactAt: input.next_contact_at,
+        }),
+        previous_status: previous.status,
+        new_status: nextStatus,
+        employee_id:
+          input.employee_id || access.profile?.employee_id || null,
+        created_by: access.userId,
+      }),
+    )
     .select("*")
     .single();
 
   if (activityError) throw new Error(activityError.message);
 
   if (previous.status !== nextStatus) {
-    await supabase.from("customer_activities").insert({
-      customer_id: input.customer_id,
-      activity_type: "상태변경",
-      content: `상담상태 변경: ${previous.status} → ${nextStatus}`,
-      previous_status: previous.status,
-      new_status: nextStatus,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: input.customer_id,
+          activity_type: "상태변경",
+          content: `상담상태 변경: ${previous.status} → ${nextStatus}`,
+          previous_status: previous.status,
+          new_status: nextStatus,
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   if (previous.assigned_employee_id !== nextAssignee) {
-    await supabase.from("customer_activities").insert({
-      customer_id: input.customer_id,
-      activity_type: "담당자변경",
-      content: "담당자가 변경되었습니다.",
-      previous_assignee_id: previous.assigned_employee_id,
-      new_assignee_id: nextAssignee,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: input.customer_id,
+          activity_type: "담당자변경",
+          content: "담당자가 변경되었습니다.",
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   await writeAuditLog({
@@ -840,43 +858,52 @@ export async function updateCustomerQuickFields(input: {
   const customer = data as Customer;
 
   if (previous.status !== customer.status) {
-    await supabase.from("customer_activities").insert({
-      customer_id: input.customer_id,
-      activity_type: "상태변경",
-      content: `상담상태 변경: ${previous.status} → ${customer.status}`,
-      previous_status: previous.status,
-      new_status: customer.status,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: input.customer_id,
+          activity_type: "상태변경",
+          content: `상담상태 변경: ${previous.status} → ${customer.status}`,
+          previous_status: previous.status,
+          new_status: customer.status,
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   if (previous.assigned_employee_id !== customer.assigned_employee_id) {
-    await supabase.from("customer_activities").insert({
-      customer_id: input.customer_id,
-      activity_type: "담당자변경",
-      content: "담당자가 변경되었습니다.",
-      previous_assignee_id: previous.assigned_employee_id,
-      new_assignee_id: customer.assigned_employee_id,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: input.customer_id,
+          activity_type: "담당자변경",
+          content: "담당자가 변경되었습니다.",
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   if (
     input.next_contact_at !== undefined &&
     input.next_contact_at !== previous.next_contact_at
   ) {
-    await supabase.from("customer_activities").insert({
-      customer_id: input.customer_id,
-      activity_type: "메모",
-      content: input.next_contact_at
-        ? `다음 연락일을 ${input.next_contact_at}로 지정했습니다.`
-        : "다음 연락일을 해제했습니다.",
-      next_contact_at: input.next_contact_at,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    });
+    await supabase
+      .from("customer_activities")
+      .insert(
+        buildCustomerActivityWritePayload({
+          customer_id: input.customer_id,
+          activity_type: "메모",
+          content: input.next_contact_at
+            ? `다음 연락일을 ${input.next_contact_at}로 지정했습니다.`
+            : "다음 연락일을 해제했습니다.",
+          employee_id: access.profile?.employee_id ?? null,
+          created_by: access.userId,
+        }),
+      );
   }
 
   return customer;
@@ -1021,13 +1048,15 @@ export async function createCustomerActivity(input: {
 
   const { data, error } = await supabase
     .from("customer_activities")
-    .insert({
-      customer_id: input.customer_id,
-      activity_type: input.activity_type,
-      content: input.content,
-      employee_id: access.profile?.employee_id ?? null,
-      created_by: access.userId,
-    })
+    .insert(
+      buildCustomerActivityWritePayload({
+        customer_id: input.customer_id,
+        activity_type: input.activity_type,
+        content: input.content,
+        employee_id: access.profile?.employee_id ?? null,
+        created_by: access.userId,
+      }),
+    )
     .select("*")
     .single();
 
@@ -1134,7 +1163,8 @@ export async function getContactSchedule(
     status: customer.status,
     assigned_employee_id: customer.assigned_employee_id,
     next_contact_at: customer.next_contact_at,
-    last_contact_at: customer.last_contact_at ?? null,
+    last_contact_at:
+      customer.last_activity_at ?? customer.last_contact_at ?? null,
     contact_bucket: customer.contact_bucket ?? getContactBucket(customer.next_contact_at),
   }));
 

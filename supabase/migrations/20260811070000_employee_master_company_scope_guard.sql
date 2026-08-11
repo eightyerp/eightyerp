@@ -31,6 +31,12 @@ begin
 end;
 $legacy_assignment_preflight$;
 
+-- PostgreSQL cannot change a TABLE-returning function's OUT-column shape via
+-- CREATE OR REPLACE. Production may already have the Employee Master v1
+-- function without the three assignment-count columns added below. The RPC has
+-- no database dependents, and its ACL is recreated later in this transaction.
+drop function if exists public.list_employee_master();
+
 create or replace function public.list_employee_master()
 returns table (
   employee_id uuid, company_id uuid, team_id uuid, employee_name text,
@@ -72,7 +78,7 @@ begin
          employee_row.created_at,
          employee_row.updated_at,
          profile_row.id,
-         coalesce(auth_user.email, profile_row.email),
+         coalesce(auth_user.email::text, profile_row.email),
          profile_row.id is not null,
          coalesce(profile_row.is_active, false),
          profile_row.approval_status,
@@ -2635,6 +2641,30 @@ begin
     execute 'revoke all on function public.confirm_contract(uuid) from public, anon, authenticated, service_role';
     execute 'grant execute on function public.confirm_contract(uuid) to authenticated';
   end if;
+
+  -- Lifecycle wrappers are the authenticated API surface. Older production
+  -- versions also granted service_role directly, while the final verifier and
+  -- least-privilege contract require only authenticated to execute them.
+  for v_table in
+    select wrapper_row.signature
+    from (values
+      ('public.confirm_contract_amendment(uuid)'::text),
+      ('public.confirm_contract_addition(uuid)'),
+      ('public.create_contract_amendment(uuid,jsonb)'),
+      ('public.create_contract_addition(uuid,jsonb)')
+    ) as wrapper_row(signature)
+  loop
+    if pg_catalog.to_regprocedure(v_table.signature) is not null then
+      execute pg_catalog.format(
+        'revoke all on function %s from public, anon, authenticated, service_role',
+        v_table.signature
+      );
+      execute pg_catalog.format(
+        'grant execute on function %s to authenticated',
+        v_table.signature
+      );
+    end if;
+  end loop;
 
   -- Contract state transitions are RPC-only. Keeping permissive RLS policies
   -- for reads is harmless, but direct table writes could otherwise mark a
