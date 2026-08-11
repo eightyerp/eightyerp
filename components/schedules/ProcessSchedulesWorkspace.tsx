@@ -36,6 +36,7 @@ import {
 } from "@/components/schedules/calendar-utils";
 import { downloadCsv, downloadXls, dateStamp } from "@/components/schedules/export-utils";
 import { getProjectColor } from "@/components/schedules/project-colors";
+import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
 import { isProcessDelayed } from "@/lib/crm/schedule-utils";
 import {
   PROCESS_NAME_SUGGESTIONS,
@@ -98,8 +99,10 @@ const initialActionState: ScheduleActionResult = { success: false };
 const inputClass =
   "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-gold-500 focus:outline-none focus:ring-1 focus:ring-gold-500";
 
-function employeeLabel(e: Pick<Employee, "name" | "title">): string {
-  return `${e.name} ${e.title}`;
+function employeeLabel(
+  e: Pick<Employee, "name" | "title" | "teams">,
+): string {
+  return formatEmployeeOptionLabel(e);
 }
 
 function statusBadgeClass(status: string): string {

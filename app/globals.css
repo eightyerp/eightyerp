@@ -394,6 +394,18 @@ body {
     overflow: hidden;
   }
 
+  /*
+   * 고객전송 화면의 표지는 인쇄용 여백을 유지한다.
+   * 공통 A4 프레임의 padding 초기화가 표지 내용만 가장자리까지 확대해 보이게 하므로,
+   * 고객전송 화면에 한해 QuoteCoverPage(print)의 원래 여백을 복원한다.
+   */
+  .quote-share-page
+    .quote-preview-sheet
+    .quote-print-has-cover
+    .quote-cover-page {
+    padding: 11mm 11mm 12mm;
+  }
+
   .quote-preview-sheet .quote-print-page-footer {
     left: 15mm;
     right: 15mm;

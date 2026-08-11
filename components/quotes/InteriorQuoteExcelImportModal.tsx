@@ -25,6 +25,7 @@ import {
   recognizeQuoteWorkbook,
   type TemplateRecognition,
 } from "@/lib/excel-engine";
+import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
 import type { InteriorImportCustomerOption } from "@/lib/crm/interior-quote-import";
 import type { Employee } from "@/types/database";
 
@@ -378,7 +379,7 @@ export default function InteriorQuoteExcelImportModal({
                 .filter((employee) => employee.is_active)
                 .map((employee) => (
                   <option key={employee.id} value={employee.id}>
-                    {employee.name} · {employee.title}
+                    {formatEmployeeOptionLabel(employee)}
                   </option>
                 ))}
             </select>

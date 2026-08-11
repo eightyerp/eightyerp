@@ -8,12 +8,15 @@ import {
   type ProjectActionResult,
 } from "@/app/actions/projects";
 import CreateSiteButton from "@/components/customers/CreateSiteButton";
+import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
 import { PROJECT_STATUSES } from "@/lib/crm/project-constants";
 import type { Employee, Project } from "@/types/database";
 
-function empLabel(e: Pick<Employee, "name" | "title"> | null | undefined) {
+function empLabel(
+  e: Pick<Employee, "name" | "title" | "teams"> | null | undefined,
+) {
   if (!e) return "담당 미지정";
-  return `${e.name}${e.title ? ` ${e.title}` : ""}`;
+  return formatEmployeeOptionLabel(e);
 }
 
 const initial: ProjectActionResult = { success: false };

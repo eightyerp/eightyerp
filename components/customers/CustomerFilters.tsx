@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import {
   CUSTOMER_STATUSES,
   INTEREST_ITEMS,
-  formatEmployeeLabel,
+  formatEmployeeOptionLabel,
 } from "@/lib/crm/constants";
 import {
   buildCustomerSearchHref,
@@ -130,7 +130,7 @@ export default function CustomerFilters({
             <option value="">전체</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
-                {formatEmployeeLabel(employee.name, employee.title)}
+                {formatEmployeeOptionLabel(employee)}
               </option>
             ))}
           </select>

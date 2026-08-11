@@ -203,23 +203,44 @@ export const EMPLOYEE_DIRECTORY = [
   { name: "오용철", title: "창호 팀장", recommendedRole: "manager" as UserRole },
 ] as const;
 
-export function formatEmployeeLabel(name: string, title: string): string {
-  return `${name} ${title}`;
+export function formatEmployeeLabel(
+  name: string,
+  title?: string | null,
+  teamName?: string | null,
+): string {
+  const parts = [name, teamName, title]
+    .map((value) => (value ?? "").trim())
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+  return parts.join(" · ");
 }
 
-/** 견적 담당자 선택용 — 이름 · 직책 · 휴대전화 */
+/** 담당자 선택용 — 이름 · 팀 · 직급 (있는 값만 표시) */
+export function formatEmployeeOptionLabel(employee: {
+  name: string;
+  title?: string | null;
+  teams?: { name?: string | null } | { name?: string | null }[] | null;
+}): string {
+  const team = Array.isArray(employee.teams)
+    ? employee.teams[0]
+    : employee.teams;
+  return formatEmployeeLabel(
+    employee.name,
+    employee.title,
+    team?.name,
+  );
+}
+
+/** 견적 담당자 선택용 — 이름 · 팀 · 직급 · 휴대전화 */
 export function formatEmployeeAssigneeOption(
   employee: {
     name: string;
     title?: string | null;
     phone?: string | null;
+    teams?: { name?: string | null } | { name?: string | null }[] | null;
   },
 ): string {
-  const title = (employee.title ?? "").trim();
   const phone = (employee.phone ?? "").trim();
-  const base = title
-    ? formatEmployeeLabel(employee.name, title)
-    : employee.name.trim();
+  const base = formatEmployeeOptionLabel(employee);
   return phone ? `${base} · ${phone}` : base;
 }
 

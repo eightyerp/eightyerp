@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -9,14 +10,30 @@ import {
   ERP_QUOTE_TYPES,
   resolveQuoteVatDisplayAmounts,
 } from "@/lib/crm/quote-constants";
-import { formatEmployeeLabel } from "@/lib/crm/constants";
+import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
 import { calcQuoteSummary, isQuoteExpired } from "@/lib/crm/quote-mgmt-client";
 import { QUOTE_SEARCH_DEBOUNCE_MS } from "@/lib/crm/quote-list-query";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { consumeQuoteListFlash } from "@/lib/crm/quote-list-flash";
-import InteriorQuoteExcelImportModal from "@/components/quotes/InteriorQuoteExcelImportModal";
 import type { InteriorImportCustomerOption } from "@/lib/crm/interior-quote-import";
 import type { Employee, ErpQuote } from "@/types/database";
+
+const InteriorQuoteExcelImportModal = dynamic(
+  () => import("@/components/quotes/InteriorQuoteExcelImportModal"),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        role="status"
+        className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4"
+      >
+        <div className="rounded-xl bg-white px-5 py-3 text-sm font-medium text-slate-700 shadow-xl">
+          Excel 가져오기를 준비 중입니다…
+        </div>
+      </div>
+    ),
+  },
+);
 
 type QuotesListProps = {
   quotes: ErpQuote[];
@@ -357,7 +374,7 @@ export default function QuotesList({
               <option value="">전체</option>
               {employees.map((employee) => (
                 <option key={employee.id} value={employee.id}>
-                  {formatEmployeeLabel(employee.name, employee.title)}
+                  {formatEmployeeOptionLabel(employee)}
                 </option>
               ))}
             </select>
@@ -505,10 +522,7 @@ export default function QuotesList({
                   const address = quote.customers?.address ?? "-";
                   const title = quote.title || "-";
                   const assignee = quote.employees
-                    ? formatEmployeeLabel(
-                        quote.employees.name,
-                        quote.employees.title,
-                      )
+                    ? formatEmployeeOptionLabel(quote.employees)
                     : "-";
 
                   return (
@@ -678,13 +692,15 @@ export default function QuotesList({
           searchParams={searchParams}
         />
       ) : null}
-      <InteriorQuoteExcelImportModal
-        open={interiorImportOpen}
-        onClose={() => setInteriorImportOpen(false)}
-        customers={importCustomers}
-        employees={employees}
-        lockEmployeeId={lockEmployeeId}
-      />
+      {interiorImportOpen ? (
+        <InteriorQuoteExcelImportModal
+          open
+          onClose={() => setInteriorImportOpen(false)}
+          customers={importCustomers}
+          employees={employees}
+          lockEmployeeId={lockEmployeeId}
+        />
+      ) : null}
     </div>
   );
 }

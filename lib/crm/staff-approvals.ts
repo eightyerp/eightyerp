@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase-server";
 import { requireAdminAccess } from "@/lib/crm/access";
+import { isMissingEmployeeMergeColumnError } from "@/lib/crm/employee-master-shared";
 import type { Employee, Profile, Team, UserRole } from "@/types/database";
 
 export type PendingSignup = Profile & {
@@ -46,6 +47,41 @@ export async function approveSignup(
   await requireAdminAccess();
   const supabase = await createClient();
 
+  if (input.mode === "link") {
+    const employeeId = input.employeeId?.trim();
+    if (!employeeId) {
+      throw new Error("연결할 직원을 선택해 주세요.");
+    }
+
+    const linkableQuery = await supabase
+      .from("employees")
+      .select("id")
+      .eq("id", employeeId)
+      .eq("is_active", true)
+      .is("merged_into_employee_id", null)
+      .maybeSingle();
+
+    let isLinkable = linkableQuery.data !== null;
+    if (isMissingEmployeeMergeColumnError(linkableQuery.error)) {
+      const fallbackQuery = await supabase
+        .from("employees")
+        .select("id")
+        .eq("id", employeeId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (fallbackQuery.error) throw new Error(fallbackQuery.error.message);
+      isLinkable = fallbackQuery.data !== null;
+    } else if (linkableQuery.error) {
+      throw new Error(linkableQuery.error.message);
+    }
+
+    if (!isLinkable) {
+      throw new Error(
+        "선택한 직원을 연결할 수 없습니다. 활성·병합 상태를 확인하고 새로고침해 주세요.",
+      );
+    }
+  }
+
   const { data, error } = await supabase.rpc("approve_staff_signup", {
     p_user_id: input.userId,
     p_role: input.role,
@@ -87,10 +123,20 @@ export async function deactivateUser(userId: string): Promise<Profile> {
 export async function listEmployeesForApproval(): Promise<Employee[]> {
   await requireAdminAccess();
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("employees")
-    .select("*")
-    .order("sort_order", { ascending: true });
+  const load = (filterMerged: boolean) => {
+    let query = supabase
+      .from("employees")
+      .select("*, teams ( name )")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (filterMerged) query = query.is("merged_into_employee_id", null);
+    return query;
+  };
+
+  let { data, error } = await load(true);
+  if (isMissingEmployeeMergeColumnError(error)) {
+    ({ data, error } = await load(false));
+  }
   if (error) throw new Error(error.message);
   return (data ?? []) as Employee[];
 }

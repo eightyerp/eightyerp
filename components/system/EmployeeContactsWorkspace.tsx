@@ -10,7 +10,7 @@ import {
   transferEmployeeAssignmentsAction,
   unlinkEmployeeLoginAction,
 } from "@/app/actions/employee-contacts";
-import { ROLE_LABEL } from "@/lib/crm/constants";
+import { formatEmployeeLabel, ROLE_LABEL } from "@/lib/crm/constants";
 import type {
   EmployeeMaster,
   EmployeeMasterEvent,
@@ -31,6 +31,11 @@ type Props = {
 
 function formatDateTime(value: string | null) {
   return value ? new Date(value).toLocaleString("ko-KR") : "로그인 기록 없음";
+}
+
+function employeeMasterLabel(employee: EmployeeMaster, teams: Team[]): string {
+  const team = teams.find((item) => item.id === employee.team_id);
+  return formatEmployeeLabel(employee.name, employee.title, team?.name);
 }
 
 export default function EmployeeContactsWorkspace({
@@ -57,13 +62,21 @@ export default function EmployeeContactsWorkspace({
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
   const [mergeReportContext, setMergeReportContext] = useState<{ sourceName: string; targetName: string; businessTotal: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
 
   const accessibleEmployees = canManageAll
     ? employees
     : employees.filter((employee) => employee.id === currentEmployeeId);
+  const activeEmployees = accessibleEmployees.filter(
+    (employee) => employee.is_active && !employee.merged_into_employee_id,
+  );
+  const archivedEmployees = accessibleEmployees.filter(
+    (employee) => !employee.is_active || Boolean(employee.merged_into_employee_id),
+  );
+  const listEmployees = showArchived ? archivedEmployees : activeEmployees;
   const needle = searchQuery.trim().toLowerCase();
   const visibleEmployees = needle
-    ? accessibleEmployees.filter((employee) => {
+    ? listEmployees.filter((employee) => {
         const team = teams.find((item) => item.id === employee.team_id);
         return [employee.name, employee.title, employee.phone, employee.email, employee.login_email, team?.name]
           .filter(Boolean)
@@ -71,7 +84,7 @@ export default function EmployeeContactsWorkspace({
           .toLowerCase()
           .includes(needle);
       })
-    : accessibleEmployees;
+    : listEmployees;
 
   function run(action: () => Promise<{ success: boolean; error?: string }>, success: string) {
     setMessage(null);
@@ -93,11 +106,25 @@ export default function EmployeeContactsWorkspace({
     <section className="dashboard-card overflow-hidden text-slate-900">
       <div className="flex items-center justify-between border-b border-slate-200 p-5">
         <div>
-          <h2 className="font-semibold text-slate-900">직원 목록</h2>
+          <h2 className="font-semibold text-slate-900">
+            {showArchived ? "병합/보관 직원" : "직원 목록"}
+          </h2>
           <p className="text-xs text-slate-600">총 {visibleEmployees.length}명</p>
         </div>
         {canManageAll ? (
           <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setShowArchived((value) => !value);
+              setSelected(null);
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800"
+          >
+            {showArchived
+              ? `활성 직원 보기 (${activeEmployees.length})`
+              : `병합/보관 직원 보기 (${archivedEmployees.length})`}
+          </button>
           {canMergeEmployees ? <button type="button" onClick={() => { setMergeOpen(true); setMergeImpact(null); setMergeReport(null); setError(null); }} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900">
             직원 병합
           </button> : null}
@@ -126,7 +153,7 @@ export default function EmployeeContactsWorkspace({
         <table className="min-w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs text-slate-600">
             <tr>
-              <th className="px-4 py-3">직원</th><th className="px-4 py-3">팀·직책</th>
+              <th className="px-4 py-3">직원·팀·직급</th><th className="px-4 py-3">상태</th>
               <th className="px-4 py-3">연락처</th><th className="px-4 py-3">로그인</th>
               <th className="px-4 py-3">권한</th><th className="px-4 py-3">마지막 로그인</th>
               <th className="px-4 py-3 text-center">고객</th><th className="px-4 py-3 text-center">견적</th>
@@ -135,16 +162,14 @@ export default function EmployeeContactsWorkspace({
           </thead>
           <tbody>
             {visibleEmployees.map((employee) => {
-              const team = teams.find((item) => item.id === employee.team_id);
               return (
                 <tr key={employee.id} className="border-t border-slate-100 transition-colors hover:bg-slate-100">
                   <td className="px-4 py-3">
                     <button type="button" onClick={() => { setSelected(employee); setCreating(false); setError(null); }} className="font-semibold text-navy-900 hover:underline">
-                      {employee.name}
+                      {employeeMasterLabel(employee, teams)}
                     </button>
-                    <p className={`text-xs font-medium ${employee.is_active ? "text-emerald-700" : "text-slate-600"}`}>{employee.merged_into_employee_id ? "병합됨" : employee.is_active ? "활성" : "비활성"}</p>
                   </td>
-                  <td className="px-4 py-3">{team?.name ?? "-"} · {employee.title}</td>
+                  <td className={`px-4 py-3 text-xs font-medium ${employee.is_active && !employee.merged_into_employee_id ? "text-emerald-700" : "text-slate-600"}`}>{employee.merged_into_employee_id ? "병합됨" : employee.is_active ? "활성" : "비활성"}</td>
                   <td className="px-4 py-3"><p>{employee.phone ?? "-"}</p><p className="text-xs text-slate-600">{employee.email ?? "-"}</p></td>
                   <td className="px-4 py-3">{employee.login_linked ? (employee.login_active ? "연결" : "비활성 계정") : "미연결"}</td>
                   <td className="px-4 py-3">{employee.role ? ROLE_LABEL[employee.role as keyof typeof ROLE_LABEL] ?? employee.role : "-"}</td>
@@ -155,6 +180,15 @@ export default function EmployeeContactsWorkspace({
                 </tr>
               );
             })}
+            {visibleEmployees.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-600">
+                  {showArchived
+                    ? "병합되거나 보관된 직원이 없습니다."
+                    : "표시할 활성 직원이 없습니다."}
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -207,7 +241,7 @@ export default function EmployeeContactsWorkspace({
                   }} className="mt-2 flex gap-2">
                     <select name="target_employee_id" required className="min-w-56 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900">
                       <option value="">이전 대상 선택</option>
-                      {employees.filter((employee) => employee.id !== selected.id && employee.is_active).map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.title}</option>)}
+                      {employees.filter((employee) => employee.id !== selected.id && employee.is_active && !employee.merged_into_employee_id).map((employee) => <option key={employee.id} value={employee.id}>{employeeMasterLabel(employee, teams)}</option>)}
                     </select>
                     <button type="submit" disabled={pending} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-75">담당업무 일괄 이전</button>
                   </form>
@@ -254,14 +288,14 @@ export default function EmployeeContactsWorkspace({
                 <span className="mt-1 block text-xs font-normal text-emerald-800">직원 ID와 업무 데이터를 최종적으로 유지합니다.</span>
                 <select value={mergeTargetId} onChange={(e) => { setMergeTargetId(e.target.value); setMergeImpact(null); setMergeReport(null); }} className="mt-2 w-full rounded-lg border border-emerald-400 bg-white px-3 py-2 text-slate-900">
                   <option value="">선택</option>
-                  {employees.filter((e) => e.is_active && !e.merged_into_employee_id).map((e) => <option key={e.id} value={e.id}>{e.name} · {e.title}</option>)}
+                  {employees.filter((e) => e.is_active && !e.merged_into_employee_id).map((e) => <option key={e.id} value={e.id}>{employeeMasterLabel(e, teams)}</option>)}
                 </select>
               </label>
               <label className="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-950">병합 직원 · 비활성화됨
                 <span className="mt-1 block text-xs font-normal text-rose-800">이 직원의 업무를 기준 직원에게 이전합니다.</span>
                 <select value={mergeSourceId} onChange={(e) => { setMergeSourceId(e.target.value); setMergeImpact(null); setMergeReport(null); }} className="mt-2 w-full rounded-lg border border-rose-400 bg-white px-3 py-2 text-slate-900">
                   <option value="">선택</option>
-                  {employees.filter((e) => e.id !== mergeTargetId && !e.merged_into_employee_id).map((e) => <option key={e.id} value={e.id}>{e.name} · {e.title}{e.login_linked ? " · 로그인 연결" : ""}</option>)}
+                  {employees.filter((e) => e.id !== mergeTargetId && !e.merged_into_employee_id).map((e) => <option key={e.id} value={e.id}>{employeeMasterLabel(e, teams)}{e.login_linked ? " · 로그인 연결" : ""}</option>)}
                 </select>
               </label>
             </div>

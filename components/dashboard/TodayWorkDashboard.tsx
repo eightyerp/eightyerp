@@ -18,6 +18,7 @@ import {
   dateStamp,
 } from "@/components/schedules/export-utils";
 import { formatPhoneForTel } from "@/lib/crm/contact";
+import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
 import {
   filterTodayItems,
   formatOverdueLabel,
@@ -347,7 +348,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
               <option value="">전체</option>
               {bundle.employees.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.name} {e.title}
+                  {formatEmployeeOptionLabel(e)}
                 </option>
               ))}
             </select>
@@ -656,7 +657,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                     <option value="">선택</option>
                     {bundle.employees.map((e) => (
                       <option key={e.id} value={e.id}>
-                        {e.name} {e.title}
+                        {formatEmployeeOptionLabel(e)}
                       </option>
                     ))}
                   </select>

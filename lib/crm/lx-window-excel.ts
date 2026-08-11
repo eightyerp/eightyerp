@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import {
   encodeLxWindowRemark,
   formatQuantitySetDisplay,
+  LX_WINDOW_TRADE_NAME,
   type LxWindowEditorItemKind,
   type LxWindowItemMeta,
 } from "@/lib/crm/lx-window-meta";
@@ -105,7 +106,7 @@ type RawSheetRow = {
 
 type HeaderColMap = Record<string, number>;
 
-const WINDOW_TRADE = "창호공사";
+const WINDOW_TRADE = LX_WINDOW_TRADE_NAME;
 
 /** 값으로 쓰면 안 되는 라벨(회사 카드·표 헤더 등) */
 const VALUE_LABEL_BLOCKLIST = new Set(
@@ -1657,4 +1658,5 @@ export function buildQuoteLinesFromLxImport(
   };
 }
 
-export const LX_WINDOW_TRADE_NAME = WINDOW_TRADE;
+// 기존 import 경로 호환. 화면 코드는 경량 `lx-window-meta`에서 직접 가져온다.
+export { LX_WINDOW_TRADE_NAME };

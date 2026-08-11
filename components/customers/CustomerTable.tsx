@@ -1,6 +1,9 @@
 import Link from "next/link";
 import SoftDeleteCustomerButton from "@/components/customers/SoftDeleteCustomerButton";
-import { STATUS_BADGE_CLASS, formatEmployeeLabel } from "@/lib/crm/constants";
+import {
+  STATUS_BADGE_CLASS,
+  formatEmployeeOptionLabel,
+} from "@/lib/crm/constants";
 import {
   contactBucketClass,
   contactBucketLabel,
@@ -77,10 +80,7 @@ export default function CustomerTable({
                 </td>
                 <td className="px-4 py-3 text-slate-900">
                   {customer.employees
-                    ? formatEmployeeLabel(
-                        customer.employees.name,
-                        customer.employees.title,
-                      )
+                    ? formatEmployeeOptionLabel(customer.employees)
                     : "-"}
                 </td>
                 <td className="px-4 py-3">

@@ -20,11 +20,11 @@ import { buildSimpleQuoteBrand } from "@/lib/crm/quote-brand-shared";
 import {
   formatQuantitySetDisplay,
   isLxWindowProductLine,
+  LX_WINDOW_TRADE_NAME,
   parseLxWindowEditorRemark,
   parseLxWindowRemark,
   stripLxWindowRemarkBlock,
 } from "@/lib/crm/lx-window-meta";
-import { LX_WINDOW_TRADE_NAME } from "@/lib/crm/lx-window-excel";
 
 type Props = {
   model: QuoteDocumentModel;

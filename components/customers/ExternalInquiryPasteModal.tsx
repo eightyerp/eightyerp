@@ -10,7 +10,7 @@ import {
 import {
   CUSTOMER_FORM_STATUSES,
   INTEREST_ITEMS,
-  formatEmployeeLabel,
+  formatEmployeeOptionLabel,
 } from "@/lib/crm/constants";
 import type { InquiryMissingField } from "@/lib/crm/parse-inquiry";
 import type {
@@ -446,7 +446,7 @@ export default function ExternalInquiryPasteModal({
                           <option value="">담당자 선택</option>
                           {employees.map((e) => (
                             <option key={e.id} value={e.id}>
-                              {formatEmployeeLabel(e.name, e.title)}
+                              {formatEmployeeOptionLabel(e)}
                             </option>
                           ))}
                         </select>
@@ -461,15 +461,11 @@ export default function ExternalInquiryPasteModal({
                             {employees.find(
                               (e) => e.id === preview.assigned_employee_id,
                             )
-                              ? formatEmployeeLabel(
+                              ? formatEmployeeOptionLabel(
                                   employees.find(
                                     (e) =>
                                       e.id === preview.assigned_employee_id,
-                                  )!.name,
-                                  employees.find(
-                                    (e) =>
-                                      e.id === preview.assigned_employee_id,
-                                  )!.title,
+                                  )!,
                                 )
                               : "본인 담당"}
                           </div>

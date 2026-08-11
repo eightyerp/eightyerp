@@ -64,6 +64,8 @@ export default async function CustomersPage({
               id: access.profile.employees.id,
               name: access.profile.employees.name,
               title: access.profile.employees.title,
+              team_id: access.profile.employees.team_id,
+              teams: access.profile.employees.teams,
             }]
           : [],
       );

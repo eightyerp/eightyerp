@@ -15,6 +15,7 @@ import {
   QUOTE_STATUS_BADGE_CLASS,
   QUOTE_STATUSES,
   formatEmployeeLabel,
+  formatEmployeeOptionLabel,
 } from "@/lib/crm/constants";
 import type {
   CustomerQuote,
@@ -640,7 +641,7 @@ function UploadForm({
             <option value="">미배정</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
-                {formatEmployeeLabel(employee.name, employee.title)}
+                {formatEmployeeOptionLabel(employee)}
               </option>
             ))}
           </select>

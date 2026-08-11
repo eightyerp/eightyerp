@@ -12,6 +12,14 @@ export type LxWindowItemMeta = {
 
 export type LxWindowEditorItemKind = "product" | "material";
 
+/**
+ * LX 창호 항목의 공종명.
+ *
+ * 이 값은 견적 편집·문서 표시에서도 사용하므로, SheetJS를 불러오는
+ * `lx-window-excel`이 아닌 이 경량 모듈에 둔다.
+ */
+export const LX_WINDOW_TRADE_NAME = "창호공사";
+
 const BEGIN = "@@LXW";
 const END = "@@";
 

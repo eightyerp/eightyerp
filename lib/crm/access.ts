@@ -69,7 +69,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id, employee_id, role, permissions, is_active, email, full_name, phone, requested_team, requested_title, is_approved, approval_status, approved_at, approved_by, rejected_at, rejection_reason, created_at, updated_at, employees ( id, name, title, team_id, is_active )")
+    .select("id, employee_id, role, permissions, is_active, email, full_name, phone, requested_team, requested_title, is_approved, approval_status, approved_at, approved_by, rejected_at, rejection_reason, created_at, updated_at, employees ( id, name, title, team_id, is_active, teams ( name ) )")
     .eq("id", user.id)
     .maybeSingle();
 
