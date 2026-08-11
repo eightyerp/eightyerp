@@ -17,6 +17,7 @@ import {
   CUSTOMER_FORM_STATUSES,
   STATUS_BADGE_CLASS,
   formatEmployeeLabel,
+  formatEmployeeOptionLabel,
 } from "@/lib/crm/constants";
 import {
   buildKakaoLink,
@@ -158,7 +159,7 @@ export default function CustomerDetailPanels({
     if (!id) return "미배정";
     const found = employees.find((e) => e.id === id);
     return found
-      ? formatEmployeeLabel(found.name, found.title)
+      ? formatEmployeeOptionLabel(found)
       : "알 수 없음";
   }
 
@@ -516,7 +517,7 @@ export default function CustomerDetailPanels({
                 <option value="">미배정</option>
                 {employees.map((employee) => (
                   <option key={employee.id} value={employee.id}>
-                    {formatEmployeeLabel(employee.name, employee.title)}
+                    {formatEmployeeOptionLabel(employee)}
                   </option>
                 ))}
               </select>

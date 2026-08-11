@@ -108,6 +108,8 @@ export type Employee = {
   merged_into_employee_id?: string | null;
   merged_at?: string | null;
   merged_by?: string | null;
+  /** 담당자 선택 표시용 팀 관계. 직원 목록 조회에서만 선택적으로 포함 */
+  teams?: Pick<Team, "name"> | Pick<Team, "name">[] | null;
 };
 
 export type LeadSource = {
@@ -118,12 +120,14 @@ export type LeadSource = {
   created_at: string;
 };
 
-export type EmployeeOption = Pick<Employee, "id" | "name" | "title">;
+export type EmployeeOption = Pick<Employee, "id" | "name" | "title"> &
+  Partial<Pick<Employee, "team_id" | "teams">>;
 export type LeadSourceOption = Pick<LeadSource, "id" | "name">;
 
 export type Profile = {
   id: string;
   employee_id: string | null;
+  active_company_id?: string | null;
   role: UserRole;
   permissions: Record<string, boolean>;
   is_active: boolean;
@@ -143,7 +147,10 @@ export type Profile = {
 };
 
 export type ProfileWithEmployee = Profile & {
-  employees: Pick<Employee, "id" | "name" | "title" | "team_id" | "is_active"> | null;
+  employees:
+    | (Pick<Employee, "id" | "company_id" | "name" | "title" | "team_id" | "is_active"> &
+        Partial<Pick<Employee, "teams">>)
+    | null;
 };
 
 export type Customer = {
@@ -208,7 +215,7 @@ export type CustomerActivity = {
 
 export type CustomerWithRelations = Customer & {
   lead_sources: Pick<LeadSource, "id" | "name"> | null;
-  employees: Pick<Employee, "id" | "name" | "title"> | null;
+  employees: EmployeeOption | null;
   customer_checklists?: Pick<CustomerChecklist, "id" | "is_completed">[] | null;
   customer_activities?: Pick<CustomerActivity, "id" | "created_at">[] | null;
   checklist_completed?: number;
@@ -540,6 +547,7 @@ export type ErpQuote = {
     | "email"
     | "business_card_path"
     | "show_business_card_on_quote"
+    | "teams"
   > | null;
   quote_files?: ErpQuoteFile[];
   quote_items?: ErpQuoteItem[];

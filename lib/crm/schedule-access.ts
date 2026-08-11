@@ -8,6 +8,7 @@ import {
   requireAuthenticatedAccess,
   type CurrentUserAccess,
 } from "@/lib/crm/access";
+import { isMissingEmployeeMergeColumnError } from "@/lib/crm/employee-master-shared";
 import type { Employee, Team, UserRole } from "@/types/database";
 
 export type ScheduleAccess = CurrentUserAccess & {
@@ -78,23 +79,35 @@ export async function listEmployeesInScope(
   access: ScheduleAccess,
 ): Promise<Employee[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("employees")
-    .select("*")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+  const load = (filterMerged: boolean) => {
+    let query = supabase
+      .from("employees")
+      .select("*, teams ( name )")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
 
-  if (access.canViewAll) {
-    // all
-  } else if (access.canViewTeam && access.teamId) {
-    query = query.eq("team_id", access.teamId);
-  } else if (access.employeeId) {
-    query = query.eq("id", access.employeeId);
-  } else {
-    return [];
+    if (filterMerged) query = query.is("merged_into_employee_id", null);
+
+    if (access.canViewAll) {
+      // all
+    } else if (access.canViewTeam && access.teamId) {
+      query = query.eq("team_id", access.teamId);
+    } else if (access.employeeId) {
+      query = query.eq("id", access.employeeId);
+    }
+    return query;
+  };
+
+  const hasScope =
+    access.canViewAll ||
+    (access.canViewTeam && Boolean(access.teamId)) ||
+    Boolean(access.employeeId);
+  if (!hasScope) return [];
+
+  let { data, error } = await load(true);
+  if (isMissingEmployeeMergeColumnError(error)) {
+    ({ data, error } = await load(false));
   }
-
-  const { data, error } = await query;
   if (error) throw new Error("직원 목록을 불러오지 못했습니다.");
   return (data ?? []) as Employee[];
 }

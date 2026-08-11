@@ -15,6 +15,7 @@ import {
   CUSTOMER_LIST_SELECT,
   normalizeCustomerSearchTerm,
 } from "@/lib/crm/customer-list-query";
+import { isMissingEmployeeMergeColumnError } from "@/lib/crm/employee-master-shared";
 import type {
   ActivityType,
   ContactScheduleItem,
@@ -214,11 +215,20 @@ export async function getLeadSources(): Promise<LeadSource[]> {
 
 export async function getEmployees(): Promise<Employee[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("employees")
-    .select("*")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+  const load = (filterMerged: boolean) => {
+    let query = supabase
+      .from("employees")
+      .select("*, teams ( name )")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (filterMerged) query = query.is("merged_into_employee_id", null);
+    return query;
+  };
+
+  let { data, error } = await load(true);
+  if (isMissingEmployeeMergeColumnError(error)) {
+    ({ data, error } = await load(false));
+  }
 
   if (error) throw new Error(error.message);
   return (data ?? []) as Employee[];
@@ -226,11 +236,20 @@ export async function getEmployees(): Promise<Employee[]> {
 
 export async function getCustomerListEmployees(): Promise<EmployeeOption[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("employees")
-    .select("id, name, title")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+  const load = (filterMerged: boolean) => {
+    let query = supabase
+      .from("employees")
+      .select("id, name, title, team_id, teams ( name )")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (filterMerged) query = query.is("merged_into_employee_id", null);
+    return query;
+  };
+
+  let { data, error } = await load(true);
+  if (isMissingEmployeeMergeColumnError(error)) {
+    ({ data, error } = await load(false));
+  }
 
   if (error) throw new Error(error.message);
   return (data ?? []) as EmployeeOption[];

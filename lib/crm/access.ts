@@ -37,7 +37,14 @@ function resolveApproval(profile: ProfileWithEmployee | null): {
 
   const canAccessErp =
     profile.is_active === true &&
-    (profile.employee_id === null || profile.employees?.is_active === true) &&
+    (
+      profile.employee_id === null ||
+      (
+        profile.employees?.is_active === true &&
+        profile.active_company_id != null &&
+        profile.employees.company_id === profile.active_company_id
+      )
+    ) &&
     isApproved &&
     status === "approved";
 
@@ -67,11 +74,15 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
     };
   }
 
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("id, employee_id, role, permissions, is_active, email, full_name, phone, requested_team, requested_title, is_approved, approval_status, approved_at, approved_by, rejected_at, rejection_reason, created_at, updated_at, employees ( id, name, title, team_id, is_active )")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [profileResult, companyRoleResult] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, employee_id, active_company_id, role, permissions, is_active, email, full_name, phone, requested_team, requested_title, is_approved, approval_status, approved_at, approved_by, rejected_at, rejection_reason, created_at, updated_at, employees ( id, company_id, name, title, team_id, is_active, teams ( name ) )")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase.rpc("current_company_role"),
+  ]);
+  const { data: profile, error } = profileResult;
 
   if (error) {
     return {
@@ -88,14 +99,38 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
 
   const typed = profile as ProfileWithEmployee | null;
   const resolved = resolveApproval(typed);
+  const companyRole =
+    typeof companyRoleResult.data === "string"
+      ? companyRoleResult.data
+      : null;
+  const hasScopedEmployee =
+    (companyRole !== "employee" && companyRole !== "manager") ||
+    (
+      typed?.employee_id != null &&
+      typed.employees?.company_id === typed.active_company_id
+    );
+  const canAccessErp =
+    resolved.canAccessErp &&
+    !companyRoleResult.error &&
+    companyRole !== null &&
+    hasScopedEmployee;
+  const effectiveRole: UserRole | null = !canAccessErp
+    ? null
+    : companyRole === "owner" ||
+        companyRole === "director" ||
+        companyRole === "admin"
+      ? "admin"
+      : companyRole === "manager"
+        ? "manager"
+        : "staff";
 
   return {
     userId: user.id,
     profile: typed,
-    role: resolved.role,
-    isAdmin: isAdminRole(resolved.role),
+    role: effectiveRole,
+    isAdmin: isAdminRole(effectiveRole),
     isAuthenticated: true,
-    canAccessErp: resolved.canAccessErp,
+    canAccessErp,
     approvalStatus: resolved.approvalStatus,
     permissions: typed?.permissions ?? {},
   };
@@ -119,6 +154,39 @@ export async function requireAuthenticatedAccess() {
     throw new Error("관리자 승인 후 이용할 수 있습니다.");
   }
   return access;
+}
+
+/**
+ * 승인된 세션의 현재 회사 역할과 동일한 Supabase 클라이언트를 반환한다.
+ * 전역 profiles.role은 회사별 관리 권한의 근거로 사용하지 않는다.
+ */
+export async function getCurrentCompanyAccess() {
+  const access = await requireAuthenticatedAccess();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("current_company_role");
+  if (error) {
+    throw new Error("현재 회사 역할을 확인할 수 없습니다.");
+  }
+
+  return {
+    access,
+    supabase,
+    companyRole: typeof data === "string" ? data : null,
+  };
+}
+
+export async function requireCurrentCompanyRoleAccess(
+  allowedRoles: readonly string[],
+  errorMessage = "현재 회사에서 이 작업을 수행할 권한이 없습니다.",
+) {
+  const context = await getCurrentCompanyAccess();
+  if (
+    !context.companyRole ||
+    !allowedRoles.includes(context.companyRole)
+  ) {
+    throw new Error(errorMessage);
+  }
+  return context;
 }
 
 /** 세션만 필요 (승인 대기 화면 등) */

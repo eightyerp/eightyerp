@@ -15,6 +15,11 @@ assert.equal(CUSTOMER_LIST_PAGE_SIZE, 50);
 assert.equal(CUSTOMER_SEARCH_DEBOUNCE_MS, 300);
 assert.equal(CUSTOMER_LIST_COLUMNS.length, 13);
 assert.ok(!CUSTOMER_LIST_SELECT.includes("*"), "목록 query에서 select('*') 금지");
+assert.match(
+  CUSTOMER_LIST_SELECT,
+  /employees \( id, name, title, team_id, teams \( name \) \)/,
+  "담당 직원의 팀 라벨 관계 유지",
+);
 
 assert.equal(normalizeCustomerSearchTerm("  홍길동%_,()  "), "홍길동");
 

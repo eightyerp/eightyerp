@@ -8,7 +8,9 @@ import { createClient } from "@/lib/supabase";
 import {
   filterNavigation,
   getActiveNavigationItemId,
+  isCompanyNavigationRole,
   isNavigationRole,
+  type CompanyNavigationRole,
   type NavigationRole,
 } from "@/lib/modules/navigation";
 
@@ -17,8 +19,6 @@ type SidebarProps = {
   onClose: () => void;
 };
 
-const ROLE_CACHE_KEY = "eighty:sidebar-role";
-const ROLE_CACHE_TTL_MS = 5 * 60 * 1000;
 const GROUP_CACHE_KEY = "eighty:sidebar-groups";
 
 function SearchParamsReader({
@@ -32,29 +32,13 @@ function SearchParamsReader({
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [role, setRole] = useState<NavigationRole | null>(null);
+  const [companyRole, setCompanyRole] = useState<CompanyNavigationRole | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const cachedValue = window.sessionStorage.getItem(ROLE_CACHE_KEY);
-        if (cachedValue) {
-          try {
-            const cached = JSON.parse(cachedValue) as { role?: unknown; expiresAt?: unknown };
-            if (
-              isNavigationRole(cached.role) &&
-              typeof cached.expiresAt === "number" &&
-              cached.expiresAt > Date.now()
-            ) {
-              setRole(cached.role);
-              return;
-            }
-          } catch {
-            // 이전 형식이나 손상된 값은 제거하고 서버 권한을 다시 확인합니다.
-          }
-          window.sessionStorage.removeItem(ROLE_CACHE_KEY);
-        }
         const supabase = createClient();
         const {
           data: { user },
@@ -77,8 +61,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           profile.is_active === true && approved && status === "approved";
         if (canAccess && isNavigationRole(profile.role)) {
           const nextRole = profile.role;
+          const { data: companyRoleData } = await supabase.rpc(
+            "current_company_role",
+          );
+          const nextCompanyRole = isCompanyNavigationRole(companyRoleData)
+            ? companyRoleData
+            : null;
           setRole(nextRole);
-          window.sessionStorage.setItem(ROLE_CACHE_KEY, JSON.stringify({ role: nextRole, expiresAt: Date.now() + ROLE_CACHE_TTL_MS }));
+          setCompanyRole(nextCompanyRole);
         }
       } catch {
         // ignore — menu stays without admin links
@@ -105,7 +95,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     };
   }, []);
 
-  const nav = filterNavigation(role);
+  const nav = filterNavigation(role, new Set(), companyRole);
 
   function toggleGroup(id: string, expanded: boolean) {
     setOpenGroups((current) => {

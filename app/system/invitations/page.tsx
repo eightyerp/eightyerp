@@ -4,14 +4,20 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { loadCompanyEmployeeInvitationsPageData } from "@/lib/crm/company-employee-invitations";
 
 export default async function CompanyEmployeeInvitationsPage() {
-  const { access, invitations, teams, loadError } =
+  const {
+    access,
+    canManageInvitations,
+    invitations,
+    teams,
+    loadError,
+  } =
     await loadCompanyEmployeeInvitationsPageData();
 
   if (!access.canAccessErp) {
     redirect("/pending-approval");
   }
 
-  if (!access.isAdmin) {
+  if (!canManageInvitations) {
     redirect("/dashboard");
   }
 

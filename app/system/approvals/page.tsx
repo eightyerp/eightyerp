@@ -7,17 +7,18 @@ import {
   schemaMissingStaffMessage,
 } from "@/lib/crm/dev-diagnostics";
 import {
+  getApprovalActorCompanyRole,
   listEmployeesForApproval,
   listManagedProfiles,
   listPendingSignups,
   listTeamsForApproval,
 } from "@/lib/crm/staff-approvals";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
+import type { UserRole } from "@/types/database";
 
 export default async function StaffApprovalsPage() {
   const access = await getCurrentUserAccess();
   if (!access.canAccessErp) redirect("/pending-approval");
-  if (!access.isAdmin) redirect("/dashboard");
 
   let pending: Awaited<ReturnType<typeof listPendingSignups>> = [];
   let allProfiles: Awaited<ReturnType<typeof listManagedProfiles>> = [];
@@ -25,9 +26,14 @@ export default async function StaffApprovalsPage() {
   let teams: Awaited<ReturnType<typeof listTeamsForApproval>> = [];
   let loadError: string | null = null;
   let schemaMissing = false;
+
+  const companyRole = await getApprovalActorCompanyRole();
+  if (companyRole !== "owner" && companyRole !== "director") {
+    redirect("/dashboard");
+  }
   const migrationDevHint = schemaMissingDevHint(
-    "supabase/migrations/20260801000001_employee_signup_approval.sql",
-    access.isAdmin,
+    "supabase/migrations/20260811060000_employee_assignment_guard.sql",
+    true,
   );
 
   try {
@@ -40,15 +46,20 @@ export default async function StaffApprovalsPage() {
   } catch (error) {
     const message = toCrmErrorMessage(error);
     if (
-      /is_approved|approval_status|approve_staff_signup|schema cache|Could not find/i.test(
+      /is_approved|approval_status|approve_staff_signup|list_pending_company_signups|list_managed_company_profiles|schema cache|Could not find/i.test(
         message,
       )
     ) {
       schemaMissing = true;
-      loadError = schemaMissingStaffMessage("가입 승인");
+      loadError = schemaMissingStaffMessage("계정 재연결");
     } else {
-      loadError = "가입 승인 목록을 불러오지 못했습니다.";
+      loadError = "계정 재연결 목록을 불러오지 못했습니다.";
     }
+  }
+
+  const assignableRoles: UserRole[] = ["staff", "manager"];
+  if (companyRole === "owner" || companyRole === "director") {
+    assignableRoles.push("admin");
   }
 
   return (
@@ -57,10 +68,11 @@ export default async function StaffApprovalsPage() {
         <div>
           <p className="text-xs font-medium text-slate-600">시스템관리</p>
           <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
-            가입 승인 관리
+            계정 연결 관리
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            대표이사(super_admin)·이사(admin)만 승인·거절·비활성화할 수 있습니다.
+            현재 회사의 owner·director만 승인 대기 멤버십의 연결·거절과
+            계정 비활성화를 처리할 수 있습니다.
           </p>
         </div>
 
@@ -85,6 +97,7 @@ export default async function StaffApprovalsPage() {
             allProfiles={allProfiles}
             employees={employees}
             teams={teams}
+            assignableRoles={assignableRoles}
           />
         )}
       </div>

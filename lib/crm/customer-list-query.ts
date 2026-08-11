@@ -20,7 +20,7 @@ export const CUSTOMER_LIST_COLUMNS = [
 export const CUSTOMER_LIST_SELECT = `
   ${CUSTOMER_LIST_COLUMNS.join(", ")},
   lead_sources ( id, name ),
-  employees ( id, name, title ),
+  employees ( id, name, title, team_id, teams ( name ) ),
   customer_checklists ( is_completed ),
   customer_activities ( created_at )
 `;

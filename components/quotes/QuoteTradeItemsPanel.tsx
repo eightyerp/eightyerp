@@ -21,9 +21,9 @@ import {
   moveTradeOrder,
   tradeKeyOf,
 } from "@/lib/crm/quote-trade-groups";
-import { LX_WINDOW_TRADE_NAME } from "@/lib/crm/lx-window-excel";
 import {
   composeLxWindowEditorRemark,
+  LX_WINDOW_TRADE_NAME,
   type LxWindowEditorItemKind,
 } from "@/lib/crm/lx-window-meta";
 

@@ -11,7 +11,10 @@ assert.equal(QUOTE_SEARCH_DEBOUNCE_MS, 300, "견적 검색 debounce는 300ms여�
 assert.doesNotMatch(QUOTE_LIST_SELECT, /(^|[,(]\s*)\*/m, "목록 select에 *를 사용할 수 없습니다.");
 assert.doesNotMatch(QUOTE_LIST_SELECT, /quote_items|quote_files/, "목록에서 items/files를 embed할 수 없습니다.");
 assert.match(QUOTE_LIST_SELECT, /customers \( id, name, phone, address, assigned_employee_id, status \)/);
-assert.match(QUOTE_LIST_SELECT, /employees \( id, name, title, team_id \)/);
+assert.match(
+  QUOTE_LIST_SELECT,
+  /employees \( id, name, title, team_id, teams \( name \) \)/,
+);
 
 const querySource = readFileSync("lib/crm/quote-mgmt.ts", "utf8");
 assert.match(querySource, /\.range\(from, from \+ QUOTE_LIST_PAGE_SIZE - 1\)/);

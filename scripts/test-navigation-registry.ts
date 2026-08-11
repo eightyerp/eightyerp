@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  ADMIN_ROLES,
   NAVIGATION_REGISTRY,
   filterNavigation,
   getActiveNavigationItemId,
@@ -71,17 +70,36 @@ assert.deepEqual(
   "모든 ready 내부 route는 실제 Next.js app route와 일치해야 함",
 );
 
-for (const role of ADMIN_ROLES) {
-  const labels = filterNavigation(role).flatMap((group) => group.items.map((item) => item.label));
-  for (const label of ["직원 Master", "가입 승인", "직원 초대", "월 마감"]) {
-    assert.ok(labels.includes(label), `${role}: ${label} 메뉴 필요`);
+function navigationLabels(
+  role: Parameters<typeof filterNavigation>[0],
+  companyRole: Parameters<typeof filterNavigation>[2],
+) {
+  return filterNavigation(role, new Set(), companyRole)
+    .flatMap((group) => group.items.map((item) => item.label));
+}
+
+for (const companyRole of ["owner", "director"] as const) {
+  const labels = navigationLabels("admin", companyRole);
+  for (const label of ["직원 Master", "계정 재연결", "직원 초대", "월 마감"]) {
+    assert.ok(labels.includes(label), `${companyRole}: ${label} 메뉴 필요`);
   }
 }
 
-const staffLabels = filterNavigation("staff").flatMap((group) => group.items.map((item) => item.label));
-assert.ok(staffLabels.includes("직원 Master"));
-assert.ok(!staffLabels.includes("가입 승인"));
-assert.ok(!staffLabels.includes("월 마감"));
+const companyAdminLabels = navigationLabels("admin", "admin");
+assert.ok(companyAdminLabels.includes("직원 Master"));
+assert.ok(companyAdminLabels.includes("직원 초대"));
+assert.ok(!companyAdminLabels.includes("계정 재연결"));
+
+for (const [role, companyRole] of [
+  ["manager", "manager"],
+  ["staff", "employee"],
+] as const) {
+  const labels = navigationLabels(role, companyRole);
+  assert.ok(labels.includes("직원 Master"));
+  assert.ok(!labels.includes("계정 재연결"));
+  assert.ok(!labels.includes("직원 초대"));
+  assert.ok(!labels.includes("월 마감"));
+}
 
 assert.ok(isNavigationRouteActive("/quotes/abc", "/quotes"));
 assert.ok(!isNavigationRouteActive("/customers", "/quotes"));

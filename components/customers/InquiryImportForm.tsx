@@ -10,7 +10,7 @@ import {
 import {
   CONSULTATION_TYPES,
   CUSTOMER_FORM_STATUSES,
-  formatEmployeeLabel,
+  formatEmployeeOptionLabel,
 } from "@/lib/crm/constants";
 import { interestItemsToInput } from "@/lib/crm/parse-inquiry";
 import type {
@@ -352,7 +352,7 @@ export default function InquiryImportForm({
                   <option value="">담당자 선택</option>
                   {employees.map((employee) => (
                     <option key={employee.id} value={employee.id}>
-                      {formatEmployeeLabel(employee.name, employee.title)}
+                      {formatEmployeeOptionLabel(employee)}
                     </option>
                   ))}
                 </select>
@@ -365,13 +365,10 @@ export default function InquiryImportForm({
                   />
                   <div className={`${inputClass} bg-gray-50 text-slate-900`}>
                     {employees.find((e) => e.id === form.assigned_employee_id)
-                      ? formatEmployeeLabel(
+                      ? formatEmployeeOptionLabel(
                           employees.find(
                             (e) => e.id === form.assigned_employee_id,
-                          )!.name,
-                          employees.find(
-                            (e) => e.id === form.assigned_employee_id,
-                          )!.title,
+                          )!,
                         )
                       : "본인 담당"}
                   </div>

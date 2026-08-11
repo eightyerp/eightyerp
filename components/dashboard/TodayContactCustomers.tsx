@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { STATUS_BADGE_CLASS, formatEmployeeLabel } from "@/lib/crm/constants";
+import {
+  STATUS_BADGE_CLASS,
+  formatEmployeeOptionLabel,
+} from "@/lib/crm/constants";
 import type { ContactScheduleItem, Employee } from "@/types/database";
 
 type TodayContactCustomersProps = {
@@ -60,7 +63,7 @@ export default function TodayContactCustomers({
                     <p className="text-xs text-slate-600">
                       {item.phone}
                       {employee
-                        ? ` · ${formatEmployeeLabel(employee.name, employee.title)}`
+                        ? ` · ${formatEmployeeOptionLabel(employee)}`
                         : " · 미배정"}
                     </p>
                   </div>

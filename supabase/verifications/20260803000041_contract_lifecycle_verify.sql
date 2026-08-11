@@ -169,7 +169,7 @@ declare
   v_phone text;
 begin
   select
-    p.id, p.role, p.employee_id, p.active_company_id
+    p.id, m.role, m.employee_id, p.active_company_id
   into v_admin_id, v_admin_role, v_employee_id, v_company_id
   from public.profiles p
   join public.company_memberships m
@@ -179,7 +179,7 @@ begin
   join public.companies c
     on c.id = p.active_company_id
    and c.status = 'active'
-  where p.role in ('admin', 'super_admin')
+  where m.role in ('owner', 'director', 'admin')
     and p.is_active is true
     and p.is_approved is true
     and p.approval_status = 'approved'
@@ -253,6 +253,10 @@ begin
   )
   returning id into v_project_id;
 
+  -- Production contracts are RPC-only after the company-scope hardening.
+  -- Seed the rollback-only fixture as the verifier owner, then return to the
+  -- authenticated caller for every lifecycle RPC assertion below.
+  execute 'reset role';
   insert into public.contracts (
     company_id, customer_id, quote_id, project_id,
     contract_number, contract_date, status,
@@ -267,6 +271,7 @@ begin
     'original', 0, v_marker || '-root'
   )
   returning id into v_draft_id;
+  execute 'set local role authenticated';
 
   if v_draft_id is null then
     raise exception '초안 계약 INSERT 실패';
@@ -325,6 +330,7 @@ begin
     raise exception '중복 확정 멱등 실패: %', v_result;
   end if;
 
+  execute 'reset role';
   insert into public.execution_budgets (
     company_id, contract_id, project_id, customer_id,
     status, estimated_total_cost, created_by, updated_by
@@ -333,6 +339,7 @@ begin
     'draft', null, v_admin_id, v_admin_id
   )
   returning id into v_budget_id;
+  execute 'set local role authenticated';
 
   v_supply := 30000000;
   v_vat := 3000000;

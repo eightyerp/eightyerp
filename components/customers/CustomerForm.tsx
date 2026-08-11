@@ -13,7 +13,7 @@ import {
   CONSULTATION_TYPES,
   CUSTOMER_FORM_STATUSES,
   INTEREST_ITEMS,
-  formatEmployeeLabel,
+  formatEmployeeOptionLabel,
 } from "@/lib/crm/constants";
 import type { Customer, Employee, LeadSource } from "@/types/database";
 
@@ -266,7 +266,7 @@ export default function CustomerForm({
               <option value="">담당자 선택</option>
               {employees.map((employee) => (
                 <option key={employee.id} value={employee.id}>
-                  {formatEmployeeLabel(employee.name, employee.title)}
+                  {formatEmployeeOptionLabel(employee)}
                 </option>
               ))}
             </select>
@@ -279,10 +279,7 @@ export default function CustomerForm({
               />
               <div className={`${inputClass} bg-gray-50 text-slate-900`}>
                 {lockedAssignee
-                  ? formatEmployeeLabel(
-                      lockedAssignee.name,
-                      lockedAssignee.title,
-                    )
+                  ? formatEmployeeOptionLabel(lockedAssignee)
                   : "본인 담당"}
               </div>
               <p className="mt-1 text-xs text-slate-600">
