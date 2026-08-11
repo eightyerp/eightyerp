@@ -22,6 +22,7 @@ for (const rpc of [
   "get_employee_merge_impact",
   "merge_employees",
   "list_employee_merge_states",
+  "update_employee_contact_profile",
 ]) {
   assert.match(
     migration,
@@ -43,6 +44,45 @@ assert.doesNotMatch(
   /public\.is_admin\(\)\s+or/i,
   "A global profile role must not bypass the current-company role",
 );
+assert.match(
+  migration,
+  /create or replace function public\.update_employee_contact_profile\([\s\S]*?v_company_role in \('owner', 'director', 'admin'\)[\s\S]*?v_my_employee_id is distinct from p_employee_id/i,
+  "Contact editing must allow only a current-company manager or the exact employee",
+);
+const contactFunction = migration.slice(
+  migration.indexOf("create or replace function public.update_employee_contact_profile"),
+  migration.indexOf("-- Direct Data API writes"),
+);
+assert.doesNotMatch(
+  contactFunction,
+  /public\.is_admin\(/i,
+  "Contact editing must not use the global profile-role shortcut",
+);
+for (const policy of [
+  "employees_insert_admin",
+  "employees_update_admin",
+  "employees_delete_admin",
+  "teams_write_admin",
+]) {
+  assert.match(
+    migration,
+    new RegExp(
+      `create policy ${policy}[\\s\\S]*?company_id = public\\.current_company_id\\(\\)[\\s\\S]*?public\\.current_company_role\\(\\) in \\('owner', 'director', 'admin'\\)`,
+      "i",
+    ),
+    `${policy} must enforce the current-company role hierarchy`,
+  );
+}
+for (const policy of ["employees_select_erp", "teams_select_erp"]) {
+  assert.match(
+    migration,
+    new RegExp(
+      `create policy ${policy}[\\s\\S]*?public\\.is_erp_user\\(\\)[\\s\\S]*?company_id = public\\.current_company_id\\(\\)`,
+      "i",
+    ),
+    `${policy} must restrict reads to the current company`,
+  );
+}
 assert.match(
   migration,
   /p_role not in \('admin', 'manager', 'staff'\)/i,

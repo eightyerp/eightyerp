@@ -1429,6 +1429,228 @@ begin
 end;
 $$;
 
+-- Contact/profile editing is available to the exact employee account or to a
+-- manager in the current company. The legacy global profiles.role shortcut is
+-- intentionally excluded so it cannot bypass the company role hierarchy.
+create or replace function public.update_employee_contact_profile(
+  p_employee_id uuid,
+  p_title text default null,
+  p_phone text default null,
+  p_email text default null,
+  p_business_card_path text default null,
+  p_clear_business_card boolean default false,
+  p_show_business_card_on_quote boolean default null
+)
+returns public.employees
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_company_id uuid := public.current_company_id();
+  v_company_role text := public.current_company_role();
+  v_my_employee_id uuid;
+  v_is_manager boolean;
+  v_row public.employees;
+  v_card_path text;
+  v_path_company uuid;
+  v_path_employee uuid;
+begin
+  if v_uid is null then
+    raise exception '인증이 필요합니다.';
+  end if;
+  if v_company_id is null then
+    raise exception '활성 회사를 확인할 수 없습니다.';
+  end if;
+  if p_employee_id is null then
+    raise exception '직원 ID가 필요합니다.';
+  end if;
+
+  select profile_row.employee_id
+  into v_my_employee_id
+  from public.profiles profile_row
+  where profile_row.id = v_uid
+    and profile_row.active_company_id = v_company_id
+    and profile_row.is_active = true
+    and profile_row.is_approved = true
+    and profile_row.approval_status = 'approved';
+
+  v_is_manager := coalesce(
+    v_company_role in ('owner', 'director', 'admin'),
+    false
+  );
+
+  if not v_is_manager
+     and v_my_employee_id is distinct from p_employee_id then
+    raise exception '현재 회사의 관리자 또는 본인만 수정할 수 있습니다.';
+  end if;
+
+  select employee_row.*
+  into v_row
+  from public.employees employee_row
+  where employee_row.id = p_employee_id
+    and employee_row.company_id = v_company_id
+    and employee_row.merged_into_employee_id is null
+  for update;
+
+  if v_row.id is null then
+    raise exception '현재 회사의 미병합 직원을 찾을 수 없습니다.';
+  end if;
+
+  if not p_clear_business_card and p_business_card_path is not null then
+    v_card_path := nullif(pg_catalog.btrim(p_business_card_path), '');
+    if v_card_path is not null then
+      begin
+        v_path_company := nullif(pg_catalog.split_part(v_card_path, '/', 1), '')::uuid;
+        v_path_employee := nullif(pg_catalog.split_part(v_card_path, '/', 2), '')::uuid;
+      exception
+        when invalid_text_representation then
+          raise exception '명함 경로가 올바르지 않습니다.';
+      end;
+      if v_path_company is distinct from v_company_id
+         or v_path_employee is distinct from p_employee_id
+         or nullif(pg_catalog.split_part(v_card_path, '/', 3), '') is null then
+        raise exception '명함 경로는 {회사ID}/{직원ID}/파일명 형식이어야 합니다.';
+      end if;
+    end if;
+  end if;
+
+  update public.employees employee_row
+  set title = case
+        when p_title is null then employee_row.title
+        else nullif(pg_catalog.btrim(p_title), '')
+      end,
+      phone = case
+        when p_phone is null then employee_row.phone
+        else nullif(pg_catalog.btrim(p_phone), '')
+      end,
+      email = case
+        when p_email is null then employee_row.email
+        else nullif(pg_catalog.btrim(p_email), '')
+      end,
+      business_card_path = case
+        when p_clear_business_card then null
+        when p_business_card_path is null then employee_row.business_card_path
+        else nullif(pg_catalog.btrim(p_business_card_path), '')
+      end,
+      show_business_card_on_quote = case
+        when p_show_business_card_on_quote is null
+          then employee_row.show_business_card_on_quote
+        else p_show_business_card_on_quote
+      end,
+      updated_at = now()
+  where employee_row.id = p_employee_id
+    and employee_row.company_id = v_company_id
+  returning * into v_row;
+
+  if v_row.title is null or pg_catalog.btrim(v_row.title) = '' then
+    raise exception '직책은 비울 수 없습니다.';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+-- Direct Data API writes must enforce the same current-company role hierarchy
+-- as the SECURITY DEFINER administration RPCs.
+drop policy if exists employees_select_erp on public.employees;
+create policy employees_select_erp
+on public.employees
+for select to authenticated
+using (
+  public.is_erp_user()
+  and company_id = public.current_company_id()
+);
+
+drop policy if exists employees_insert_admin on public.employees;
+create policy employees_insert_admin
+on public.employees
+for insert to authenticated
+with check (
+  company_id = public.current_company_id()
+  and public.current_company_role() in ('owner', 'director', 'admin')
+);
+
+drop policy if exists employees_update_admin on public.employees;
+create policy employees_update_admin
+on public.employees
+for update to authenticated
+using (
+  company_id = public.current_company_id()
+  and public.current_company_role() in ('owner', 'director', 'admin')
+)
+with check (
+  company_id = public.current_company_id()
+  and public.current_company_role() in ('owner', 'director', 'admin')
+);
+
+drop policy if exists employees_delete_admin on public.employees;
+create policy employees_delete_admin
+on public.employees
+for delete to authenticated
+using (
+  company_id = public.current_company_id()
+  and public.current_company_role() in ('owner', 'director', 'admin')
+);
+
+drop policy if exists teams_write_admin on public.teams;
+create policy teams_write_admin
+on public.teams
+for all to authenticated
+using (
+  company_id = public.current_company_id()
+  and public.current_company_role() in ('owner', 'director', 'admin')
+)
+with check (
+  company_id = public.current_company_id()
+  and public.current_company_role() in ('owner', 'director', 'admin')
+);
+
+drop policy if exists teams_select_erp on public.teams;
+create policy teams_select_erp
+on public.teams
+for select to authenticated
+using (
+  public.is_erp_user()
+  and company_id = public.current_company_id()
+);
+
+revoke all
+on function public.update_employee_contact_profile(
+  uuid,
+  text,
+  text,
+  text,
+  text,
+  boolean,
+  boolean
+)
+from public, anon, authenticated, service_role;
+
+grant execute
+on function public.update_employee_contact_profile(
+  uuid,
+  text,
+  text,
+  text,
+  text,
+  boolean,
+  boolean
+)
+to authenticated;
+
+comment on function public.update_employee_contact_profile(
+  uuid,
+  text,
+  text,
+  text,
+  text,
+  boolean,
+  boolean
+) is
+  '현재 회사 owner·director·admin 또는 정확한 본인 직원만 연락처·명함을 수정한다.';
+
 notify pgrst, 'reload schema';
 
 commit;

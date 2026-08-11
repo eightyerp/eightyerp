@@ -53,9 +53,9 @@ export default async function StaffApprovalsPage() {
       )
     ) {
       schemaMissing = true;
-      loadError = schemaMissingStaffMessage("가입 승인");
+      loadError = schemaMissingStaffMessage("계정 재연결");
     } else {
-      loadError = "가입 승인 목록을 불러오지 못했습니다.";
+      loadError = "계정 재연결 목록을 불러오지 못했습니다.";
     }
   }
 
@@ -70,10 +70,11 @@ export default async function StaffApprovalsPage() {
         <div>
           <p className="text-xs font-medium text-slate-600">시스템관리</p>
           <h1 className="text-xl font-bold text-slate-900 lg:text-2xl">
-            가입 승인 관리
+            계정 연결 관리
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            현재 회사의 owner·director만 승인·거절·비활성화할 수 있습니다.
+            현재 회사의 owner·director만 승인 대기 멤버십의 연결·거절과
+            계정 비활성화를 처리할 수 있습니다.
           </p>
         </div>
 

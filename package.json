@@ -10,7 +10,8 @@
     "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
     "test:parse-inquiry": "npx --yes tsx scripts/test-parse-inquiry-run.ts",
     "test:lx-window-excel": "npx --yes tsx scripts/test-lx-window-excel.ts",
-    "test:employee-merge": "node scripts/test-employee-merge.mjs && node scripts/test-employee-merge-permissions.mjs && node scripts/test-staff-approval-security.mjs && node scripts/test-employee-account-security.mjs",
+    "test:employee-merge": "node scripts/test-employee-merge.mjs && node scripts/test-employee-merge-permissions.mjs && node scripts/test-staff-approval-security.mjs && node scripts/test-employee-account-security.mjs && node scripts/test-employee-security-behavior.mjs && node scripts/test-employee-master-migration-db.mjs",
+    "test:employee-security-behavior": "node scripts/test-employee-security-behavior.mjs",
     "test:interior-quote-excel": "npx --yes tsx scripts/test-interior-quote-excel.ts",
     "test:quote-excel-engine": "npx --yes tsx scripts/test-quote-excel-engine.ts"
   },
@@ -23,6 +24,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.4",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

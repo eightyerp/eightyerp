@@ -37,11 +37,11 @@ export default function StaffApprovalsWorkspace({ pending, allProfiles, employee
 
   return (
     <section className="dashboard-card p-5 text-slate-900">
-      <h2 className="font-semibold text-slate-900">가입 승인</h2>
-      <p className="mt-1 text-xs text-slate-600">직원 정보 수정은 직원 Master 상세에서만 수행합니다. 이 화면은 기존 직원 연결과 승인만 처리합니다.</p>
+      <h2 className="font-semibold text-slate-900">승인 대기 계정 연결</h2>
+      <p className="mt-1 text-xs text-slate-600">회사 초대 링크 가입은 기존 정책대로 자동 활성화됩니다. 이 화면은 회사에 이미 생성된 승인 대기 멤버십을 기존 직원 Master와 다시 연결하는 용도이며, 직원 정보 수정은 직원 Master 상세에서만 수행합니다.</p>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b text-xs text-slate-600"><tr><th className="p-2">가입자</th><th className="p-2">연락처</th><th className="p-2">자동 검색</th><th className="p-2">처리</th></tr></thead>
+          <thead className="border-b text-xs text-slate-600"><tr><th className="p-2">계정</th><th className="p-2">연락처</th><th className="p-2">자동 검색</th><th className="p-2">처리</th></tr></thead>
           <tbody>
             {pending.map((profile) => {
               const suggestion = findSuggestedEmployee(profile, employees, teams);
@@ -52,7 +52,7 @@ export default function StaffApprovalsWorkspace({ pending, allProfiles, employee
                 <td className="p-2"><div className="flex gap-2"><button type="button" onClick={() => setTarget(profile)} className="rounded bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white">기존 직원 연결</button><form action={rejectAction}><input type="hidden" name="user_id" value={profile.id} /><button disabled={rejectPending} className="rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-75">거절</button></form></div></td>
               </tr>;
             })}
-            {pending.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-slate-600">가입 승인 대기가 없습니다.</td></tr> : null}
+            {pending.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-slate-600">재연결 대기 멤버십이 없습니다.</td></tr> : null}
           </tbody>
         </table>
       </div>
@@ -85,14 +85,14 @@ function ApprovalModal({ profile, employees, teams, assignableRoles, action, pen
       !employee.login_linked,
   );
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-md rounded-xl bg-white p-5 text-slate-900 shadow-xl">
-    <h3 className="font-semibold text-slate-900">가입 승인 및 기존 직원 연결</h3>
+    <h3 className="font-semibold text-slate-900">계정 재연결 승인</h3>
     <p className="mt-1 text-sm text-slate-600">{profile.full_name ?? profile.email}</p>
     <form action={action} className="mt-4 space-y-3">
       <input type="hidden" name="user_id" value={profile.id} /><input type="hidden" name="mode" value="link" />
       <label className="block text-sm font-medium">직원 Master<select name="employee_id" required defaultValue={suggestion?.employee.id ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="">선택</option>{available.map((employee) => <option key={employee.id} value={employee.id}>{formatEmployeeOptionLabel(employee)}</option>)}</select></label>
       <label className="block text-sm font-medium">권한<select name="role" defaultValue="staff" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">{assignableRoles.map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}</select></label>
       <p className="text-xs text-slate-600">이 화면에서는 직원 이름·팀·직책·연락처를 수정하지 않습니다.</p>
-      <div className="flex gap-2"><button disabled={pending} className="rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">승인</button><button type="button" onClick={onClose} className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">닫기</button></div>
+      <div className="flex gap-2"><button disabled={pending} className="rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">재연결 승인</button><button type="button" onClick={onClose} className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">닫기</button></div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </form>
   </div></div>;

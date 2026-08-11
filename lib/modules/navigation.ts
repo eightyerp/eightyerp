@@ -64,7 +64,7 @@ export const NAVIGATION_REGISTRY: readonly NavigationGroup[] = [
   ] },
   { id: "system", label: "시스템관리", items: [
     { id: "employees", label: "직원 Master", route: "/system/employees", icon: "♙", moduleId: "hr" },
-    { id: "approvals", label: "가입 승인", route: "/system/approvals", icon: "✓", moduleId: "system", roles: ADMIN_ROLES },
+    { id: "approvals", label: "계정 재연결", route: "/system/approvals", icon: "✓", moduleId: "system", roles: ADMIN_ROLES },
     { id: "invitations", label: "직원 초대", route: "/system/invitations", icon: "+", moduleId: "system", roles: ADMIN_ROLES },
     { id: "company-permissions", label: "회사·권한", route: null, icon: "⚙", moduleId: "system", status: "coming_soon", roles: ADMIN_ROLES },
     { id: "system-status", label: "시스템 상태", route: null, icon: "●", moduleId: "system", status: "coming_soon", roles: ADMIN_ROLES },

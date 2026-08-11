@@ -1,6 +1,7 @@
 -- Employee signup approval assignment guard.
 --
 -- Security boundaries enforced here:
+--   - auth signup metadata must select company_owner or company_invite
 --   - the approver must be an active owner/director of the current company
 --   - employees and teams must belong to that same company
 --   - only an existing pending membership in the current company can be approved
@@ -10,6 +11,68 @@
 --   - EXECUTE is restricted to authenticated users only
 
 begin;
+
+-- The application supports exactly two signup state-machine entries:
+-- self-service company owners and one-time company invitations. Reject missing
+-- or unknown metadata before auth.users is inserted so handle_new_user() can
+-- never create a pending employee profile without a company membership.
+create or replace function public.enforce_supported_auth_signup_type()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_signup_type text := pg_catalog.lower(
+    nullif(
+      pg_catalog.btrim(
+        coalesce(new.raw_user_meta_data->>'signup_type', '')
+      ),
+      ''
+    )
+  );
+begin
+  if v_signup_type is null
+     or v_signup_type not in ('company_owner', 'company_invite') then
+    raise exception '지원되지 않는 가입 경로입니다. 회사 대표 가입 또는 유효한 직원 초대 링크를 이용해 주세요.'
+      using errcode = '22023';
+  end if;
+
+  -- Store the normalized value so the AFTER INSERT handler and subsequent
+  -- login redirects observe the same supported state.
+  new.raw_user_meta_data := pg_catalog.jsonb_set(
+    coalesce(new.raw_user_meta_data, '{}'::jsonb),
+    array['signup_type']::text[],
+    pg_catalog.to_jsonb(v_signup_type),
+    true
+  );
+  -- Mirror the accepted onboarding type into app metadata, which ordinary
+  -- users cannot edit, for future integrity verification and recovery logic.
+  new.raw_app_meta_data := pg_catalog.jsonb_set(
+    coalesce(new.raw_app_meta_data, '{}'::jsonb),
+    array['onboarding_type']::text[],
+    pg_catalog.to_jsonb(v_signup_type),
+    true
+  );
+
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_supported_auth_signup_type_before_insert
+on auth.users;
+
+create trigger enforce_supported_auth_signup_type_before_insert
+  before insert on auth.users
+  for each row
+  execute function public.enforce_supported_auth_signup_type();
+
+revoke all
+on function public.enforce_supported_auth_signup_type()
+from public, anon, authenticated, service_role;
+
+comment on function public.enforce_supported_auth_signup_type() is
+  'Auth 삽입 전 company_owner·company_invite 외 가입 상태를 거절해 회사 멤버십 없는 직원 프로필 생성을 막는다.';
 
 create or replace function public.approve_staff_signup(
   p_user_id uuid,
@@ -147,7 +210,7 @@ begin
     from public.company_memberships other_membership
     where other_membership.user_id = p_user_id
       and other_membership.company_id <> v_company_id
-      and other_membership.status in ('pending', 'active')
+      and other_membership.status in ('pending', 'active', 'suspended')
   ) then
     raise exception '다른 회사에 연결되었거나 승인 대기 중인 계정입니다.';
   end if;
@@ -360,6 +423,20 @@ begin
     raise exception '현재 회사의 승인 대기 가입 요청을 찾을 수 없습니다.';
   end if;
 
+  -- This workflow projects one pending company relationship onto the global
+  -- profile. Refuse to change either row when another company still owns a
+  -- nonterminal relationship; otherwise rejecting here could hide a pending
+  -- request or disable an active/suspended account in that company.
+  if exists (
+    select 1
+    from public.company_memberships other_membership
+    where other_membership.user_id = p_user_id
+      and other_membership.company_id <> v_company_id
+      and other_membership.status in ('pending', 'active', 'suspended')
+  ) then
+    raise exception '다른 회사와 비종결 관계가 있는 계정은 현재 회사에서 가입 거절할 수 없습니다.';
+  end if;
+
   update public.company_memberships
   set status = 'rejected',
       reviewed_by = auth.uid(),
@@ -436,14 +513,17 @@ begin
   if v_membership.role in ('owner', 'director') then
     raise exception '회사 owner·director 계정은 이 화면에서 비활성화할 수 없습니다.';
   end if;
+  if v_profile.role = 'super_admin' then
+    raise exception 'super_admin 계정은 별도 권한 이전 절차로만 변경할 수 있습니다.';
+  end if;
   if exists (
     select 1
     from public.company_memberships other_membership
     where other_membership.user_id = p_user_id
       and other_membership.company_id <> v_company_id
-      and other_membership.status = 'active'
+      and other_membership.status in ('pending', 'active', 'suspended')
   ) then
-    raise exception '다른 회사에서도 사용 중인 계정은 전역 비활성화할 수 없습니다.';
+    raise exception '다른 회사와 비종결 관계가 있는 계정은 전역 비활성화할 수 없습니다.';
   end if;
 
   update public.company_memberships
@@ -666,7 +746,7 @@ comment on function public.list_managed_company_profiles() is
   '현재 회사의 owner·director에게 현재 회사 멤버십이 있는 로그인 계정만 반환한다.';
 
 comment on function public.reject_staff_signup(uuid, text) is
-  '현재 회사의 pending 멤버십과 가입 프로필을 원자적으로 거절한다.';
+  '다른 회사의 pending·active·suspended 관계가 없을 때 현재 회사의 pending 멤버십과 전역 프로필을 원자적으로 거절한다.';
 
 comment on function public.deactivate_staff_user(uuid) is
   '현재 회사의 활성 직원 멤버십을 중지하고 단일회사 프로필을 비활성화한다.';

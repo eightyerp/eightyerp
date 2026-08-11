@@ -29,7 +29,7 @@ export default async function EmployeeMasterPage() {
             직원 Master
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            직원 연락처를 기준으로 로그인 계정, 가입 승인, 권한과 마지막 로그인을 통합 관리합니다.
+            직원 연락처를 기준으로 로그인 계정 연결·재연결, 권한과 마지막 로그인을 통합 관리합니다.
             계정 연결을 바꿔도 기존 고객·견적·일정·정산 데이터는 직원에게 그대로 유지됩니다.
           </p>
         </div>
