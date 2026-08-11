@@ -13,8 +13,17 @@ import fs from "node:fs";
 
 assert.equal(CUSTOMER_LIST_PAGE_SIZE, 50);
 assert.equal(CUSTOMER_SEARCH_DEBOUNCE_MS, 300);
-assert.equal(CUSTOMER_LIST_COLUMNS.length, 13);
+assert.equal(CUSTOMER_LIST_COLUMNS.length, 12);
 assert.ok(!CUSTOMER_LIST_SELECT.includes("*"), "목록 query에서 select('*') 금지");
+assert.ok(
+  !CUSTOMER_LIST_SELECT.includes("last_contact_at"),
+  "운영 baseline에 없는 optional customers.last_contact_at 조회 금지",
+);
+assert.match(
+  CUSTOMER_LIST_SELECT,
+  /customer_activities \( created_at \)/,
+  "마지막 상담일 계산용 활동 시간 관계 유지",
+);
 assert.match(
   CUSTOMER_LIST_SELECT,
   /employees \( id, name, title, team_id, teams \( name \) \)/,
@@ -48,6 +57,16 @@ const tableSource = fs.readFileSync("components/customers/CustomerTable.tsx", "u
 assert.ok(customersSource.includes("requireCustomerAccess()"), "권한 범위 유지");
 assert.ok(customersSource.includes("assigned_employee_id"), "담당 고객 범위 유지");
 assert.ok(customersSource.includes('from("projects")'), "현장명 검색 유지");
+assert.match(
+  customersSource,
+  /customer\.last_contact_at\s*\?\?\s*activities/,
+  "optional last_contact_at이 없어도 활동 시간으로 마지막 상담일 계산",
+);
+assert.match(
+  customersSource,
+  /last_contact_at:\s*customer\.last_activity_at\s*\?\?\s*customer\.last_contact_at/,
+  "연락 일정에도 계산된 마지막 상담일 사용",
+);
 assert.ok(pageSource.includes("Promise.allSettled"), "독립 조회 병렬 및 부분 실패 fallback");
 assert.ok(pageSource.includes("lookupWarning"), "담당자/유입경로 조회 실패 fallback");
 assert.ok(pageSource.includes("CustomerPagination"), "pagination 유지");

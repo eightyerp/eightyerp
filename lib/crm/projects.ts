@@ -84,7 +84,7 @@ async function assertCanCreateProjectForCustomer(customerId: string) {
 }
 
 const SELECT =
-  "*, customers ( id, name, phone ), employees ( id, name, title )";
+  "*, customers:customers!projects_customer_id_fkey ( id, name, phone ), employees ( id, name, title )";
 
 export async function listCustomerProjects(
   customerId: string,

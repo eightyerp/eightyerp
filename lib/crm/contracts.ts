@@ -67,7 +67,7 @@ export async function listContracts(): Promise<Contract[]> {
   const { data, error } = await supabase
     .from("contracts")
     .select(
-      "*, customers ( id, name, phone, address ), projects ( id, name, address, status )",
+      "*, customers:customers!contracts_customer_id_fkey ( id, name, phone, address ), projects:projects!contracts_project_id_fkey ( id, name, address, status )",
     )
     .order("contract_date", { ascending: false })
     .order("created_at", { ascending: false });
@@ -80,7 +80,7 @@ export async function getContractById(id: string): Promise<Contract | null> {
   const { data, error } = await supabase
     .from("contracts")
     .select(
-      "*, customers ( id, name, phone, address ), projects ( id, name, address, status )",
+      "*, customers:customers!contracts_customer_id_fkey ( id, name, phone, address ), projects:projects!contracts_project_id_fkey ( id, name, address, status )",
     )
     .eq("id", id)
     .maybeSingle();

@@ -73,11 +73,6 @@ function startOfDay(d: Date) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
-function endOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
 function toDateKey(iso: string | Date) {
   const d = typeof iso === "string" ? new Date(iso) : iso;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -310,11 +305,10 @@ export async function getTodayWorkBundle(filters: {
     let q = supabase
       .from("customers")
       .select(
-        "id, name, phone, address, next_contact_at, last_contact_at, assigned_employee_id, status, employees ( id, name, title )",
+        "id, name, phone, address, next_contact_at, assigned_employee_id, status, employees ( id, name, title )",
       )
       .is("deleted_at", null)
-      .gte("next_contact_at", startOfDay(new Date()).toISOString())
-      .lte("next_contact_at", endOfDay(new Date()).toISOString())
+      .eq("next_contact_at", todayKey)
       .limit(100);
 
     if (filterEmployeeId) {
@@ -323,20 +317,21 @@ export async function getTodayWorkBundle(filters: {
       q = q.eq("assigned_employee_id", access.employeeId);
     }
 
-    const { data } = await q;
+    const { data, error: customerError } = await q;
+    if (customerError) throw new Error(customerError.message);
     const customerIds = (data ?? []).map((c) => c.id as string);
     const consultByCustomer = new Map<string, string>();
     if (customerIds.length) {
       const { data: logs } = await supabase
         .from("customer_consult_logs")
-        .select("customer_id, content, created_at")
+        .select("customer_id, consult_content, created_at")
         .in("customer_id", customerIds)
         .order("created_at", { ascending: false })
         .limit(200);
       for (const log of logs ?? []) {
         const cid = log.customer_id as string;
         if (!consultByCustomer.has(cid)) {
-          consultByCustomer.set(cid, String(log.content ?? ""));
+          consultByCustomer.set(cid, String(log.consult_content ?? ""));
         }
       }
     }

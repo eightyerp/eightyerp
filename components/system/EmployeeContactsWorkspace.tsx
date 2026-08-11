@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
 import {
   analyzeEmployeeMergeAction,
+  archiveEmployeeAction,
   linkEmployeeLoginAction,
   mergeEmployeesAction,
+  restoreEmployeeAction,
   saveEmployeeMasterAction,
   transferEmployeeAssignmentsAction,
   unlinkEmployeeLoginAction,
@@ -67,6 +75,12 @@ export default function EmployeeContactsWorkspace({
   const [mergeReportContext, setMergeReportContext] = useState<{ sourceName: string; targetName: string; businessTotal: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const detailDialogRef = useRef<HTMLDivElement | null>(null);
+  const detailReturnFocusRef = useRef<HTMLElement | null>(null);
+  const focusArchiveMenuRef = useRef(false);
+  const archiveConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const archiveConfirmDialogRef = useRef<HTMLDivElement | null>(null);
 
   const accessibleEmployees = canManageAll
     ? employees
@@ -90,6 +104,32 @@ export default function EmployeeContactsWorkspace({
       })
     : listEmployees;
 
+  useEffect(() => {
+    if (!selected && !creating) return;
+    const returnFocusTo = detailReturnFocusRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      if (focusArchiveMenuRef.current) {
+        const title = document.getElementById("employee-archive-title");
+        title?.scrollIntoView({ block: "center" });
+        title?.focus({ preventScroll: true });
+      } else {
+        detailDialogRef.current?.focus();
+      }
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.requestAnimationFrame(() => returnFocusTo?.focus());
+    };
+  }, [creating, selected]);
+
+  useEffect(() => {
+    if (!archiveConfirmOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      archiveConfirmDialogRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [archiveConfirmOpen]);
+
   function run(action: () => Promise<{ success: boolean; error?: string }>, success: string) {
     setMessage(null);
     setError(null);
@@ -106,62 +146,155 @@ export default function EmployeeContactsWorkspace({
     });
   }
 
+  function rememberDetailTrigger() {
+    detailReturnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  }
+
+  function closeEmployeeDialog() {
+    setSelected(null);
+    setCreating(false);
+    setArchiveConfirmOpen(false);
+    setError(null);
+  }
+
+  function openEmployeeDetail(employee: EmployeeMaster) {
+    rememberDetailTrigger();
+    focusArchiveMenuRef.current = false;
+    setSelected(employee);
+    setCreating(false);
+    setArchiveConfirmOpen(false);
+    setError(null);
+  }
+
+  function openNewEmployeeDialog() {
+    rememberDetailTrigger();
+    focusArchiveMenuRef.current = false;
+    setCreating(true);
+    setSelected(null);
+    setArchiveConfirmOpen(false);
+    setError(null);
+  }
+
+  function openEmployeeArchiveMenu(employee: EmployeeMaster) {
+    rememberDetailTrigger();
+    focusArchiveMenuRef.current = true;
+    setSelected(employee);
+    setCreating(false);
+    setArchiveConfirmOpen(false);
+    setError(null);
+  }
+
+  function closeArchiveConfirmation() {
+    setArchiveConfirmOpen(false);
+    window.requestAnimationFrame(() => archiveConfirmButtonRef.current?.focus());
+  }
+
+  function trapFocus(
+    event: ReactKeyboardEvent<HTMLElement>,
+    container: HTMLElement | null,
+  ) {
+    if (event.key !== "Tab" || !container) return;
+    const focusable = Array.from(container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ));
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const activeIsFocusable = active ? focusable.includes(active) : false;
+    if (event.shiftKey && (active === first || !activeIsFocusable)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !activeIsFocusable)) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function handleDetailDialogKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (archiveConfirmOpen) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeEmployeeDialog();
+      return;
+    }
+    trapFocus(event, detailDialogRef.current);
+  }
+
+  function handleArchiveConfirmKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeArchiveConfirmation();
+      return;
+    }
+    trapFocus(event, archiveConfirmDialogRef.current);
+  }
+
   return (
     <section className="dashboard-card overflow-hidden text-slate-900">
       <div className="flex items-center justify-between border-b border-slate-200 p-5">
         <div>
-          <h2 className="font-semibold text-slate-900">
+          <h2 className="text-lg font-semibold text-slate-900">
             {showArchived ? "병합/보관 직원" : "직원 목록"}
           </h2>
-          <p className="text-xs text-slate-600">총 {visibleEmployees.length}명</p>
+          <p className="mt-0.5 text-sm text-slate-700">총 {visibleEmployees.length}명</p>
         </div>
         {canManageAll ? (
-          <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setShowArchived((value) => !value);
-              setSelected(null);
-            }}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800"
-          >
-            {showArchived
-              ? `활성 직원 보기 (${activeEmployees.length})`
-              : `병합/보관 직원 보기 (${archivedEmployees.length})`}
-          </button>
-          {canMergeEmployees ? <button type="button" onClick={() => { setMergeOpen(true); setMergeImpact(null); setMergeReport(null); setError(null); }} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900">
-            직원 병합
-          </button> : null}
-          <button
-            type="button"
-            onClick={() => { setCreating(true); setSelected(null); setError(null); }}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-          >
-            새 직원 생성
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowArchived((value) => !value);
+                setSelected(null);
+                setArchiveConfirmOpen(false);
+              }}
+              className="min-h-11 rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-700"
+            >
+              {showArchived
+                ? `활성 직원 보기 (${activeEmployees.length})`
+                : `병합/보관 직원 보기 (${archivedEmployees.length})`}
+            </button>
+            {canMergeEmployees ? <button type="button" onClick={() => { setMergeOpen(true); setMergeImpact(null); setMergeReport(null); setError(null); }} className="min-h-11 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700">
+              직원 병합
+            </button> : null}
+            <button
+              type="button"
+              onClick={openNewEmployeeDialog}
+              className="min-h-11 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+            >
+              새 직원 생성
+            </button>
           </div>
         ) : null}
       </div>
 
       <div className="border-b border-slate-200 bg-slate-50 p-4">
-        <label className="block max-w-md text-sm font-medium text-slate-900">
+        <label className="block max-w-md text-[15px] font-semibold text-slate-900">
           직원 검색
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="이름, 팀, 직책, 전화, 이메일" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400" />
         </label>
       </div>
 
-      {message ? <p className="m-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p> : null}
-      {error && !selected && !creating ? <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {message ? <p aria-live="polite" className="m-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">{message}</p> : null}
+      {error && !selected && !creating ? <p role="alert" className="m-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">{error}</p> : null}
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs text-slate-600">
+        <table className="min-w-full text-left text-[15px]">
+          <thead className="bg-slate-100 text-sm font-semibold text-slate-700">
             <tr>
               <th className="px-4 py-3">직원·팀·직급</th><th className="px-4 py-3">상태</th>
               <th className="px-4 py-3">연락처</th><th className="px-4 py-3">로그인</th>
               <th className="px-4 py-3">권한</th><th className="px-4 py-3">마지막 로그인</th>
               <th className="px-4 py-3 text-center">고객</th><th className="px-4 py-3 text-center">견적</th>
-              <th className="px-4 py-3 text-center">일정</th>
+              <th className="px-4 py-3 text-center">일정</th><th className="px-4 py-3 text-center">관리</th>
             </tr>
           </thead>
           <tbody>
@@ -169,24 +302,29 @@ export default function EmployeeContactsWorkspace({
               return (
                 <tr key={employee.id} className="border-t border-slate-100 transition-colors hover:bg-slate-100">
                   <td className="px-4 py-3">
-                    <button type="button" onClick={() => { setSelected(employee); setCreating(false); setError(null); }} className="font-semibold text-navy-900 hover:underline">
+                    <button type="button" onClick={() => openEmployeeDetail(employee)} className="font-semibold text-navy-900 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-700">
                       {employeeMasterLabel(employee, teams)}
                     </button>
                   </td>
-                  <td className={`px-4 py-3 text-xs font-medium ${employee.is_active && !employee.merged_into_employee_id ? "text-emerald-700" : "text-slate-600"}`}>{employee.merged_into_employee_id ? "병합됨" : employee.is_active ? "활성" : "비활성"}</td>
-                  <td className="px-4 py-3"><p>{employee.phone ?? "-"}</p><p className="text-xs text-slate-600">{employee.email ?? "-"}</p></td>
+                  <td className={`px-4 py-3 text-sm font-semibold ${employee.is_active && !employee.merged_into_employee_id ? "text-emerald-800" : "text-slate-700"}`}>{employee.merged_into_employee_id ? "병합됨" : employee.is_active ? "활성" : "보관됨"}</td>
+                  <td className="px-4 py-3"><p>{employee.phone ?? "-"}</p><p className="text-sm text-slate-700">{employee.email ?? "-"}</p></td>
                   <td className="px-4 py-3">{employee.login_linked ? (employee.login_active ? "연결" : "비활성 계정") : "미연결"}</td>
                   <td className="px-4 py-3">{employee.role ? ROLE_LABEL[employee.role as keyof typeof ROLE_LABEL] ?? employee.role : "-"}</td>
-                  <td className="px-4 py-3 text-xs">{formatDateTime(employee.last_sign_in_at)}</td>
+                  <td className="px-4 py-3 text-sm text-slate-800">{formatDateTime(employee.last_sign_in_at)}</td>
                   <td className="px-4 py-3 text-center"><Link className="font-semibold text-navy-800 hover:underline" href={`/customers?employeeId=${employee.id}`}>{employee.customer_count}</Link></td>
                   <td className="px-4 py-3 text-center"><Link className="font-semibold text-navy-800 hover:underline" href={`/quotes?employeeId=${employee.id}`}>{employee.quote_count}</Link></td>
                   <td className="px-4 py-3 text-center"><Link className="font-semibold text-navy-800 hover:underline" href={`/schedules/customers?employeeId=${employee.id}`}>{employee.schedule_count}</Link></td>
+                  <td className="px-4 py-3 text-center">
+                    {canManageAll ? <button type="button" onClick={() => openEmployeeArchiveMenu(employee)} className="whitespace-nowrap rounded-lg border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-700">
+                      {employee.merged_into_employee_id ? "상세" : employee.is_active ? "삭제·보관" : "상세·복원"}
+                    </button> : <span className="text-slate-500">-</span>}
+                  </td>
                 </tr>
               );
             })}
             {visibleEmployees.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-600">
+                <td colSpan={10} className="px-4 py-10 text-center text-sm text-slate-600">
                   {showArchived
                     ? "병합되거나 보관된 직원이 없습니다."
                     : "표시할 활성 직원이 없습니다."}
@@ -199,8 +337,16 @@ export default function EmployeeContactsWorkspace({
 
       {(selected || creating) ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-5 text-slate-900 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">{creating ? "새 직원 생성" : `${selected?.name} 상세`}</h3>
+          <div
+            ref={detailDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="employee-detail-title"
+            tabIndex={-1}
+            onKeyDown={handleDetailDialogKeyDown}
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-5 text-slate-900 shadow-xl outline-none"
+          >
+            <h3 id="employee-detail-title" className="text-xl font-semibold text-slate-900">{creating ? "새 직원 생성" : `${selected?.name} 상세`}</h3>
             <form action={(formData) => run(() => saveEmployeeMasterAction(formData), "직원 Master를 저장했습니다." )} className="mt-4 grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="employee_id" value={selected?.id ?? ""} />
               <input type="hidden" name="original_login_role" value={selected?.role ?? ""} />
@@ -209,11 +355,19 @@ export default function EmployeeContactsWorkspace({
               <label className="text-sm font-medium">직책<input name="title" required defaultValue={selected?.title ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
               <label className="text-sm font-medium">전화<input name="phone" defaultValue={selected?.phone ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
               <label className="text-sm font-medium sm:col-span-2">이메일<input name="email" type="email" defaultValue={selected?.email ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
-              {selected ? <label className="text-sm font-medium">상태<select name="is_active" defaultValue={String(selected.is_active)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="true">활성</option><option value="false">비활성</option></select></label> : null}
+              {selected ? <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 sm:col-span-2">
+                <p className="text-sm font-semibold text-slate-900">직원 상태</p>
+                <p className="mt-1 text-sm text-slate-800">
+                  <span className={`mr-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${selected.is_active ? "bg-emerald-100 text-emerald-900" : "bg-slate-200 text-slate-900"}`}>
+                    {selected.is_active ? "활성" : "보관됨"}
+                  </span>
+                  상태 변경은 아래 <b>직원 삭제·보관</b> 메뉴에서 안전 확인 후 처리합니다.
+                </p>
+              </div> : null}
               {selected?.login_linked && canManageLoginAccounts && selected.role !== "super_admin" ? <label className="text-sm font-medium">권한<select name="login_role" defaultValue={selected.role ?? "staff"} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="staff">직원</option><option value="manager">팀장</option>{canAssignAdminRole ? <option value="admin">관리자</option> : null}</select></label> : null}
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <button type="submit" disabled={pending} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">저장</button>
-                <button type="button" onClick={() => { setSelected(null); setCreating(false); }} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">닫기</button>
+                <button type="button" onClick={closeEmployeeDialog} className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">닫기</button>
               </div>
             </form>
 
@@ -234,11 +388,11 @@ export default function EmployeeContactsWorkspace({
             ) : null}
             {selected && canManageAll ? (
               <div className="mt-5 border-t pt-4">
-                <h4 className="text-sm font-semibold">비활성화 영향 분석 및 담당업무 이전</h4>
-                <p className="mt-1 text-sm text-slate-600">
+                <h4 className="text-base font-semibold text-slate-900">보관 전 담당업무 확인·이전</h4>
+                <p className="mt-1 text-sm text-slate-800">
                   표시 카운트: 고객 {selected.customer_count}건 · 견적 {selected.quote_count}건 · 일정 {selected.schedule_count}건
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-sm leading-relaxed text-slate-700">
                   프로젝트·계약·직원 할 일·레거시 견적·대기 알림도 실행 시 함께 확인합니다.
                 </p>
                 <form action={(formData) => {
@@ -254,6 +408,80 @@ export default function EmployeeContactsWorkspace({
                 </form>
               </div>
             ) : null}
+            {selected && canManageAll ? (() => {
+              const visibleAssignmentCount = selected.customer_count + selected.quote_count + selected.schedule_count;
+              const isSelf = selected.id === currentEmployeeId;
+              const canArchiveFromUi = selected.is_active
+                && !selected.merged_into_employee_id
+                && !isSelf
+                && visibleAssignmentCount === 0;
+              return (
+                <section aria-labelledby="employee-archive-title" className="mt-5 rounded-xl border border-red-300 bg-red-50 p-4">
+                  <h4 id="employee-archive-title" tabIndex={-1} className="text-base font-bold text-red-950 outline-none">직원 삭제·보관</h4>
+                  <p className="mt-1 text-sm leading-relaxed text-red-950">
+                    직원 행은 <b>실제로 삭제하지 않습니다.</b> 보관하면 기본 직원·담당자 목록에서 숨겨지며 기존 고객·견적·일정·계약·정산 이력은 그대로 보존됩니다.
+                  </p>
+                  {selected.merged_into_employee_id ? (
+                    <p className="mt-3 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800">병합된 직원은 병합 이력 보존을 위해 상태를 변경할 수 없습니다.</p>
+                  ) : selected.is_active ? (
+                    <>
+                      {isSelf ? <p className="mt-3 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-red-900">현재 로그인한 본인 직원은 보관할 수 없습니다.</p> : null}
+                      {visibleAssignmentCount > 0 ? <p className="mt-3 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-red-900">표시된 담당 업무 {visibleAssignmentCount}건이 남아 있습니다. 위에서 먼저 일괄 이전해 주세요.</p> : null}
+                      {!archiveConfirmOpen ? (
+                        <button
+                          ref={archiveConfirmButtonRef}
+                          type="button"
+                          disabled={pending || !canArchiveFromUi}
+                          onClick={() => setArchiveConfirmOpen(true)}
+                          className="mt-3 rounded-lg border border-red-700 bg-white px-4 py-2.5 text-sm font-bold text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-600 disabled:opacity-100"
+                        >
+                          직원 삭제(보관)
+                        </button>
+                      ) : (
+                        <div
+                          ref={archiveConfirmDialogRef}
+                          role="alertdialog"
+                          aria-modal="true"
+                          aria-labelledby="employee-archive-confirm-title"
+                          tabIndex={-1}
+                          onKeyDown={handleArchiveConfirmKeyDown}
+                          className="mt-3 rounded-lg border-2 border-red-600 bg-white p-3 outline-none"
+                        >
+                          <h5 id="employee-archive-confirm-title" className="font-bold text-red-950">{selected.name} 직원을 보관할까요?</h5>
+                          <p className="mt-1 text-sm text-slate-800">DB가 본인·대표 권한·남은 모든 담당 업무를 다시 검사합니다. 조건에 맞지 않으면 아무 변경 없이 중단됩니다.</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={closeArchiveConfirmation} className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">취소</button>
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => run(() => archiveEmployeeAction(selected.id), "직원을 삭제하지 않고 안전하게 보관했습니다.")}
+                              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white hover:bg-red-800 disabled:cursor-wait disabled:bg-red-400 disabled:opacity-100"
+                            >
+                              {pending ? "보관 확인 중…" : "기존 이력을 유지하고 보관"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold text-slate-800">현재 이 직원은 보관되어 기본 목록에서 제외됩니다.</p>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => run(() => restoreEmployeeAction(selected.id), "직원을 활성 목록으로 복원했습니다.")}
+                        className="mt-2 rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-900 disabled:cursor-wait disabled:bg-emerald-500 disabled:opacity-100"
+                      >
+                        {pending ? "복원 중…" : "직원 다시 활성화"}
+                      </button>
+                    </div>
+                  )}
+                  <button type="button" onClick={closeEmployeeDialog} className="mt-3 rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">
+                    직원 창 닫기
+                  </button>
+                </section>
+              );
+            })() : null}
             {selected?.role ? (
               <div className="mt-5 border-t pt-4">
                 <h4 className="text-sm font-semibold">권한별 메뉴 미리보기</h4>
@@ -276,7 +504,7 @@ export default function EmployeeContactsWorkspace({
                 </div>
               </div>
             ) : null}
-            {error ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+            {error ? <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">{error}</p> : null}
           </div>
         </div>
       ) : null}

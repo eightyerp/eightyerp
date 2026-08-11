@@ -50,7 +50,7 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('test.auth_uid', true), '')::uuid
   $$;
-  create table auth.users(id uuid primary key, email text, last_sign_in_at timestamptz);
+  create table auth.users(id uuid primary key, email varchar(255), last_sign_in_at timestamptz);
   create table public.employees(
     id uuid primary key default gen_random_uuid(), company_id uuid, team_id uuid, name text, title text,
     phone text, email text, business_card_path text,
@@ -141,6 +141,13 @@ await db.exec(`
     to authenticated;
   grant execute on function public.confirm_contract(uuid)
     to authenticated;
+  -- Reproduce the live legacy wrapper ACL that also exposed execution to
+  -- service_role. The company-scope migration must reduce this to authenticated.
+  grant execute on function public.confirm_contract_amendment(uuid),
+    public.confirm_contract_addition(uuid),
+    public.create_contract_amendment(uuid, jsonb),
+    public.create_contract_addition(uuid, jsonb)
+    to service_role;
   create table public.execution_budgets(
     id uuid primary key, company_id uuid, contract_id uuid,
     project_id uuid, customer_id uuid, status text
@@ -203,7 +210,8 @@ await db.exec(`
   );
   create table public.employee_master_events(
     id uuid, company_id uuid, employee_id uuid, event_type text, actor_id uuid,
-    before_data jsonb, after_data jsonb, detail jsonb
+    before_data jsonb, after_data jsonb, detail jsonb,
+    created_at timestamptz not null default now()
   );
   create table public.employee_merge_logs(
     id uuid default gen_random_uuid(), company_id uuid, source_employee_id uuid,
@@ -213,7 +221,10 @@ await db.exec(`
   create unique index profiles_employee_login_uidx
     on public.profiles(employee_id) where employee_id is not null;
   create function public.prevent_employee_delete()
-  returns trigger language plpgsql as $$ begin return old; end $$;
+  returns trigger language plpgsql as $$
+  begin
+    raise exception '직원 Master는 삭제할 수 없습니다. 비활성화를 사용하세요.';
+  end $$;
   create trigger employees_prevent_delete
     before delete on public.employees
     for each row execute function public.prevent_employee_delete();
@@ -311,8 +322,16 @@ await db.exec(`
   returns uuid language sql immutable as $$
     select nullif(split_part(p_path, '/', 2), '')::uuid
   $$;
-  -- Production may predate every Employee Master RPC. Keep them absent so this
-  -- test enforces create-before-ACL migration ordering for the full surface.
+  -- Reproduce the live Employee Master v1 drift: production can already have a
+  -- TABLE-returning RPC whose OUT-column shape predates assignment counts.
+  create function public.list_employee_master()
+  returns table(employee_id uuid)
+  language sql security definer set search_path = public, auth as $$
+    select null::uuid where false
+  $$;
+  grant execute on function public.list_employee_master() to authenticated;
+  -- Keep the remaining Employee Master RPCs absent so this test also enforces
+  -- create-before-ACL migration ordering for the rest of the surface.
 `);
 
 const sql = readFileSync(
@@ -320,6 +339,23 @@ const sql = readFileSync(
   "utf8",
 );
 await db.exec(sql);
+
+const wrapperAclHotfix = readFileSync(
+  "supabase/migrations/20260811214630_contract_lifecycle_wrapper_acl.sql",
+  "utf8",
+);
+await db.exec(wrapperAclHotfix);
+
+const loginEmailTextHotfix = readFileSync(
+  "supabase/migrations/20260811215055_employee_master_login_email_text.sql",
+  "utf8",
+);
+await db.exec(loginEmailTextHotfix);
+
+const employeeActiveStatusMigration = readFileSync(
+  "supabase/migrations/20260811224438_employee_active_status_rpc.sql",
+  "utf8",
+);
 
 // Self-service company owners legitimately have no employee row. Keep this
 // fixture present while the production verifier runs so NULL/NULL links are
@@ -340,6 +376,18 @@ const verification = readFileSync(
   "utf8",
 );
 await db.exec(verification);
+
+// Verify the already-deployed base contract before applying the additive
+// status-only RPC migration. This mirrors the production deployment order and
+// prevents the base verifier from inspecting the intentionally replaced
+// generic update function definition.
+await db.exec(employeeActiveStatusMigration);
+
+const employeeActiveStatusVerification = readFileSync(
+  "supabase/verifications/20260811224438_employee_active_status_rpc_verify.sql",
+  "utf8",
+);
+await db.exec(employeeActiveStatusVerification);
 
 async function expectReject(
   query,
@@ -729,6 +777,11 @@ await expectReject(
   [employeeB, customerA],
   /담당 직원이 업무 고객의 회사/,
 );
+await expectReject(
+  "delete from public.employees where id = $1",
+  [employeeA],
+  /직원 Master는 삭제할 수 없습니다/,
+);
 
 await db.query("select set_config('test.current_company_id', $1, false)", [companyA]);
 await db.query("select set_config('test.current_company_role', 'employee', false)");
@@ -839,26 +892,40 @@ await expectReject(
   /owner·director만 병합/,
 );
 
+await db.query("select set_config('test.auth_uid', $1, false)", [actorProfile]);
 await expectReject(
-  `select public.update_employee_master(
-    $1, '대표직원', $2, '대표', null, null, false
-  )`,
-  [protectedEmployee, teamA],
+  "select public.set_employee_active_status($1, false)",
+  [transferTarget],
+  /현재 로그인한 본인 직원/,
+);
+await db.query("select set_config('test.auth_uid', $1, false)", [unlinkedActor]);
+
+await expectReject(
+  "select public.set_employee_active_status($1, false)",
+  [protectedEmployee],
   /상위 권한 계정/,
 );
 await expectReject(
-  `select public.update_employee_master(
-    $1, '관리자직원', $2, '관리자', null, null, false
-  )`,
-  [adminProtectedEmployee, teamA],
+  "select public.set_employee_active_status($1, false)",
+  [adminProtectedEmployee],
   /상위 권한 계정/,
 );
 await expectReject(
-  `select public.update_employee_master(
-    $1, '이전대상', $2, '팀원', null, null, false
-  )`,
-  [employeeA, teamA],
+  "select public.set_employee_active_status($1, false)",
+  [employeeA],
   /담당 업무/,
+);
+await expectReject(
+  "select public.set_employee_active_status($1, false)",
+  [employeeB],
+  /직원 Master를 찾을 수 없습니다/,
+);
+await expectReject(
+  `select public.update_employee_master(
+    $1, '상태우회', $2, '팀원', null, null, false
+  )`,
+  [transferTarget, teamA],
+  /전용 보관·복원 절차/,
 );
 
 const transfer = await db.query(
@@ -908,12 +975,49 @@ assert.deepEqual(transferred.rows[0], {
 await db.exec("set role authenticated");
 
 const deactivated = await db.query(
-  `select (public.update_employee_master(
-    $1, '이전완료', $2, '팀원', null, null, false
-  )).is_active as is_active`,
-  [employeeA, teamA],
+  "select (public.set_employee_active_status($1, false)).is_active as is_active",
+  [employeeA],
 );
 assert.equal(deactivated.rows[0].is_active, false);
+
+await expectReject(
+  `select public.update_employee_master(
+    $1, '오래된상세창', $2, '팀원', null, null, true
+  )`,
+  [employeeA, teamA],
+  /전용 보관·복원 절차/,
+);
+const stillArchived = await db.query(
+  "select is_active from public.employees where id = $1",
+  [employeeA],
+);
+assert.equal(stillArchived.rows[0].is_active, false);
+
+const restored = await db.query(
+  "select (public.set_employee_active_status($1, true)).is_active as is_active",
+  [employeeA],
+);
+assert.equal(restored.rows[0].is_active, true);
+await db.exec("reset role");
+const restoreAudit = await db.query(
+  `select event_type, detail->>'operation' as operation
+   from public.employee_master_events
+   where employee_id = $1
+   order by created_at desc nulls last
+   limit 1`,
+  [employeeA],
+);
+assert.deepEqual(restoreAudit.rows[0], {
+  event_type: "status_changed",
+  operation: "restored",
+});
+await db.exec("set role authenticated");
+
+const archivedAgain = await db.query(
+  "select (public.set_employee_active_status($1, false)).is_active as is_active",
+  [employeeA],
+);
+assert.equal(archivedAgain.rows[0].is_active, false);
 
 const created = await db.query(
   "select (public.create_employee_master('RPC생성', $1, '팀원', null, null)).company_id as company_id",

@@ -147,12 +147,14 @@ export default function CustomerDetailPanels({
 
   const bucket = customer.contact_bucket ?? "none";
   const isContactOverdue = bucket === "overdue";
+  const latestLog = consultLogs[0] ?? null;
+  const effectiveLastContactAt =
+    customer.last_contact_at ?? latestLog?.created_at ?? null;
   const lastContactLabel =
-    formatFriendlyDateTime(customer.last_contact_at) ??
+    formatFriendlyDateTime(effectiveLastContactAt) ??
     "아직 연락 기록 없음";
   const nextContactLabel =
     formatFriendlyDate(customer.next_contact_at) ?? "미정";
-  const latestLog = consultLogs[0] ?? null;
   const pending = consultPending || quickPending || channelPending;
 
   function employeeNameById(id: string | null | undefined): string {
@@ -258,7 +260,7 @@ export default function CustomerDetailPanels({
                 label="최근 연락"
                 value={lastContactLabel}
                 valueClassName={
-                  customer.last_contact_at
+                  effectiveLastContactAt
                     ? undefined
                     : "font-medium text-slate-600"
                 }
@@ -292,15 +294,24 @@ export default function CustomerDetailPanels({
                           row.employees.title,
                         )
                       : "알 수 없음";
+                    const hasAssigneeSnapshot =
+                      "previous_assignee_id" in row ||
+                      "new_assignee_id" in row;
                     return (
                       <li
                         key={row.id}
                         className="border-t border-gray-100 pt-2 text-sm first:border-t-0 first:pt-0"
                       >
                         <p className="font-medium text-slate-900">
-                          {employeeNameById(row.previous_assignee_id)}
-                          <span className="mx-1.5 text-slate-600">→</span>
-                          {employeeNameById(row.new_assignee_id)}
+                          {hasAssigneeSnapshot ? (
+                            <>
+                              {employeeNameById(row.previous_assignee_id)}
+                              <span className="mx-1.5 text-slate-600">→</span>
+                              {employeeNameById(row.new_assignee_id)}
+                            </>
+                          ) : (
+                            row.content ?? "담당자가 변경되었습니다."
+                          )}
                         </p>
                         <p className="mt-0.5 text-xs text-slate-600">
                           변경한 사람 {changedBy}
@@ -409,7 +420,7 @@ export default function CustomerDetailPanels({
               <p className="text-xs text-slate-600">최근 연락</p>
               <p
                 className={`mt-1 text-base font-semibold ${
-                  customer.last_contact_at ? "text-slate-900" : "text-slate-600"
+                  effectiveLastContactAt ? "text-slate-900" : "text-slate-600"
                 }`}
               >
                 {lastContactLabel}

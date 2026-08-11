@@ -1,6 +1,9 @@
 export const CUSTOMER_LIST_PAGE_SIZE = 50;
 export const CUSTOMER_SEARCH_DEBOUNCE_MS = 300;
 
+// Keep this select compatible with the baseline/live customers schema.
+// The optional last_contact_at column is not guaranteed to exist; the list
+// derives its "last activity" value from customer_activities.created_at.
 export const CUSTOMER_LIST_COLUMNS = [
   "id",
   "name",
@@ -11,7 +14,6 @@ export const CUSTOMER_LIST_COLUMNS = [
   "lead_source_id",
   "assigned_employee_id",
   "next_contact_at",
-  "last_contact_at",
   "deleted_at",
   "delete_reason",
   "created_at",

@@ -77,6 +77,7 @@ export const EMPLOYEE_MASTER_REQUIRED_RPCS = [
   "list_employee_master",
   "create_employee_master",
   "update_employee_master",
+  "set_employee_active_status",
   "transfer_employee_assignments",
   "unlink_employee_login",
   "update_employee_login_role",

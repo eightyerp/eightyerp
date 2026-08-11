@@ -439,21 +439,21 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
 
           {visible.length === 0 ? (
             <div className="dashboard-card px-5 py-10 text-center">
-              <p className="text-sm text-slate-600">오늘 예정된 업무가 없습니다.</p>
+              <p className="text-base font-medium text-slate-700">오늘 예정된 업무가 없습니다.</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <Link href="/schedules/customers" className="rounded-lg bg-navy-800 px-3 py-2 text-xs text-white">
+                <Link href="/schedules/customers" className="min-h-10 rounded-lg bg-navy-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-600 focus-visible:ring-offset-2">
                   새 상담 일정
                 </Link>
-                <Link href="/quotes/new" className="rounded-lg border px-3 py-2 text-xs">
+                <Link href="/quotes/new" className="min-h-10 rounded-lg border border-slate-400 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-600">
                   새 견적
                 </Link>
-                <Link href="/customers/new" className="rounded-lg border px-3 py-2 text-xs">
+                <Link href="/customers/new" className="min-h-10 rounded-lg border border-slate-400 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-600">
                   새 고객
                 </Link>
                 <button
                   type="button"
                   onClick={() => setTaskOpen(true)}
-                  className="rounded-lg border px-3 py-2 text-xs"
+                  className="min-h-10 rounded-lg border border-slate-400 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-600"
                 >
                   내부 할 일 등록
                 </button>
@@ -535,7 +535,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                       </button>
                       <Link
                         href={`/schedules/customers`}
-                        className="rounded border bg-white px-2 py-1 text-[11px]"
+                        className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900 hover:bg-slate-100"
                       >
                         새 일정
                       </Link>
@@ -684,7 +684,7 @@ export default function TodayWorkDashboard({ bundle, schedulesById }: Props) {
                 <p className="text-xs text-red-600">{taskState.error}</p>
               )}
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setTaskOpen(false)} className="rounded-lg border px-3 py-2 text-sm">
+                <button type="button" onClick={() => setTaskOpen(false)} className="rounded-lg border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">
                   취소
                 </button>
                 <button
@@ -786,7 +786,7 @@ function WorkCard({
         {item.customerId && (
           <Link
             href={`/customers/${item.customerId}`}
-            className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs font-medium text-slate-900 sm:min-h-0 sm:py-1.5"
+            className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 sm:min-h-0 sm:py-1.5"
           >
             고객 상세
           </Link>
@@ -803,7 +803,7 @@ function WorkCard({
           <>
             <Link
               href="/schedules/customers"
-              className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs sm:min-h-0 sm:py-1.5"
+              className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 sm:min-h-0 sm:py-1.5"
             >
               일정 상세
             </Link>
@@ -819,7 +819,7 @@ function WorkCard({
                 <button
                   type="button"
                   onClick={onPostponeToday}
-                  className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs sm:min-h-0 sm:py-1.5"
+                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 sm:min-h-0 sm:py-1.5"
                 >
                   연기
                 </button>
@@ -847,13 +847,13 @@ function WorkCard({
             </button>
             <Link
               href={`/customers/${item.customerId}`}
-              className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs sm:min-h-0 sm:py-1.5"
+              className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 sm:min-h-0 sm:py-1.5"
             >
               상담 메모
             </Link>
             <Link
               href={`/customers/${item.customerId}/schedules`}
-              className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs sm:min-h-0 sm:py-1.5"
+              className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 sm:min-h-0 sm:py-1.5"
             >
               일정 등록
             </Link>
@@ -870,7 +870,7 @@ function WorkCard({
             {item.customerId && (
               <Link
                 href={`/customers/${item.customerId}/schedules`}
-                className="min-h-10 rounded-lg border bg-white px-3 py-2 text-xs sm:min-h-0 sm:py-1.5"
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100 sm:min-h-0 sm:py-1.5"
               >
                 새 상담일정
               </Link>

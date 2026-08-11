@@ -40,6 +40,84 @@ function employeeMergeError(error: unknown): string {
   return reasons.find(([pattern]) => pattern.test(message))?.[1] ?? message;
 }
 
+function employeeArchiveError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "직원 보관 처리에 실패했습니다.";
+  const reasons: Array<[RegExp, string]> = [
+    [
+      /담당 업무\(([^)]+)\)가 남아 있어 비활성화할 수 없습니다/,
+      "이 직원에게 담당 업무가 남아 있습니다. 먼저 ‘담당업무 일괄 이전’을 완료해 주세요.",
+    ],
+    [/현재 로그인한 본인 직원/, "현재 로그인한 본인 직원은 보관할 수 없습니다."],
+    [
+      /상위 권한 계정이 연결된 직원/,
+      "대표·이사·관리자 계정이 연결된 직원은 권한을 먼저 이전하거나 계정 연결을 정리해 주세요.",
+    ],
+    [/이미 병합된 직원/, "이미 병합된 직원은 보관 상태를 변경할 수 없습니다."],
+    [
+      /owner·director·admin만 직원 (?:Master를 수정|상태를 변경)/,
+      "권한 부족: 현재 회사의 대표·이사·관리자만 직원을 보관하거나 복원할 수 있습니다.",
+    ],
+    [/직원 Master를 찾을 수 없습니다/, "현재 회사에서 해당 직원을 찾을 수 없습니다."],
+  ];
+  return reasons.find(([pattern]) => pattern.test(message))?.[1] ?? message;
+}
+
+async function setEmployeeActiveStatus(
+  employeeId: string,
+  isActive: boolean,
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    await requireAuthenticatedAccess();
+    const normalizedEmployeeId = employeeId.trim();
+    if (!normalizedEmployeeId) throw new Error("직원을 선택해 주세요.");
+
+    const supabase = await (await import("@/lib/supabase-server")).createClient();
+    const { data: companyRole, error: roleError } = await supabase.rpc("current_company_role");
+    if (roleError) {
+      throw new Error("회사 역할을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.");
+    }
+    const role = typeof companyRole === "string" ? companyRole : null;
+    if (role !== "owner" && role !== "director" && role !== "admin") {
+      throw new Error("권한 부족: 현재 회사의 대표·이사·관리자만 직원 상태를 변경할 수 있습니다.");
+    }
+
+    // The status-only RPC locks the employee and changes no contact fields, so
+    // a concurrent detail edit cannot be overwritten by archive/restore.
+    const { error } = await supabase.rpc("set_employee_active_status", {
+      p_employee_id: normalizedEmployeeId,
+      p_is_active: isActive,
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/system/employees");
+    revalidatePath("/dashboard");
+    revalidatePath("/customers");
+    revalidatePath("/quotes");
+    revalidatePath("/schedules/customers");
+    revalidatePath("/schedules/processes");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: employeeArchiveError(error) };
+  }
+}
+
+/**
+ * Safe employee "delete": archives the employee instead of deleting the row.
+ * set_employee_active_status enforces self/owner/linked-assignment guards and
+ * records the status change in employee_master_events.
+ */
+export async function archiveEmployeeAction(
+  employeeId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  return setEmployeeActiveStatus(employeeId, false);
+}
+
+export async function restoreEmployeeAction(
+  employeeId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  return setEmployeeActiveStatus(employeeId, true);
+}
+
 export async function updateEmployeeContactAction(
   formData: FormData,
 ): Promise<{ success: true } | { success: false; error: string }> {
@@ -133,6 +211,15 @@ export async function saveEmployeeMasterAction(
     const email = emptyToNull(String(formData.get("email") ?? ""));
     const supabase = await (await import("@/lib/supabase-server")).createClient();
     const rpc = employeeId ? "update_employee_master" : "create_employee_master";
+    const currentStatus = employeeId
+      ? await supabase
+          .from("employees")
+          .select("is_active")
+          .eq("id", employeeId)
+          .maybeSingle()
+      : null;
+    if (currentStatus?.error) throw new Error(currentStatus.error.message);
+    if (employeeId && !currentStatus?.data) throw new Error("직원 Master를 찾을 수 없습니다.");
     const args = employeeId
       ? {
           p_employee_id: employeeId,
@@ -141,7 +228,10 @@ export async function saveEmployeeMasterAction(
           p_title: title,
           p_phone: phone,
           p_email: email,
-          p_is_active: String(formData.get("is_active") ?? "true") === "true",
+          // Never accept employee status from FormData. The generic DB RPC
+          // also locks the row and rejects a stale status, so a detail save
+          // cannot undo another manager's archive/restore.
+          p_is_active: currentStatus?.data?.is_active === true,
         }
       : { p_name: name, p_team_id: teamId, p_title: title, p_phone: phone, p_email: email };
     const { error } = await supabase.rpc(rpc, args);
@@ -161,7 +251,13 @@ export async function saveEmployeeMasterAction(
     revalidatePath("/system/employees");
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "직원 저장에 실패했습니다." };
+    const message = error instanceof Error ? error.message : "직원 저장에 실패했습니다.";
+    return {
+      success: false,
+      error: /직원 상태 변경은 전용 보관·복원 절차/.test(message)
+        ? "직원 상태가 다른 관리자에 의해 변경되었습니다. 화면을 새로고침한 뒤 다시 수정해 주세요."
+        : message,
+    };
   }
 }
 

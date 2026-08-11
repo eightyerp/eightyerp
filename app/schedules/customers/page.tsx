@@ -81,13 +81,13 @@ export default async function CustomerSchedulesPage() {
       const supabase = await createClient();
       const { data: logs } = await supabase
         .from("customer_consult_logs")
-        .select("customer_id, content, created_at")
+        .select("customer_id, consult_content, created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       for (const log of logs ?? []) {
         const cid = log.customer_id as string;
         if (!consultByCustomer.has(cid)) {
-          consultByCustomer.set(cid, String(log.content ?? ""));
+          consultByCustomer.set(cid, String(log.consult_content ?? ""));
         }
       }
     } catch {

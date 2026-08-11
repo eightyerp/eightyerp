@@ -11,12 +11,26 @@ export type InteriorImportCustomerOption = {
   sites: Array<{ id: string; name: string; address: string | null }>;
 };
 
+/**
+ * `projects` has both its legacy customer FK and a company-scoped composite FK.
+ * PostgREST therefore needs the legacy FK named explicitly when embedding sites.
+ */
+export const INTERIOR_IMPORT_CUSTOMER_SELECT = `
+  id,
+  name,
+  phone,
+  address,
+  company_id,
+  assigned_employee_id,
+  projects:projects!projects_customer_id_fkey ( id, name, address )
+`;
+
 export async function listInteriorImportCustomers(): Promise<InteriorImportCustomerOption[]> {
   const access = await requireCustomerAccess();
   const supabase = await createClient();
   let query = supabase
     .from("customers")
-    .select("id, name, phone, address, company_id, assigned_employee_id, projects ( id, name, address )")
+    .select(INTERIOR_IMPORT_CUSTOMER_SELECT)
     .is("deleted_at", null)
     .order("name", { ascending: true })
     .limit(500);
