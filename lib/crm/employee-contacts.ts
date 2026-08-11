@@ -129,6 +129,8 @@ export async function listCompanyEmployeesForContact(): Promise<{
   currentEmployeeId: string | null;
   canManageAll: boolean;
   canMergeEmployees: boolean;
+  canManageLoginAccounts: boolean;
+  canAssignAdminRole: boolean;
   canAccessErp: boolean;
   isAuthenticated: boolean;
   loadError: string | null;
@@ -141,6 +143,8 @@ export async function listCompanyEmployeesForContact(): Promise<{
       currentEmployeeId: null,
       canManageAll: false,
       canMergeEmployees: false,
+      canManageLoginAccounts: false,
+      canAssignAdminRole: false,
       canAccessErp: false,
       isAuthenticated: false,
       loadError: "로그인이 필요합니다.",
@@ -154,6 +158,8 @@ export async function listCompanyEmployeesForContact(): Promise<{
       currentEmployeeId: access.profile?.employee_id ?? null,
       canManageAll: false,
       canMergeEmployees: false,
+      canManageLoginAccounts: false,
+      canAssignAdminRole: false,
       canAccessErp: false,
       isAuthenticated: true,
       loadError: "관리자 승인 후 이용할 수 있습니다.",
@@ -165,16 +171,11 @@ export async function listCompanyEmployeesForContact(): Promise<{
   const { data: companyRole } = await supabase.rpc("current_company_role");
   const role = typeof companyRole === "string" ? companyRole : null;
   const canManageAll =
-    access.isAdmin ||
-    role === "owner" ||
-    role === "director" ||
-    role === "admin";
+    role === "owner" || role === "director" || role === "admin";
   // Keep this in sync with get_employee_merge_impact/merge_employees RPC guards.
-  const canMergeEmployees =
-    access.isAdmin ||
-    role === "owner" ||
-    role === "director" ||
-    role === "admin";
+  const canMergeEmployees = canManageAll;
+  const canManageLoginAccounts = canManageAll;
+  const canAssignAdminRole = role === "owner" || role === "director";
 
   const employeeSelect =
     "id, company_id, team_id, name, title, phone, email, business_card_path, show_business_card_on_quote, is_active, sort_order, created_at, updated_at";
@@ -193,6 +194,8 @@ export async function listCompanyEmployeesForContact(): Promise<{
         currentEmployeeId: null,
         canManageAll: false,
         canMergeEmployees: false,
+        canManageLoginAccounts: false,
+        canAssignAdminRole: false,
         canAccessErp: true,
         isAuthenticated: true,
         loadError: "연결된 직원 정보가 없습니다.",
@@ -220,6 +223,8 @@ export async function listCompanyEmployeesForContact(): Promise<{
       currentEmployeeId: access.profile?.employee_id ?? null,
       canManageAll,
       canMergeEmployees,
+      canManageLoginAccounts,
+      canAssignAdminRole,
       canAccessErp: true,
       isAuthenticated: true,
       loadError:
@@ -291,6 +296,8 @@ export async function listCompanyEmployeesForContact(): Promise<{
     currentEmployeeId: access.profile?.employee_id ?? null,
     canManageAll,
     canMergeEmployees,
+    canManageLoginAccounts,
+    canAssignAdminRole,
     canAccessErp: true,
     isAuthenticated: true,
     loadError: masterRes.error

@@ -16,20 +16,20 @@ function emptyToNull(value: string): string | null {
 }
 
 async function requireEmployeeMergeAccess() {
-  const access = await requireAuthenticatedAccess();
+  await requireAuthenticatedAccess();
   const supabase = await (await import("@/lib/supabase-server")).createClient();
   const { data: companyRole, error } = await supabase.rpc("current_company_role");
   if (error) throw new Error("회사 역할을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.");
   const role = typeof companyRole === "string" ? companyRole : null;
-  const allowed = access.isAdmin || role === "owner" || role === "director" || role === "admin";
-  if (!allowed) throw new Error("권한 부족: owner, director, admin 또는 super_admin만 직원을 병합할 수 있습니다.");
+  const allowed = role === "owner" || role === "director" || role === "admin";
+  if (!allowed) throw new Error("권한 부족: 현재 회사의 owner, director 또는 admin만 직원을 병합할 수 있습니다.");
   return supabase;
 }
 
 function employeeMergeError(error: unknown): string {
   const message = error instanceof Error ? error.message : "직원 병합에 실패했습니다.";
   const reasons: Array<[RegExp, string]> = [
-    [/관리자만 직원 병합|관리자만 직원을 병합|권한 부족/, "권한 부족: owner, director, admin 또는 super_admin만 직원을 병합할 수 있습니다."],
+    [/관리자만 직원 병합|관리자만 직원을 병합|권한 부족/, "권한 부족: 현재 회사의 owner, director 또는 admin만 직원을 병합할 수 있습니다."],
     [/현재 로그인한 본인/, "본인 계정에 연결된 직원은 중복 직원으로 병합할 수 없습니다."],
     [/대표\(owner\)|대표.*계정/, "owner 대표 계정이 연결된 직원은 중복 직원으로 병합할 수 없습니다."],
     [/이미 병합된 직원/, "이미 병합된 직원은 다시 병합할 수 없습니다."],
@@ -65,7 +65,11 @@ export async function updateEmployeeContactAction(
     });
 
     const loginRole = String(formData.get("login_role") ?? "").trim();
-    if (loginRole) {
+    const originalLoginRole = String(formData.get("original_login_role") ?? "").trim();
+    if (loginRole && loginRole !== originalLoginRole) {
+      if (!["admin", "manager", "staff"].includes(loginRole)) {
+        throw new Error("유효하지 않은 로그인 권한입니다.");
+      }
       const supabase = await (await import("@/lib/supabase-server")).createClient();
       const { error } = await supabase.rpc("update_employee_login_role", {
         p_employee_id: employeeId,
@@ -143,7 +147,11 @@ export async function saveEmployeeMasterAction(
     const { error } = await supabase.rpc(rpc, args);
     if (error) throw new Error(error.message);
     const loginRole = String(formData.get("login_role") ?? "").trim();
-    if (employeeId && loginRole) {
+    const originalLoginRole = String(formData.get("original_login_role") ?? "").trim();
+    if (employeeId && loginRole && loginRole !== originalLoginRole) {
+      if (!["admin", "manager", "staff"].includes(loginRole)) {
+        throw new Error("유효하지 않은 로그인 권한입니다.");
+      }
       const { error: roleError } = await supabase.rpc("update_employee_login_role", {
         p_employee_id: employeeId,
         p_role: loginRole,
@@ -165,6 +173,9 @@ export async function linkEmployeeLoginAction(
     const userId = String(formData.get("user_id") ?? "").trim();
     const role = String(formData.get("role") ?? "staff") as UserRole;
     if (!employeeId || !userId) throw new Error("직원과 가입 계정을 선택해 주세요.");
+    if (!["admin", "manager", "staff"].includes(role)) {
+      throw new Error("유효하지 않은 로그인 권한입니다.");
+    }
     await approveSignup({ userId, role, mode: "link", employeeId });
     revalidatePath("/system/employees");
     revalidatePath("/system/approvals");

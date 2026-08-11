@@ -15,7 +15,7 @@ export type StaffApprovalResult = {
   message?: string;
 };
 
-const ROLES: UserRole[] = ["super_admin", "admin", "manager", "staff"];
+const ROLES: UserRole[] = ["admin", "manager", "staff"];
 
 function revalidateApprovals() {
   revalidatePath("/system/approvals");

@@ -13,7 +13,7 @@ export default async function EmployeeMasterPage() {
   if (!data.isAuthenticated) redirect("/login");
   if (!data.canAccessErp) redirect("/pending-approval");
 
-  const pendingAccounts = data.canManageAll
+  const pendingAccounts = data.canManageLoginAccounts
     ? await listPendingSignups().catch(() => [])
     : [];
   const masterEvents = data.canManageAll
@@ -45,6 +45,8 @@ export default async function EmployeeMasterPage() {
           currentEmployeeId={data.currentEmployeeId}
           canManageAll={data.canManageAll}
           canMergeEmployees={data.canMergeEmployees}
+          canManageLoginAccounts={data.canManageLoginAccounts}
+          canAssignAdminRole={data.canAssignAdminRole}
           pendingAccounts={pendingAccounts}
           events={masterEvents}
         />

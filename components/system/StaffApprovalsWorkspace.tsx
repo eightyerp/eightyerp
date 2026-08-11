@@ -17,12 +17,12 @@ type Props = {
   allProfiles: PendingSignup[];
   employees: Array<Employee & { login_linked?: boolean }>;
   teams: Team[];
+  assignableRoles: UserRole[];
 };
 
 const initial: StaffApprovalResult = { success: false };
-const roles: UserRole[] = ["staff", "manager", "admin", "super_admin"];
 
-export default function StaffApprovalsWorkspace({ pending, allProfiles, employees, teams }: Props) {
+export default function StaffApprovalsWorkspace({ pending, allProfiles, employees, teams, assignableRoles }: Props) {
   const [target, setTarget] = useState<PendingSignup | null>(null);
   const [approveState, approveAction, approvePending] = useActionState(
     async (prev: StaffApprovalResult, formData: FormData) => {
@@ -62,15 +62,16 @@ export default function StaffApprovalsWorkspace({ pending, allProfiles, employee
         <div className="mt-3 space-y-2">{allProfiles.map((profile) => <div key={profile.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-3 text-sm text-slate-900"><span className="font-medium">{profile.full_name ?? profile.email} · {ROLE_LABEL[profile.role] ?? profile.role} · {profile.approval_status}</span>{profile.is_active && profile.approval_status === "approved" ? <form action={deactivateAction}><input type="hidden" name="user_id" value={profile.id} /><button disabled={deactivatePending} className="text-xs font-medium text-red-700 disabled:opacity-75">비활성화</button></form> : null}</div>)}</div>
       </details>
 
-      {target ? <ApprovalModal profile={target} employees={employees} teams={teams} action={approveAction} pending={approvePending} error={approveState.error} onClose={() => setTarget(null)} /> : null}
+      {target ? <ApprovalModal profile={target} employees={employees} teams={teams} assignableRoles={assignableRoles} action={approveAction} pending={approvePending} error={approveState.error} onClose={() => setTarget(null)} /> : null}
     </section>
   );
 }
 
-function ApprovalModal({ profile, employees, teams, action, pending, error, onClose }: {
+function ApprovalModal({ profile, employees, teams, assignableRoles, action, pending, error, onClose }: {
   profile: PendingSignup;
   employees: Array<Employee & { login_linked?: boolean }>;
   teams: Team[];
+  assignableRoles: UserRole[];
   action: (data: FormData) => void;
   pending: boolean;
   error?: string;
@@ -89,7 +90,7 @@ function ApprovalModal({ profile, employees, teams, action, pending, error, onCl
     <form action={action} className="mt-4 space-y-3">
       <input type="hidden" name="user_id" value={profile.id} /><input type="hidden" name="mode" value="link" />
       <label className="block text-sm font-medium">직원 Master<select name="employee_id" required defaultValue={suggestion?.employee.id ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="">선택</option>{available.map((employee) => <option key={employee.id} value={employee.id}>{formatEmployeeOptionLabel(employee)}</option>)}</select></label>
-      <label className="block text-sm font-medium">권한<select name="role" defaultValue="staff" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">{roles.map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}</select></label>
+      <label className="block text-sm font-medium">권한<select name="role" defaultValue="staff" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900">{assignableRoles.map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}</select></label>
       <p className="text-xs text-slate-600">이 화면에서는 직원 이름·팀·직책·연락처를 수정하지 않습니다.</p>
       <div className="flex gap-2"><button disabled={pending} className="rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">승인</button><button type="button" onClick={onClose} className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">닫기</button></div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}

@@ -7,28 +7,38 @@ export type PendingSignup = Profile & {
   employees: Pick<Employee, "id" | "name" | "title" | "team_id"> | null;
 };
 
+export async function getApprovalActorCompanyRole(): Promise<string | null> {
+  await requireAdminAccess();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("current_company_role");
+  if (error) throw new Error(error.message);
+  return typeof data === "string" ? data : null;
+}
+
 export async function listPendingSignups(): Promise<PendingSignup[]> {
   await requireAdminAccess();
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*, employees ( id, name, title, team_id )")
-    .eq("approval_status", "pending")
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc(
+    "list_pending_company_signups",
+  );
   if (error) throw new Error(error.message);
-  return (data ?? []) as PendingSignup[];
+  return ((data ?? []) as Profile[]).map((profile: Profile) => ({
+    ...profile,
+    employees: null,
+  }));
 }
 
 export async function listManagedProfiles(): Promise<PendingSignup[]> {
   await requireAdminAccess();
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*, employees ( id, name, title, team_id )")
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const { data, error } = await supabase.rpc(
+    "list_managed_company_profiles",
+  );
   if (error) throw new Error(error.message);
-  return (data ?? []) as PendingSignup[];
+  return ((data ?? []) as Profile[]).map((profile: Profile) => ({
+    ...profile,
+    employees: null,
+  }));
 }
 
 export type ApproveSignupInput = {

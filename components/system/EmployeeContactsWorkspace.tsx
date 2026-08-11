@@ -25,6 +25,8 @@ type Props = {
   currentEmployeeId: string | null;
   canManageAll: boolean;
   canMergeEmployees: boolean;
+  canManageLoginAccounts: boolean;
+  canAssignAdminRole: boolean;
   pendingAccounts?: Profile[];
   events?: EmployeeMasterEvent[];
 };
@@ -44,6 +46,8 @@ export default function EmployeeContactsWorkspace({
   currentEmployeeId,
   canManageAll,
   canMergeEmployees,
+  canManageLoginAccounts,
+  canAssignAdminRole,
   pendingAccounts = [],
   events = [],
 }: Props) {
@@ -199,20 +203,21 @@ export default function EmployeeContactsWorkspace({
             <h3 className="text-lg font-semibold text-slate-900">{creating ? "새 직원 생성" : `${selected?.name} 상세`}</h3>
             <form action={(formData) => run(() => saveEmployeeMasterAction(formData), "직원 Master를 저장했습니다." )} className="mt-4 grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="employee_id" value={selected?.id ?? ""} />
+              <input type="hidden" name="original_login_role" value={selected?.role ?? ""} />
               <label className="text-sm font-medium">이름<input name="name" required defaultValue={selected?.name ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
               <label className="text-sm font-medium">팀<select name="team_id" defaultValue={selected?.team_id ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="">미지정</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
               <label className="text-sm font-medium">직책<input name="title" required defaultValue={selected?.title ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
               <label className="text-sm font-medium">전화<input name="phone" defaultValue={selected?.phone ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
               <label className="text-sm font-medium sm:col-span-2">이메일<input name="email" type="email" defaultValue={selected?.email ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900" /></label>
               {selected ? <label className="text-sm font-medium">상태<select name="is_active" defaultValue={String(selected.is_active)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="true">활성</option><option value="false">비활성</option></select></label> : null}
-              {selected?.login_linked ? <label className="text-sm font-medium">권한<select name="login_role" defaultValue={selected.role ?? "staff"} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="staff">직원</option><option value="manager">팀장</option><option value="admin">관리자</option><option value="super_admin">최고 관리자</option></select></label> : null}
+              {selected?.login_linked && canManageLoginAccounts && selected.role !== "super_admin" ? <label className="text-sm font-medium">권한<select name="login_role" defaultValue={selected.role ?? "staff"} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"><option value="staff">직원</option><option value="manager">팀장</option>{canAssignAdminRole ? <option value="admin">관리자</option> : null}</select></label> : null}
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <button type="submit" disabled={pending} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-75">저장</button>
                 <button type="button" onClick={() => { setSelected(null); setCreating(false); }} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900">닫기</button>
               </div>
             </form>
 
-            {selected && canManageAll ? (
+            {selected && canManageLoginAccounts ? (
               <div className="mt-5 border-t pt-4">
                 <h4 className="text-sm font-semibold">로그인 계정</h4>
                 {selected.login_linked ? (
@@ -221,7 +226,7 @@ export default function EmployeeContactsWorkspace({
                   <form action={(formData) => run(() => linkEmployeeLoginAction(formData), "로그인 계정을 연결했습니다.")} className="mt-2 flex flex-wrap gap-2">
                     <input type="hidden" name="employee_id" value={selected.id} />
                     <select name="user_id" required className="min-w-56 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"><option value="">가입 계정 선택</option>{pendingAccounts.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name ?? profile.email ?? profile.id} · {profile.email}</option>)}</select>
-                    <select name="role" defaultValue="staff" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"><option value="staff">직원</option><option value="manager">팀장</option><option value="admin">관리자</option></select>
+                    <select name="role" defaultValue="staff" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"><option value="staff">직원</option><option value="manager">팀장</option>{canAssignAdminRole ? <option value="admin">관리자</option> : null}</select>
                     <button type="submit" disabled={pending} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-75">계정 연결</button>
                   </form>
                 ) : <p className="mt-2 text-sm text-slate-600">연결 가능한 가입 대기 계정이 없습니다.</p>}
