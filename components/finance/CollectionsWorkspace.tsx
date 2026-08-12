@@ -14,7 +14,7 @@ import {
   COLLECTION_TYPE_LABELS,
   type CollectionContract,
   type CollectionReceipt,
-} from "@/lib/crm/collections";
+} from "@/lib/crm/collection-shared";
 
 const initialState: CollectionActionResult = { success: false };
 
