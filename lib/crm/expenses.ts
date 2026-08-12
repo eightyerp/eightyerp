@@ -7,6 +7,7 @@ import type {
   ExpenseProjectOption,
   ExpenseRequestRecord,
   ExpenseTaxEvidenceType,
+  ExpenseWorkTrade,
   PostSettlementReason,
   PostSettlementTreatment,
   SettlementAdjustmentRecord,
@@ -36,7 +37,7 @@ export async function listExpenseProjects(): Promise<ExpenseProjectOption[]> {
     .from("projects")
     .select(`
       id, name, address, customer_id,
-      customers ( id, name, phone ),
+      customers:customers!projects_customer_id_fkey ( id, name, phone ),
       finance_state:project_finance_states!project_finance_states_project_id_fkey ( settlement_status, settled_at )
     `)
     .is("deleted_at", null)
@@ -66,7 +67,7 @@ export async function listVendors(): Promise<VendorRecord[]> {
   const { data, error } = await supabase
     .from("vendors")
     .select(
-      "id, company_id, name, normalized_name, business_number, phone, bank_name, account_number, account_holder, review_status, created_from, created_at",
+      "id, company_id, name, normalized_name, business_number, phone, bank_name, account_number, account_holder, default_work_trade, default_expense_category, review_status, created_from, created_at",
     )
     .neq("review_status", "inactive")
     .order("name")
@@ -81,7 +82,7 @@ export async function listExpenseRequests(limit = 300): Promise<ExpenseRequestRe
   const { data, error } = await supabase
     .from("expense_requests")
     .select(`
-      id, company_id, expense_scope, project_id, customer_id, contract_id, category,
+      id, company_id, expense_scope, project_id, customer_id, contract_id, work_trade, category,
       vendor_id, vendor_name_snapshot, description, supply_amount, vat_amount, total_amount,
       tax_evidence_type, cost_basis_amount, vat_credit_amount, tax_evidence_updated_at,
       expense_date, payment_due_date, payment_method, status, requested_by_employee_id,
@@ -90,7 +91,7 @@ export async function listExpenseRequests(limit = 300): Promise<ExpenseRequestRe
       adjustment_employee_id, settlement_adjustment_amount, recovery_expected_amount, post_settlement_note,
       projects:projects!expense_requests_project_id_fkey ( id, name, address ),
       customers:customers!expense_requests_customer_id_fkey ( id, name, phone ),
-      vendors:vendors!expense_requests_vendor_id_fkey ( id, name, review_status, business_number ),
+      vendors:vendors!expense_requests_vendor_id_fkey ( id, name, review_status, business_number, default_work_trade, default_expense_category ),
       requested_employee:employees!expense_requests_requested_by_employee_id_fkey ( id, name, title ),
       adjustment_employee:employees!expense_requests_adjustment_employee_id_fkey ( id, name, title ),
       expense_documents ( id, expense_request_id, document_type, storage_path, original_file_name, mime_type, file_size, sha256, ai_extracted, ai_confidence, created_at )
@@ -155,9 +156,11 @@ export const registerExpenseRequest = (input: Record<string, unknown>) =>
     customer_id: string | null;
     requester_employee_id: string | null;
     amount: number;
-  }>("register_expense_request", {
+    work_trade: ExpenseWorkTrade;
+  }>("register_expense_request_v2", {
     p_expense_scope: "project",
     p_project_id: input.projectId,
+    p_work_trade: input.workTrade ?? "other",
     p_category: input.category,
     p_vendor_id: input.vendorId,
     p_vendor_name: input.vendorName,
