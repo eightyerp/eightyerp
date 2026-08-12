@@ -27,6 +27,13 @@ export type ExpenseDocumentType =
   | "transaction_statement"
   | "invoice"
   | "other";
+export type ExpenseTaxEvidenceType =
+  | "unverified"
+  | "tax_invoice"
+  | "cash_receipt"
+  | "card_receipt"
+  | "none"
+  | "other";
 
 export type PostSettlementReason =
   | "as_repair"
@@ -82,6 +89,15 @@ export const EXPENSE_DOCUMENT_LABELS: Record<ExpenseDocumentType, string> = {
   transaction_statement: "거래명세서",
   invoice: "세금계산서/청구서",
   other: "기타 증빙",
+};
+
+export const EXPENSE_TAX_EVIDENCE_LABELS: Record<ExpenseTaxEvidenceType, string> = {
+  unverified: "미확인",
+  tax_invoice: "세금계산서",
+  cash_receipt: "지출증빙용 현금영수증",
+  card_receipt: "카드전표",
+  none: "증빙 없음",
+  other: "기타",
 };
 
 export const POST_SETTLEMENT_REASON_LABELS: Record<PostSettlementReason, string> = {
@@ -181,6 +197,10 @@ export type ExpenseRequestRecord = {
   supply_amount: number;
   vat_amount: number;
   total_amount: number;
+  tax_evidence_type: ExpenseTaxEvidenceType;
+  cost_basis_amount: number;
+  vat_credit_amount: number;
+  tax_evidence_updated_at: string | null;
   expense_date: string;
   payment_due_date: string | null;
   payment_method: ExpensePaymentMethod;
