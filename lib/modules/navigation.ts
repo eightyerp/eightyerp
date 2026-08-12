@@ -67,6 +67,9 @@ export const NAVIGATION_REGISTRY: readonly NavigationGroup[] = [
     { id: "analytics", label: "통계·분석", route: null, icon: "↗", moduleId: "analytics", status: "coming_soon", roles: ADMIN_ROLES },
     { id: "ad-performance", label: "광고성과", route: null, icon: "%", moduleId: "analytics", status: "coming_soon", roles: ADMIN_ROLES },
   ] },
+  { id: "my-account", label: "내 계정", items: [
+    { id: "my-profile", label: "내 정보", route: "/me", icon: "●", moduleId: "hr", match: "exact" },
+  ] },
   { id: "system", label: "시스템관리", items: [
     { id: "employees", label: "직원 Master", route: "/system/employees", icon: "♙", moduleId: "hr" },
     { id: "approvals", label: "계정 재연결", route: "/system/approvals", icon: "✓", moduleId: "system", companyRoles: COMPANY_APPROVAL_ROLES },
