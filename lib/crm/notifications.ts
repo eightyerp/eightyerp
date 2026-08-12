@@ -9,7 +9,10 @@ export type NotificationEventType =
   | "external_inquiry_registered"
   | "customer_assigned"
   | "collection_reported"
-  | "collection_confirmed";
+  | "collection_confirmed"
+  | "expense_requested"
+  | "expense_approved"
+  | "expense_paid";
 
 /**
  * 카카오 알림톡 연동 전 단계: 이벤트 + message_logs(recorded)만 남긴다.
