@@ -28,6 +28,21 @@ export type ExpenseDocumentType =
   | "invoice"
   | "other";
 
+export type PostSettlementReason =
+  | "as_repair"
+  | "omitted_invoice"
+  | "additional_material"
+  | "additional_labor"
+  | "late_vendor_invoice"
+  | "other";
+
+export type PostSettlementTreatment =
+  | "company_absorb"
+  | "next_settlement_deduction"
+  | "vendor_recovery"
+  | "customer_rebill"
+  | "other";
+
 export const EXPENSE_SCOPE_LABELS: Record<ExpenseScope, string> = {
   project: "현장비",
   operating: "운영비",
@@ -69,6 +84,23 @@ export const EXPENSE_DOCUMENT_LABELS: Record<ExpenseDocumentType, string> = {
   other: "기타 증빙",
 };
 
+export const POST_SETTLEMENT_REASON_LABELS: Record<PostSettlementReason, string> = {
+  as_repair: "AS/하자 보수",
+  omitted_invoice: "정산 누락 비용",
+  additional_material: "추가 자재",
+  additional_labor: "추가 인건비",
+  late_vendor_invoice: "협력업체 후청구",
+  other: "기타",
+};
+
+export const POST_SETTLEMENT_TREATMENT_LABELS: Record<PostSettlementTreatment, string> = {
+  company_absorb: "회사 부담",
+  next_settlement_deduction: "다음 정산 차감",
+  vendor_recovery: "협력업체 회수",
+  customer_rebill: "고객 추가청구",
+  other: "기타 처리",
+};
+
 export type ExpenseDocumentAnalysis = {
   documentType: ExpenseDocumentType;
   vendorName: string;
@@ -99,12 +131,26 @@ export type VendorRecord = {
   created_at: string;
 };
 
+export type ExpenseProjectFinanceState = {
+  settlement_status: "open" | "settled";
+  settled_at: string | null;
+};
+
 export type ExpenseProjectOption = {
   id: string;
   name: string;
   address: string | null;
   customer_id: string;
   customers: { id: string; name: string; phone: string } | null;
+  finance_state?: ExpenseProjectFinanceState | ExpenseProjectFinanceState[] | null;
+};
+
+export type ExpenseEmployeeOption = {
+  id: string;
+  name: string;
+  title: string;
+  team_id: string | null;
+  teams?: { name: string } | { name: string }[] | null;
 };
 
 export type ExpenseDocumentRecord = {
@@ -146,11 +192,36 @@ export type ExpenseRequestRecord = {
   cancel_reason: string | null;
   memo: string | null;
   created_at: string;
+  is_post_settlement: boolean;
+  post_settlement_reason: PostSettlementReason | null;
+  post_settlement_treatment: PostSettlementTreatment | null;
+  adjustment_employee_id: string | null;
+  settlement_adjustment_amount: number;
+  recovery_expected_amount: number;
+  post_settlement_note: string | null;
   projects: { id: string; name: string; address: string | null } | null;
   customers: { id: string; name: string; phone: string } | null;
   vendors: Pick<VendorRecord, "id" | "name" | "review_status" | "business_number"> | null;
   requested_employee: { id: string; name: string; title: string } | null;
+  adjustment_employee?: { id: string; name: string; title: string } | null;
   expense_documents?: ExpenseDocumentRecord[];
+};
+
+export type SettlementAdjustmentRecord = {
+  id: string;
+  company_id: string;
+  source_project_id: string;
+  source_expense_request_id: string;
+  employee_id: string;
+  adjustment_amount: number;
+  applied_amount: number;
+  remaining_amount: number;
+  status: "pending" | "partially_applied" | "applied" | "cancelled";
+  reason: string | null;
+  created_at: string;
+  source_project: { id: string; name: string } | null;
+  employee: { id: string; name: string; title: string } | null;
+  source_expense: { id: string; description: string; total_amount: number } | null;
 };
 
 export type ExpenseNotificationItem = {
