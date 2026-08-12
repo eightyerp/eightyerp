@@ -4,16 +4,19 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { getMyCollectionNotificationsAction } from "@/app/actions/collections";
 import { getMyCustomerPushesAction } from "@/app/actions/customer-push";
+import { getMyExpenseNotificationsAction } from "@/app/actions/expenses";
 import {
   COLLECTION_PAYMENT_LABELS,
   COLLECTION_TYPE_LABELS,
   type CollectionNotificationItem,
 } from "@/lib/crm/collection-shared";
 import type { CustomerPushItem } from "@/lib/crm/customer-push";
+import type { ExpenseNotificationItem } from "@/lib/crm/expense-shared";
 
 type NotificationItem =
   | { kind: "customer"; createdAt: string; item: CustomerPushItem }
-  | { kind: "collection"; createdAt: string; item: CollectionNotificationItem };
+  | { kind: "collection"; createdAt: string; item: CollectionNotificationItem }
+  | { kind: "expense"; createdAt: string; item: ExpenseNotificationItem };
 
 function formatTime(value: string): string {
   const date = new Date(value);
@@ -46,9 +49,10 @@ export default function ErpNotificationBell() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [customers, collections] = await Promise.all([
+      const [customers, collections, expenses] = await Promise.all([
         getMyCustomerPushesAction(),
         getMyCollectionNotificationsAction(),
+        getMyExpenseNotificationsAction(),
       ]);
       if (cancelled) return;
       const merged: NotificationItem[] = [
@@ -62,12 +66,17 @@ export default function ErpNotificationBell() {
           createdAt: item.createdAt,
           item,
         })),
+        ...expenses.map((item) => ({
+          kind: "expense" as const,
+          createdAt: item.createdAt,
+          item,
+        })),
       ]
         .sort(
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         )
-        .slice(0, 15);
+        .slice(0, 20);
       setItems(merged);
     }
     void load();
@@ -121,7 +130,7 @@ export default function ErpNotificationBell() {
         <div className="absolute right-0 top-12 z-50 w-[min(23rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-sm font-bold text-slate-900">ERP 알림</p>
-            <p className="mt-0.5 text-xs text-slate-500">고객 PUSH와 수금 알림을 확인합니다.</p>
+            <p className="mt-0.5 text-xs text-slate-500">고객 · 수금 · 지출 알림을 확인합니다.</p>
           </div>
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 ? (
@@ -149,26 +158,55 @@ export default function ErpNotificationBell() {
                   );
                 }
 
+                if (notification.kind === "collection") {
+                  const item = notification.item;
+                  const isRequest = item.eventType === "collection_reported";
+                  return (
+                    <Link
+                      key={`collection-${item.id}`}
+                      href="/finance/collections"
+                      onClick={() => setOpen(false)}
+                      className={`block border-b border-gray-100 px-4 py-3 ${isRequest ? "hover:bg-amber-50" : "hover:bg-emerald-50"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold ${isRequest ? "text-amber-800" : "text-emerald-700"}`}>
+                            {isRequest ? "수금 확인 요청" : "수금 확정"}
+                          </p>
+                          <p className="mt-0.5 truncate text-sm font-bold text-slate-950">
+                            {item.customerName} · {Number(item.amount).toLocaleString("ko-KR")}원
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {collectionTypeLabel(item.collectionType)} · {paymentLabel(item.paymentMethod)}
+                            {isRequest && item.reporterName ? ` · ${item.reporterName} 등록` : ""}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[11px] text-slate-400">{formatTime(item.createdAt)}</span>
+                      </div>
+                    </Link>
+                  );
+                }
+
                 const item = notification.item;
-                const isRequest = item.eventType === "collection_reported";
+                const isRequest = item.eventType === "expense_requested";
+                const isPaid = item.eventType === "expense_paid";
                 return (
                   <Link
-                    key={`collection-${item.id}`}
-                    href="/finance/collections"
+                    key={`expense-${item.id}`}
+                    href="/finance/payments"
                     onClick={() => setOpen(false)}
-                    className={`block border-b border-gray-100 px-4 py-3 ${isRequest ? "hover:bg-amber-50" : "hover:bg-emerald-50"}`}
+                    className={`block border-b border-gray-100 px-4 py-3 ${isRequest ? "hover:bg-amber-50" : isPaid ? "hover:bg-emerald-50" : "hover:bg-sky-50"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className={`text-xs font-bold ${isRequest ? "text-amber-800" : "text-emerald-700"}`}>
-                          {isRequest ? "수금 확인 요청" : "수금 확정"}
+                        <p className={`text-xs font-bold ${isRequest ? "text-amber-800" : isPaid ? "text-emerald-700" : "text-sky-700"}`}>
+                          {isRequest ? "지출 승인 요청" : isPaid ? "지출 지급완료" : "지출 승인"}
                         </p>
                         <p className="mt-0.5 truncate text-sm font-bold text-slate-950">
-                          {item.customerName} · {Number(item.amount).toLocaleString("ko-KR")}원
+                          {item.vendorName || "거래처"} · {Number(item.amount).toLocaleString("ko-KR")}원
                         </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          {collectionTypeLabel(item.collectionType)} · {paymentLabel(item.paymentMethod)}
-                          {isRequest && item.reporterName ? ` · ${item.reporterName} 등록` : ""}
+                        <p className="mt-1 line-clamp-1 text-xs text-slate-600">
+                          {item.description}{isRequest && item.requesterName ? ` · ${item.requesterName} 신청` : ""}
                         </p>
                       </div>
                       <span className="shrink-0 text-[11px] text-slate-400">{formatTime(item.createdAt)}</span>
