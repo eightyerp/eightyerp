@@ -44,6 +44,20 @@ export async function pushCustomerInfo(customerId: string): Promise<{ assigneeNa
     throw new Error("활성 담당자 정보를 확인할 수 없습니다.");
   }
 
+  const { data: masterRows, error: masterError } = await supabase.rpc(
+    "list_employee_master",
+  );
+  if (masterError) throw new Error("담당자 로그인 상태를 확인할 수 없습니다.");
+
+  const loginState = Array.isArray(masterRows)
+    ? (masterRows as Array<Record<string, unknown>>).find(
+        (row) => row.employee_id === customer.assigned_employee_id,
+      )
+    : null;
+  if (!loginState || loginState.login_linked !== true || loginState.login_active !== true) {
+    throw new Error("담당자의 활성 로그인 계정이 없습니다. 직원 Master에서 계정을 먼저 확인해 주세요.");
+  }
+
   const assigneeName = [employee.name, employee.title].filter(Boolean).join(" ");
   const eventId = await enqueueNotificationEvent({
     event_type: "customer_assigned",
