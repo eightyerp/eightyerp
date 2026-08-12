@@ -80,7 +80,7 @@ function navigationLabels(
 
 for (const companyRole of ["owner", "director"] as const) {
   const labels = navigationLabels("admin", companyRole);
-  for (const label of ["내 정보", "직원 Master", "계정 재연결", "직원 초대", "월 마감"]) {
+  for (const label of ["내 정보", "직원 Master", "계정 재연결", "직원 초대", "수금관리", "월 마감"]) {
     assert.ok(labels.includes(label), `${companyRole}: ${label} 메뉴 필요`);
   }
 }
@@ -89,6 +89,7 @@ const companyAdminLabels = navigationLabels("admin", "admin");
 assert.ok(companyAdminLabels.includes("내 정보"));
 assert.ok(companyAdminLabels.includes("직원 Master"));
 assert.ok(companyAdminLabels.includes("직원 초대"));
+assert.ok(companyAdminLabels.includes("수금관리"));
 assert.ok(!companyAdminLabels.includes("계정 재연결"));
 
 for (const [role, companyRole] of [
@@ -98,6 +99,7 @@ for (const [role, companyRole] of [
   const labels = navigationLabels(role, companyRole);
   assert.ok(labels.includes("내 정보"));
   assert.ok(labels.includes("직원 Master"));
+  assert.ok(labels.includes("수금관리"));
   assert.ok(!labels.includes("계정 재연결"));
   assert.ok(!labels.includes("직원 초대"));
   assert.ok(!labels.includes("월 마감"));
@@ -106,6 +108,7 @@ for (const [role, companyRole] of [
 assert.ok(isNavigationRouteActive("/quotes/abc", "/quotes"));
 assert.ok(!isNavigationRouteActive("/customers", "/quotes"));
 assert.ok(isNavigationRouteActive("/me", "/me", new URLSearchParams(), "exact"));
+assert.ok(isNavigationRouteActive("/finance/collections", "/finance/collections"));
 assert.equal(
   getActiveNavigationItemId(items, "/quotes/new", new URLSearchParams("type=interior")),
   "interior-quote",
@@ -116,12 +119,18 @@ assert.equal(
   "my-profile",
   "내 정보 메뉴 active 판정 유지",
 );
+assert.equal(
+  getActiveNavigationItemId(items, "/finance/collections", new URLSearchParams()),
+  "finance-collections",
+  "수금관리 메뉴 active 판정 유지",
+);
 
 assert.ok(internalReadyItems.some((item) => item.route === "/me"));
 assert.ok(internalReadyItems.some((item) => item.route === "/schedules/customers"));
 assert.ok(internalReadyItems.some((item) => item.route === "/schedules/processes"));
+assert.ok(internalReadyItems.some((item) => item.route === "/finance/collections"));
 assert.ok(!internalReadyItems.some((item) => item.route === "/schedules"));
-assert.ok(!internalReadyItems.some((item) => item.route?.startsWith("/finance")));
+assert.ok(!internalReadyItems.some((item) => item.route === "/finance/payments"));
 
 console.log(
   `PASS: ${ERP_MODULES.length} modules, ${NAVIGATION_REGISTRY.length} groups, ${readyItems.length} ready routes, ${missingReadyRoutes.length} missing ready routes`,

@@ -6,9 +6,10 @@ export type NotificationEventType =
   | "material_change_request"
   | "material_reapproval_request"
   | "material_all_approved"
-  /** 외부문의 자동등록 후 담당자 배정 — DB check 확장 migration 필요 */
   | "external_inquiry_registered"
-  | "customer_assigned";
+  | "customer_assigned"
+  | "collection_reported"
+  | "collection_confirmed";
 
 /**
  * 카카오 알림톡 연동 전 단계: 이벤트 + message_logs(recorded)만 남긴다.
