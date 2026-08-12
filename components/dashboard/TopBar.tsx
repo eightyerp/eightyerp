@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import LogoutButton from "@/components/auth/LogoutButton";
 import CompanySwitcher from "@/components/dashboard/CompanySwitcher";
-import CustomerPushBell from "@/components/dashboard/CustomerPushBell";
+import ErpNotificationBell from "@/components/dashboard/ErpNotificationBell";
 import {
   getTopBarUserAction,
   type TopBarUserDisplay,
@@ -149,7 +149,7 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
           activeCompanyId={user.activeCompanyId}
           activeCompanyName={user.activeCompanyName}
         />
-        <CustomerPushBell />
+        <ErpNotificationBell />
 
         <div
           ref={profileRef}
