@@ -131,8 +131,12 @@ export async function registerSimpleExpenseAction(
       throw new Error("결제일을 선택해 주세요.");
     }
 
-    let vendorId = String(formData.get("vendor_id") ?? "").trim() || null;
+    const rawVendorId = String(formData.get("vendor_id") ?? "").trim();
+    let vendorId = rawVendorId && rawVendorId !== "__new__" ? rawVendorId : null;
     const newVendorName = String(formData.get("new_vendor_name") ?? "").trim();
+    if (rawVendorId === "__new__" && !newVendorName) {
+      throw new Error("신규 거래처명을 입력해 주세요.");
+    }
     if (!vendorId && newVendorName) {
       const vendor = await findOrCreateVendorCandidate({
         name: newVendorName,
