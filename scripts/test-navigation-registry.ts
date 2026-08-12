@@ -80,13 +80,13 @@ function navigationLabels(
 
 for (const companyRole of ["owner", "director"] as const) {
   const labels = navigationLabels("admin", companyRole);
-  for (const label of ["내 정보", "직원 Master", "계정 재연결", "직원 초대", "수금관리", "지출관리", "월 마감"]) {
+  for (const label of ["내 정보", "직원 Master", "계정 재연결", "직원 초대", "수금등록·관리", "지출등록·관리", "월 마감"]) {
     assert.ok(labels.includes(label), `${companyRole}: ${label} 메뉴 필요`);
   }
 }
 
 const companyAdminLabels = navigationLabels("admin", "admin");
-for (const label of ["내 정보", "직원 Master", "직원 초대", "수금관리", "지출관리"]) {
+for (const label of ["내 정보", "직원 Master", "직원 초대", "수금등록·관리", "지출등록·관리"]) {
   assert.ok(companyAdminLabels.includes(label), `admin: ${label} 메뉴 필요`);
 }
 assert.ok(!companyAdminLabels.includes("계정 재연결"));
@@ -96,7 +96,7 @@ for (const [role, companyRole] of [
   ["staff", "employee"],
 ] as const) {
   const labels = navigationLabels(role, companyRole);
-  for (const label of ["내 정보", "직원 Master", "수금관리", "지출관리"]) {
+  for (const label of ["내 정보", "직원 Master", "수금등록·관리", "지출등록·관리"]) {
     assert.ok(labels.includes(label), `${companyRole}: ${label} 메뉴 필요`);
   }
   assert.ok(!labels.includes("계정 재연결"));
@@ -122,12 +122,12 @@ assert.equal(
 assert.equal(
   getActiveNavigationItemId(items, "/finance/collections", new URLSearchParams()),
   "finance-collections",
-  "수금관리 메뉴 active 판정 유지",
+  "수금 메뉴 active 판정 유지",
 );
 assert.equal(
   getActiveNavigationItemId(items, "/finance/payments", new URLSearchParams()),
   "finance-payments",
-  "지출관리 메뉴 active 판정 유지",
+  "지출 메뉴 active 판정 유지",
 );
 
 for (const route of ["/me", "/schedules/customers", "/schedules/processes", "/finance/collections", "/finance/payments"]) {

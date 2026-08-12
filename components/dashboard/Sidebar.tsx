@@ -19,7 +19,7 @@ type SidebarProps = {
   onClose: () => void;
 };
 
-const GROUP_CACHE_KEY = "eighty:sidebar-groups";
+const GROUP_CACHE_KEY = "eighty:sidebar-groups:v2";
 
 function SearchParamsReader({
   children,
@@ -111,7 +111,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         {nav.map((group) => {
           const activeItemId = getActiveNavigationItemId(group.items, pathname, searchParams);
           const active = activeItemId !== null;
-          const expanded = openGroups[group.id] ?? (active || group.id === "dashboard");
+          const expanded =
+            openGroups[group.id] ??
+            (active || group.id === "dashboard" || group.id === "finance");
           return (
             <li key={group.id}>
               <button
