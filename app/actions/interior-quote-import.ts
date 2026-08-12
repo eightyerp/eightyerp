@@ -24,6 +24,15 @@ const MIME_BY_EXT = {
   xls: "application/vnd.ms-excel",
 } as const;
 
+const ACCEPTED_EXCEL_MIME_TYPES = new Set([
+  MIME_BY_EXT.xlsx,
+  MIME_BY_EXT.xls,
+  "application/octet-stream",
+  "application/x-ole-storage",
+  "application/vnd.ms-office",
+  "",
+]);
+
 function cleanFileName(name: string): string {
   const normalized = name.normalize("NFKC").replace(/[^0-9A-Za-z가-힣._-]+/g, "-").replace(/-+/g, "-");
   return normalized.slice(-120) || "interior-quote.xlsx";
@@ -89,7 +98,9 @@ export async function saveInteriorQuoteImportAction(formData: FormData): Promise
     const cleanName = cleanFileName(file.name);
     const ext = cleanName.split(".").pop()?.toLowerCase();
     if (ext !== "xlsx" && ext !== "xls") throw new Error("xlsx 또는 xls 파일만 업로드할 수 있습니다.");
-    if (file.type !== MIME_BY_EXT[ext]) throw new Error("Excel MIME 형식이 올바르지 않습니다.");
+    if (!ACCEPTED_EXCEL_MIME_TYPES.has(file.type)) {
+      throw new Error("Excel MIME 형식이 올바르지 않습니다.");
+    }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     validateSignature(bytes, ext);
