@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import AdminQuickCardExpense from "@/components/finance/AdminQuickCardExpense";
+import ExpenseTaxEvidencePanel from "@/components/finance/ExpenseTaxEvidencePanel";
 import ExpensesWorkspace from "@/components/finance/ExpensesWorkspace";
 import MissingExpenseEvidencePanel from "@/components/finance/MissingExpenseEvidencePanel";
 import { listExpenseProjectsResilient } from "@/lib/crm/expense-projects";
@@ -58,6 +59,10 @@ export default async function ExpensePaymentsPage() {
 
         {access.isFinanceAdmin ? (
           <MissingExpenseEvidencePanel requests={requests} />
+        ) : null}
+
+        {access.isFinanceAdmin ? (
+          <ExpenseTaxEvidencePanel requests={requests} />
         ) : null}
 
         <ExpensesWorkspace
