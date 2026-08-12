@@ -1,8 +1,10 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import SettlementDashboardSummary from "@/components/dashboard/SettlementDashboardSummary";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
+import WindowYoYCard from "@/components/dashboard/WindowYoYCard";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
 import { getTodayWorkBundle } from "@/lib/crm/today-work";
+import { getWindowYoYSummary } from "@/lib/crm/window-yoy";
 import type { CustomerSchedule } from "@/types/database";
 
 type Props = {
@@ -15,6 +17,7 @@ export default async function DashboardPage({ searchParams }: Props) {
   let loadError: string | null = null;
   let bundle = null;
   let settlementSummary = null;
+  let windowYoY = null;
 
   try {
     bundle = await getTodayWorkBundle({
@@ -31,8 +34,14 @@ export default async function DashboardPage({ searchParams }: Props) {
   try {
     settlementSummary = await getDashboardSettlementSummary();
   } catch {
-    // 정산 모듈 오류가 오늘 할 일 대시보드 전체를 막지 않도록 분리합니다.
     settlementSummary = null;
+  }
+
+  try {
+    windowYoY = await getWindowYoYSummary();
+  } catch {
+    // 과거비교 데이터 오류가 메인 대시보드를 막지 않도록 분리합니다.
+    windowYoY = null;
   }
 
   const schedulesById: Record<string, CustomerSchedule> = {};
@@ -48,6 +57,8 @@ export default async function DashboardPage({ searchParams }: Props) {
         {settlementSummary ? (
           <SettlementDashboardSummary summary={settlementSummary} />
         ) : null}
+
+        {windowYoY ? <WindowYoYCard summary={windowYoY} /> : null}
 
         {loadError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
