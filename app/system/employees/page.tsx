@@ -64,7 +64,7 @@ export default async function EmployeeMasterPage() {
                 href="/system/invitations"
                 className="inline-flex min-h-11 items-center justify-center rounded-lg bg-navy-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-600 focus-visible:ring-offset-2"
               >
-                직원 초대 관리
+                새 직원 초대 관리
               </Link>
             </div>
 
@@ -87,9 +87,18 @@ export default async function EmployeeMasterPage() {
               </div>
             </div>
 
-            {loginReadyCount < activeEmployees.length ? (
-              <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950">
-                직원 테스트 전에 미연결 직원은 초대 링크로 가입하고, 비활성 계정은 관리자 복구 절차를 확인해 주세요.
+            {unlinkedLoginCount > 0 ? (
+              <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm leading-relaxed text-amber-950">
+                <p className="font-bold">기존 Employee Master의 미연결 직원에게는 현재 초대 링크를 보내지 마세요.</p>
+                <p className="mt-1">
+                  현재 초대 링크는 <b>새 직원 Master를 생성하는 신규 입사자용</b>입니다. 이미 등록된 직원은 기존 Master에 로그인 계정을 연결하는 전용 절차가 필요합니다.
+                </p>
+              </div>
+            ) : null}
+
+            {inactiveLoginCount > 0 ? (
+              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium leading-relaxed text-red-950">
+                비활성 로그인 계정은 직원 Master를 새로 만들지 말고 기존 계정 복구 절차로 처리해야 합니다.
               </p>
             ) : null}
           </section>
