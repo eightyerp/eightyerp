@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import ExpensesWorkspace from "@/components/finance/ExpensesWorkspace";
 import MissingExpenseEvidencePanel from "@/components/finance/MissingExpenseEvidencePanel";
+import { listExpenseProjectsResilient } from "@/lib/crm/expense-projects";
 import {
   getExpenseAccess,
   listExpenseAdjustmentEmployees,
-  listExpenseProjects,
   listExpenseRequests,
   listSettlementAdjustments,
   listVendors,
@@ -21,7 +21,7 @@ export default async function ExpensePaymentsPage() {
 
   const [projects, vendors, requests, adjustmentEmployees, adjustments] =
     await Promise.all([
-      listExpenseProjects().catch(() => []),
+      listExpenseProjectsResilient().catch(() => []),
       listVendors().catch(() => []),
       listExpenseRequests().catch(() => []),
       access.isFinanceAdmin
