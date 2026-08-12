@@ -10,6 +10,16 @@ function marginRate(revenue: number, margin: number) {
   return `${((margin / revenue) * 100).toFixed(1)}%`;
 }
 
+function unitLabel(
+  unit: "window" | "interior" | "shared",
+  employeeId: string | null,
+) {
+  if (!employeeId) return "공동";
+  if (unit === "interior") return "인테리어";
+  if (unit === "window") return "창호";
+  return "공동";
+}
+
 export default function SettlementDashboardSummary({
   summary,
 }: {
@@ -27,9 +37,17 @@ export default function SettlementDashboardSummary({
               {summary.scopeLabel}
             </span>
             {summary.isFinanceAdmin ? (
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black text-amber-900">
-                창호 매출 {summary.windowSalesCutoffLabel}
-              </span>
+              <>
+                <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-black text-sky-900">
+                  창호 {summary.windowSalesCutoffLabel}
+                </span>
+                {summary.interiorSalesPeriodLabel !== "미입력" ? (
+                  <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-black text-violet-900">
+                    인테리어 {summary.interiorSalesPeriodLabel}
+                    {summary.interiorSalesIsPartial ? " 부분실적" : ""}
+                  </span>
+                ) : null}
+              </>
             ) : null}
           </div>
           <h2 className="mt-1 text-lg font-black text-slate-950">
@@ -81,7 +99,7 @@ export default function SettlementDashboardSummary({
             <div>
               <h3 className="text-sm font-black text-slate-950">직원별 2026 매출 실적</h3>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                공동매출은 회사 전체에는 포함되지만 특정 직원 실적에는 배분하지 않습니다.
+                창호·인테리어를 구분하며 공동매출은 특정 직원에게 배분하지 않습니다.
               </p>
             </div>
           </div>
@@ -89,6 +107,7 @@ export default function SettlementDashboardSummary({
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-black text-slate-600">
                 <tr>
+                  <th className="px-4 py-2.5">구분</th>
                   <th className="px-4 py-2.5">담당</th>
                   <th className="px-4 py-2.5 text-right">매출</th>
                   <th className="px-4 py-2.5 text-right">원가</th>
@@ -98,19 +117,38 @@ export default function SettlementDashboardSummary({
               </thead>
               <tbody>
                 {summary.employeeSales.map((row) => (
-                  <tr key={`${row.employeeId ?? "shared"}:${row.label}`} className="border-t border-slate-100">
+                  <tr
+                    key={`${row.businessUnit}:${row.employeeId ?? "shared"}:${row.label}`}
+                    className="border-t border-slate-100"
+                  >
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                          !row.employeeId
+                            ? "bg-indigo-50 text-indigo-700"
+                            : row.businessUnit === "interior"
+                              ? "bg-violet-50 text-violet-800"
+                              : "bg-sky-50 text-sky-800"
+                        }`}
+                      >
+                        {unitLabel(row.businessUnit, row.employeeId)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 font-black text-slate-950">
                       {row.label}
-                      {!row.employeeId ? (
-                        <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">
-                          공동
-                        </span>
-                      ) : null}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-900">{money(row.revenueAmount)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-700">{money(row.costAmount)}</td>
-                    <td className="px-4 py-3 text-right font-black text-slate-950">{money(row.marginAmount)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-700">{marginRate(row.revenueAmount, row.marginAmount)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-900">
+                      {money(row.revenueAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-700">
+                      {money(row.costAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-black text-slate-950">
+                      {money(row.marginAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-700">
+                      {marginRate(row.revenueAmount, row.marginAmount)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -120,8 +158,15 @@ export default function SettlementDashboardSummary({
       ) : null}
 
       {summary.isFinanceAdmin ? (
-        <div className="border-t border-slate-100 bg-amber-50 px-5 py-3 text-xs font-bold text-amber-900">
-          창호팀 매출 데이터는 현재 {summary.windowSalesCutoffLabel} 입력된 기준입니다. 이후 월 자료가 입력되기 전에는 그 이후 월 실적으로 해석하지 않습니다.
+        <div className="space-y-1 border-t border-slate-100 bg-amber-50 px-5 py-3 text-xs font-bold text-amber-900">
+          <p>
+            창호팀은 현재 {summary.windowSalesCutoffLabel} 입력된 기준입니다. 이후 월 자료가 입력되기 전에는 그 이후 월 실적으로 해석하지 않습니다.
+          </p>
+          {summary.interiorSalesIsPartial ? (
+            <p>
+              인테리어는 {summary.interiorSalesPeriodLabel} 정산자료 기준 부분실적입니다. 6월 이후는 미제공이며 0매출로 보지 않습니다. 현재 값은 기존 원본 분석의 백만원 단위 요약값으로 우선 반영했고, 원본 재확보 시 원 단위로 교체합니다.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>
