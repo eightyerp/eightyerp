@@ -1,12 +1,9 @@
+import AdminDashboardHome from "@/components/dashboard/AdminDashboardHome";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import SalesAnalyticsPanel from "@/components/dashboard/SalesAnalyticsPanel";
-import SettlementDashboardSummary from "@/components/dashboard/SettlementDashboardSummary";
+import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
-import WindowYoYCard from "@/components/dashboard/WindowYoYCard";
-import { getDashboardMonthlySalesAnalytics } from "@/lib/crm/dashboard-monthly-sales";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
 import { getTodayWorkBundle } from "@/lib/crm/today-work";
-import { getWindowYoYSummary } from "@/lib/crm/window-yoy";
 import type { CustomerSchedule } from "@/types/database";
 
 type Props = {
@@ -19,8 +16,12 @@ export default async function DashboardPage({ searchParams }: Props) {
   let loadError: string | null = null;
   let bundle = null;
   let settlementSummary = null;
-  let windowYoY = null;
-  let monthlyAnalytics = null;
+
+  try {
+    settlementSummary = await getDashboardSettlementSummary();
+  } catch {
+    settlementSummary = null;
+  }
 
   try {
     bundle = await getTodayWorkBundle({
@@ -34,26 +35,6 @@ export default async function DashboardPage({ searchParams }: Props) {
         : "오늘 할 일을 불러오지 못했습니다.";
   }
 
-  try {
-    settlementSummary = await getDashboardSettlementSummary();
-  } catch {
-    settlementSummary = null;
-  }
-
-  try {
-    windowYoY = await getWindowYoYSummary();
-  } catch {
-    // 과거비교 데이터 오류가 메인 대시보드를 막지 않도록 분리합니다.
-    windowYoY = null;
-  }
-
-  try {
-    monthlyAnalytics = await getDashboardMonthlySalesAnalytics();
-  } catch {
-    // 분석 그래프 오류가 기존 대시보드를 막지 않도록 독립 로딩합니다.
-    monthlyAnalytics = null;
-  }
-
   const schedulesById: Record<string, CustomerSchedule> = {};
   if (bundle) {
     for (const s of [...bundle.schedulesToday, ...bundle.overdueSchedules]) {
@@ -61,37 +42,34 @@ export default async function DashboardPage({ searchParams }: Props) {
     }
   }
 
+  const isAdmin = settlementSummary?.isFinanceAdmin === true;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {settlementSummary ? (
-          <SettlementDashboardSummary summary={settlementSummary} />
+          isAdmin ? (
+            <AdminDashboardHome summary={settlementSummary} />
+          ) : (
+            <EmployeeGoalDashboard summary={settlementSummary} />
+          )
         ) : null}
 
-        {monthlyAnalytics && settlementSummary?.isFinanceAdmin ? (
-          <SalesAnalyticsPanel
-            analytics={monthlyAnalytics}
-            employeeSales={settlementSummary.employeeSales}
-          />
-        ) : null}
-
-        {windowYoY ? <WindowYoYCard summary={windowYoY} /> : null}
-
-        {loadError && (
+        {!isAdmin && loadError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {loadError}
           </div>
         )}
 
-        {bundle && (
+        {!isAdmin && bundle ? (
           <TodayWorkDashboard bundle={bundle} schedulesById={schedulesById} />
-        )}
+        ) : null}
 
-        {!bundle && !loadError && (
+        {!isAdmin && !bundle && !loadError ? (
           <div className="dashboard-card px-5 py-10 text-center text-sm text-slate-600">
             오늘 할 일 데이터를 준비 중입니다.
           </div>
-        )}
+        ) : null}
       </div>
     </DashboardLayout>
   );
