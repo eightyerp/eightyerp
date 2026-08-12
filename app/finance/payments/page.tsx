@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import AdminQuickCardExpense from "@/components/finance/AdminQuickCardExpense";
 import ExpensesWorkspace from "@/components/finance/ExpensesWorkspace";
 import MissingExpenseEvidencePanel from "@/components/finance/MissingExpenseEvidencePanel";
 import { listExpenseProjectsResilient } from "@/lib/crm/expense-projects";
@@ -50,6 +51,10 @@ export default async function ExpensePaymentsPage() {
             영수증이 나중에 확보되면 별도로 증빙을 추가하면 됩니다.
           </p>
         </div>
+
+        {access.isFinanceAdmin ? (
+          <AdminQuickCardExpense projects={projects} />
+        ) : null}
 
         {access.isFinanceAdmin ? (
           <MissingExpenseEvidencePanel requests={requests} />
