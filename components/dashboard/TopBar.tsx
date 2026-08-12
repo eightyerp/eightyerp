@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import LogoutButton from "@/components/auth/LogoutButton";
 import CompanySwitcher from "@/components/dashboard/CompanySwitcher";
@@ -142,7 +143,7 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-      <CompanySwitcher
+        <CompanySwitcher
           companies={user.companies}
           activeCompanyId={user.activeCompanyId}
           activeCompanyName={user.activeCompanyName}
@@ -177,31 +178,44 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
             {initial}
           </button>
 
-          <div className="hidden items-center gap-3 sm:flex">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-800 text-sm font-semibold text-gold-400">
-              {initial}
-            </div>
-            <div className="hidden min-w-0 md:block">
-              <p className="truncate text-sm font-medium text-gray-800">
-                {user.name}
-                {user.roleLabel ? ` ${user.roleLabel}` : ""}
-              </p>
-              {user.department ? (
-                <p className="truncate text-xs text-gray-500">{user.department}</p>
-              ) : null}
-            </div>
+          <div className="hidden items-center gap-2 sm:flex">
+            <Link
+              href="/me"
+              className="flex items-center gap-3 rounded-lg px-1.5 py-1 hover:bg-gray-50"
+              aria-label="내 정보 열기"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-800 text-sm font-semibold text-gold-400">
+                {initial}
+              </div>
+              <div className="hidden min-w-0 md:block">
+                <p className="truncate text-sm font-medium text-gray-800">
+                  {user.name}
+                  {user.roleLabel ? ` ${user.roleLabel}` : ""}
+                </p>
+                {user.department ? (
+                  <p className="truncate text-xs text-gray-500">{user.department}</p>
+                ) : null}
+              </div>
+            </Link>
             <LogoutButton />
           </div>
 
           {profileOpen && (
-            <div className="absolute right-0 top-12 z-50 w-48 rounded-xl border border-gray-200 bg-white p-2 shadow-lg sm:hidden">
+            <div className="absolute right-0 top-12 z-50 w-52 rounded-xl border border-gray-200 bg-white p-2 shadow-lg sm:hidden">
               <div className="border-b border-gray-100 px-3 py-2">
                 <p className="text-sm font-semibold text-gray-900">{user.name}</p>
                 {subtitle ? (
                   <p className="text-xs text-gray-500">{subtitle}</p>
                 ) : null}
               </div>
-              <div className="pt-2">
+              <div className="space-y-1 pt-2">
+                <Link
+                  href="/me"
+                  onClick={() => setProfileOpen(false)}
+                  className="flex min-h-11 w-full items-center rounded-lg px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  내 정보 수정
+                </Link>
                 <LogoutButton className="flex h-11 w-full items-center justify-center rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50" />
               </div>
             </div>

@@ -80,12 +80,13 @@ function navigationLabels(
 
 for (const companyRole of ["owner", "director"] as const) {
   const labels = navigationLabels("admin", companyRole);
-  for (const label of ["직원 Master", "계정 재연결", "직원 초대", "월 마감"]) {
+  for (const label of ["내 정보", "직원 Master", "계정 재연결", "직원 초대", "월 마감"]) {
     assert.ok(labels.includes(label), `${companyRole}: ${label} 메뉴 필요`);
   }
 }
 
 const companyAdminLabels = navigationLabels("admin", "admin");
+assert.ok(companyAdminLabels.includes("내 정보"));
 assert.ok(companyAdminLabels.includes("직원 Master"));
 assert.ok(companyAdminLabels.includes("직원 초대"));
 assert.ok(!companyAdminLabels.includes("계정 재연결"));
@@ -95,6 +96,7 @@ for (const [role, companyRole] of [
   ["staff", "employee"],
 ] as const) {
   const labels = navigationLabels(role, companyRole);
+  assert.ok(labels.includes("내 정보"));
   assert.ok(labels.includes("직원 Master"));
   assert.ok(!labels.includes("계정 재연결"));
   assert.ok(!labels.includes("직원 초대"));
@@ -103,12 +105,19 @@ for (const [role, companyRole] of [
 
 assert.ok(isNavigationRouteActive("/quotes/abc", "/quotes"));
 assert.ok(!isNavigationRouteActive("/customers", "/quotes"));
+assert.ok(isNavigationRouteActive("/me", "/me", new URLSearchParams(), "exact"));
 assert.equal(
   getActiveNavigationItemId(items, "/quotes/new", new URLSearchParams("type=interior")),
   "interior-quote",
   "query route active 판정 유지",
 );
+assert.equal(
+  getActiveNavigationItemId(items, "/me", new URLSearchParams()),
+  "my-profile",
+  "내 정보 메뉴 active 판정 유지",
+);
 
+assert.ok(internalReadyItems.some((item) => item.route === "/me"));
 assert.ok(internalReadyItems.some((item) => item.route === "/schedules/customers"));
 assert.ok(internalReadyItems.some((item) => item.route === "/schedules/processes"));
 assert.ok(!internalReadyItems.some((item) => item.route === "/schedules"));
