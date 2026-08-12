@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerDetailPanels from "@/components/customers/CustomerDetailPanels";
+import CustomerInfoPushButton from "@/components/customers/CustomerInfoPushButton";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
@@ -185,6 +186,13 @@ export default async function CustomerDetailPage({
     notFound();
   }
 
+  const assignedEmployee = customer.assigned_employee_id
+    ? employees.find((employee) => employee.id === customer!.assigned_employee_id) ?? null
+    : null;
+  const assigneeName = assignedEmployee
+    ? [assignedEmployee.name, assignedEmployee.title].filter(Boolean).join(" ")
+    : null;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -195,12 +203,20 @@ export default async function CustomerDetailPage({
               {customer.name}
             </h1>
           </div>
-          <Link
-            href="/customers"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
-          >
-            목록으로
-          </Link>
+          <div className="flex flex-wrap items-start justify-end gap-2">
+            {access.isAdmin ? (
+              <CustomerInfoPushButton
+                customerId={customer.id}
+                assigneeName={assigneeName}
+              />
+            ) : null}
+            <Link
+              href="/customers"
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-slate-100"
+            >
+              목록으로
+            </Link>
+          </div>
         </div>
 
         {query.updated && (
