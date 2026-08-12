@@ -16,6 +16,7 @@ import {
   markExpensePaid,
   rejectExpenseRequest,
   registerExpenseRequest,
+  setExpensePostSettlementResolution,
 } from "@/lib/crm/expenses";
 import { enqueueNotificationEvent } from "@/lib/crm/notifications";
 import type {
@@ -23,6 +24,8 @@ import type {
   ExpenseDocumentType,
   ExpenseNotificationItem,
   ExpensePaymentMethod,
+  PostSettlementReason,
+  PostSettlementTreatment,
 } from "@/lib/crm/expense-shared";
 
 export type ExpenseActionResult = { success: boolean; message?: string; error?: string; expenseId?: string };
@@ -33,12 +36,30 @@ export type ExpenseAnalysisResult = {
   error?: string;
 };
 
+export type PostSettlementApprovalInput = {
+  expenseId: string;
+  reason: PostSettlementReason;
+  treatment: PostSettlementTreatment;
+  adjustmentEmployeeId?: string | null;
+  adjustmentAmount?: number;
+  recoveryExpectedAmount?: number;
+  note?: string | null;
+};
+
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
 function intMoney(value: FormDataEntryValue | null, label: string): number {
   const n = Number(String(value ?? "").replace(/,/g, "").trim());
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) throw new Error(`${label}은 원 단위 정수로 입력해 주세요.`);
+  return n;
+}
+
+function safeAdjustmentMoney(value: number | undefined, label: string): number {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+    throw new Error(`${label}은 0 이상 원 단위 정수로 입력해 주세요.`);
+  }
   return n;
 }
 
@@ -125,6 +146,7 @@ export async function analyzeExpenseDocumentAction(formData: FormData): Promise<
 
 export async function registerExpenseRequestAction(_prev: ExpenseActionResult, formData: FormData): Promise<ExpenseActionResult> {
   let uploadedPath: string | null = null;
+  let createdExpenseId: string | null = null;
   try {
     const access = await getExpenseAccess();
     const projectId = String(formData.get("project_id") ?? "").trim();
@@ -193,6 +215,7 @@ export async function registerExpenseRequestAction(_prev: ExpenseActionResult, f
       paymentMethod,
       memo: String(formData.get("memo") ?? "").trim() || null,
     });
+    createdExpenseId = result.expense_id;
 
     if (hasDocument && file instanceof File && uploadedPath && digest) {
       let aiExtracted: Record<string, unknown> = {};
@@ -223,6 +246,13 @@ export async function registerExpenseRequestAction(_prev: ExpenseActionResult, f
       message: result.status === "pending" ? "지출요청을 등록하고 관리자에게 PUSH했습니다." : "관리자 지출을 승인 상태로 등록했습니다.",
     };
   } catch (error) {
+    if (createdExpenseId) {
+      try {
+        await cancelExpenseRequest(createdExpenseId, "증빙 저장 실패로 자동취소");
+      } catch {
+        // best effort: the user-facing error below remains the source of truth
+      }
+    }
     if (uploadedPath) {
       try { const supabase = await createClient(); await supabase.storage.from("expense-documents").remove([uploadedPath]); } catch { /* orphan cleanup best effort */ }
     }
@@ -231,8 +261,38 @@ export async function registerExpenseRequestAction(_prev: ExpenseActionResult, f
 }
 
 export async function approveExpenseRequestAction(expenseId: string): Promise<ExpenseActionResult> {
-  try { await approveExpenseRequest(expenseId); await pushExpenseEvent("expense_approved", expenseId); revalidatePath("/finance/payments"); return { success: true, message: "지출요청을 승인하고 신청자에게 PUSH했습니다." }; }
-  catch (error) { return { success: false, error: error instanceof Error ? error.message : "승인에 실패했습니다." }; }
+  try {
+    await approveExpenseRequest(expenseId);
+    await pushExpenseEvent("expense_approved", expenseId);
+    revalidatePath("/finance/payments");
+    return { success: true, message: "지출요청을 승인하고 신청자에게 PUSH했습니다." };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "승인에 실패했습니다." };
+  }
+}
+
+export async function resolveAndApprovePostSettlementExpenseAction(input: PostSettlementApprovalInput): Promise<ExpenseActionResult> {
+  try {
+    const expenseId = input.expenseId.trim();
+    if (!expenseId) throw new Error("지출요청 정보가 없습니다.");
+    const adjustmentAmount = safeAdjustmentMoney(input.adjustmentAmount, "다음 정산 차감액");
+    const recoveryExpectedAmount = safeAdjustmentMoney(input.recoveryExpectedAmount, "회수 예정액");
+    await setExpensePostSettlementResolution({
+      expenseId,
+      reason: input.reason,
+      treatment: input.treatment,
+      adjustmentEmployeeId: input.adjustmentEmployeeId?.trim() || null,
+      adjustmentAmount,
+      recoveryExpectedAmount,
+      note: input.note,
+    });
+    await approveExpenseRequest(expenseId);
+    await pushExpenseEvent("expense_approved", expenseId);
+    revalidatePath("/finance/payments");
+    return { success: true, message: "사후지출 처리방법을 저장하고 승인했습니다." };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "사후지출 승인에 실패했습니다." };
+  }
 }
 
 export async function rejectExpenseRequestAction(expenseId: string, reason: string): Promise<ExpenseActionResult> {
@@ -241,8 +301,14 @@ export async function rejectExpenseRequestAction(expenseId: string, reason: stri
 }
 
 export async function markExpensePaidAction(expenseId: string, paymentMethod: string): Promise<ExpenseActionResult> {
-  try { await markExpensePaid(expenseId, new Date().toISOString(), paymentMethod || null); await pushExpenseEvent("expense_paid", expenseId); revalidatePath("/finance/payments"); return { success: true, message: "지급완료 처리하고 신청자에게 PUSH했습니다." }; }
-  catch (error) { return { success: false, error: error instanceof Error ? error.message : "지급완료 처리에 실패했습니다." }; }
+  try {
+    await markExpensePaid(expenseId, new Date().toISOString(), paymentMethod || null);
+    await pushExpenseEvent("expense_paid", expenseId);
+    revalidatePath("/finance/payments");
+    return { success: true, message: "지급완료 처리하고 신청자에게 PUSH했습니다." };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "지급완료 처리에 실패했습니다." };
+  }
 }
 
 export async function cancelExpenseRequestAction(expenseId: string, reason: string): Promise<ExpenseActionResult> {
