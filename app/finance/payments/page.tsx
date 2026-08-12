@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import ExpenseEntrySearchV3 from "@/components/finance/ExpenseEntrySearchV3";
 import ExpenseTaxEvidencePanel from "@/components/finance/ExpenseTaxEvidencePanel";
 import ExpenseWorkspaceV2 from "@/components/finance/ExpenseWorkspaceV2";
 import MissingExpenseEvidencePanel from "@/components/finance/MissingExpenseEvidencePanel";
@@ -40,18 +41,26 @@ export default async function ExpensePaymentsPage() {
             지출등록·관리
           </h1>
           <p className="mt-2 max-w-4xl text-sm font-medium leading-relaxed text-slate-700">
-            직원은 현장·공종·거래처·금액만 빠르게 등록하고, 세무증빙과 사후정산 판단은 관리자 영역에서 정리합니다.
+            현장은 고객명·현장명·주소로 검색합니다. 관리자는 전체 현장, 직원은 본인 담당 고객의 현장만 조회할 수 있습니다.
           </p>
         </div>
 
-        <ExpenseWorkspaceV2
-          projects={projects}
+        <ExpenseEntrySearchV3
+          initialProjects={projects}
           vendors={vendors}
-          requests={requests}
-          adjustmentEmployees={adjustmentEmployees}
-          adjustments={adjustments}
           isFinanceAdmin={access.isFinanceAdmin}
         />
+
+        <div className="[&>div>section:first-of-type]:hidden">
+          <ExpenseWorkspaceV2
+            projects={projects}
+            vendors={vendors}
+            requests={requests}
+            adjustmentEmployees={adjustmentEmployees}
+            adjustments={adjustments}
+            isFinanceAdmin={access.isFinanceAdmin}
+          />
+        </div>
 
         {access.isFinanceAdmin ? (
           <MissingExpenseEvidencePanel requests={requests} />
