@@ -55,6 +55,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   let importCustomers: InteriorImportCustomerOption[] = [];
   let lockEmployeeId: string | null = null;
   let loadError: string | null = null;
+  let lookupWarning = false;
   let tablesMissing = false;
   let isAdmin = false;
 
@@ -63,12 +64,24 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     isAdmin = access.isAdmin;
     lockEmployeeId =
       !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
-    const [employeeList, customerList] = await Promise.all([
+
+    const [employeeResult, customerResult] = await Promise.allSettled([
       listEmployeesInScope(access),
       listInteriorImportCustomers(),
     ]);
-    employees = employeeList;
-    importCustomers = customerList;
+
+    if (employeeResult.status === "fulfilled") {
+      employees = employeeResult.value;
+    } else {
+      lookupWarning = true;
+    }
+
+    if (customerResult.status === "fulfilled") {
+      importCustomers = customerResult.value;
+    } else {
+      lookupWarning = true;
+    }
+
     const result = await listQuotesPage(
       {
         q: params.q,
@@ -82,7 +95,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       },
       page,
       access,
-      employeeList,
+      employees,
     );
     quotes = result.quotes;
     total = result.total;
@@ -120,6 +133,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         {loadError && !tablesMissing && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {loadError}
+          </div>
+        )}
+
+        {lookupWarning && !loadError && !tablesMissing && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            일부 담당자 또는 인테리어 업로드용 고객 목록을 불러오지 못했습니다. 기존 견적 목록은 계속 이용할 수 있습니다.
           </div>
         )}
 
