@@ -13,7 +13,9 @@ export async function listExpenseProjectsResilient(): Promise<
 
   const { data: projects, error: projectError } = await supabase
     .from("projects")
-    .select("id, name, address, customer_id, customers ( id, name, phone )")
+    .select(
+      "id, name, address, customer_id, customers:customers!projects_customer_id_fkey ( id, name, phone )",
+    )
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(300);
