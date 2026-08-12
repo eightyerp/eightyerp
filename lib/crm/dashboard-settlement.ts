@@ -7,6 +7,7 @@ import {
 export type DashboardEmployeeSales = {
   employeeId: string | null;
   label: string;
+  businessUnit: "window" | "interior" | "shared";
   revenueAmount: number;
   costAmount: number;
   marginAmount: number;
@@ -25,14 +26,17 @@ export type DashboardSettlementSummary = {
   latestPayoutDate: string | null;
   settlementCount: number;
   windowSalesCutoffLabel: string;
+  interiorSalesPeriodLabel: string;
+  interiorSalesIsPartial: boolean;
   salesDataAvailable: boolean;
   employeeSales: DashboardEmployeeSales[];
 };
 
-type SalesPerformanceRow = {
+type MonthlySalesPerformanceRow = {
   employee_id: string | null;
   owner_label: string;
-  business_unit: string;
+  business_unit: "window" | "interior" | "shared";
+  sales_year: number;
   sales_month: number;
   revenue_amount: number;
   cost_amount: number;
@@ -40,18 +44,91 @@ type SalesPerformanceRow = {
   source_cutoff_date: string | null;
 };
 
+type PeriodSalesPerformanceRow = {
+  employee_id: string | null;
+  owner_label: string;
+  business_unit: "window" | "interior" | "shared";
+  period_start: string;
+  period_end: string;
+  revenue_amount: number;
+  cost_amount: number;
+  margin_amount: number;
+  source_type: string;
+  source_cutoff_date: string | null;
+};
+
+type EffectivePerformanceRow = {
+  employeeId: string | null;
+  label: string;
+  businessUnit: "window" | "interior" | "shared";
+  periodStart: string;
+  periodEnd: string;
+  revenueAmount: number;
+  costAmount: number;
+  marginAmount: number;
+  sourceCutoffDate: string | null;
+  sourceKind: "monthly" | "period";
+  sourceType?: string;
+};
+
+function monthStart(year: number, month: number) {
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
+function monthEnd(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+function identityKey(row: {
+  employeeId: string | null;
+  label: string;
+  businessUnit: string;
+}) {
+  return `${row.businessUnit}:${row.employeeId ?? `shared:${row.label}`}`;
+}
+
+function overlaps(
+  leftStart: string,
+  leftEnd: string,
+  rightStart: string,
+  rightEnd: string,
+) {
+  return leftStart <= rightEnd && rightStart <= leftEnd;
+}
+
+function formatPeriodLabel(start: string | null, end: string | null) {
+  if (!start || !end) return "미입력";
+  const [startYear, startMonth] = start.split("-");
+  const [endYear, endMonth] = end.split("-");
+  return startYear === endYear
+    ? `${startYear}.${startMonth}~${endMonth}`
+    : `${startYear}.${startMonth}~${endYear}.${endMonth}`;
+}
+
 export async function getDashboardSettlementSummary(): Promise<DashboardSettlementSummary> {
   const access = await getSettlementAccess();
-  const [settlementRows, salesResult] = await Promise.all([
+  const [settlementRows, monthlyResult, periodResult] = await Promise.all([
     listSettlementSummaries2026(),
     (async () => {
       const supabase = await createClient();
       return supabase
         .from("sales_performance_2026")
         .select(
-          "employee_id, owner_label, business_unit, sales_month, revenue_amount, cost_amount, margin_amount, source_cutoff_date",
+          "employee_id, owner_label, business_unit, sales_year, sales_month, revenue_amount, cost_amount, margin_amount, source_cutoff_date",
         )
         .order("sales_month", { ascending: true });
+    })(),
+    (async () => {
+      const supabase = await createClient();
+      return supabase
+        .from("sales_performance_period_totals")
+        .select(
+          "employee_id, owner_label, business_unit, period_start, period_end, revenue_amount, cost_amount, margin_amount, source_type, source_cutoff_date",
+        )
+        .eq("is_active", true)
+        .lte("period_start", "2026-12-31")
+        .gte("period_end", "2026-01-01")
+        .order("period_end", { ascending: true });
     })(),
   ]);
 
@@ -61,32 +138,79 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
   );
   const paidRows = officialRows.filter((row) => row.status === "paid");
 
-  const salesRows = salesResult.error
+  const monthlyRows = monthlyResult.error
     ? []
-    : ((salesResult.data ?? []) as SalesPerformanceRow[]);
-  const salesEmployeeIds = new Set(
-    salesRows
-      .map((row) => row.employee_id)
+    : ((monthlyResult.data ?? []) as MonthlySalesPerformanceRow[]);
+  const periodRows = periodResult.error
+    ? []
+    : ((periodResult.data ?? []) as PeriodSalesPerformanceRow[]);
+
+  const normalizedPeriods: EffectivePerformanceRow[] = periodRows.map((row) => ({
+    employeeId: row.employee_id,
+    label: row.owner_label,
+    businessUnit: row.business_unit,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    revenueAmount: Number(row.revenue_amount ?? 0),
+    costAmount: Number(row.cost_amount ?? 0),
+    marginAmount: Number(row.margin_amount ?? 0),
+    sourceCutoffDate: row.source_cutoff_date,
+    sourceKind: "period",
+    sourceType: row.source_type,
+  }));
+
+  const normalizedMonthly: EffectivePerformanceRow[] = monthlyRows.map((row) => ({
+    employeeId: row.employee_id,
+    label: row.owner_label,
+    businessUnit: row.business_unit,
+    periodStart: monthStart(row.sales_year, row.sales_month),
+    periodEnd: monthEnd(row.sales_year, row.sales_month),
+    revenueAmount: Number(row.revenue_amount ?? 0),
+    costAmount: Number(row.cost_amount ?? 0),
+    marginAmount: Number(row.margin_amount ?? 0),
+    sourceCutoffDate: row.source_cutoff_date,
+    sourceKind: "monthly",
+  }));
+
+  // 기간누계가 있는 구간에는 기간누계를 우선합니다. 이후 월별 원본을 추가해도
+  // 누계 구간과 겹치는 월을 동시에 더하지 않아 이중집계를 막습니다.
+  const nonOverlappingMonthly = normalizedMonthly.filter((monthly) => {
+    const key = identityKey(monthly);
+    return !normalizedPeriods.some(
+      (period) =>
+        identityKey(period) === key &&
+        overlaps(
+          monthly.periodStart,
+          monthly.periodEnd,
+          period.periodStart,
+          period.periodEnd,
+        ),
+    );
+  });
+
+  const performanceRows = [...normalizedPeriods, ...nonOverlappingMonthly];
+  const performanceEmployeeIds = new Set(
+    performanceRows
+      .map((row) => row.employeeId)
       .filter((value): value is string => Boolean(value)),
   );
 
   // 직원별 매출 실적원장이 있으면 그것을 매출/원가/마진의 기준으로 사용합니다.
-  // 아직 실적원장이 없는 직원(주로 인테리어 과거 이관)은 정산원장의 매출/원가를 임시 보완값으로 사용합니다.
-  // 같은 직원에 두 원장이 모두 존재하는 경우 중복집계를 막기 위해 매출 실적원장을 우선합니다.
+  // 실적원장이 전혀 없는 직원만 정산원장의 매출/원가를 임시 보완값으로 사용합니다.
   const settlementFallbackRows = officialRows.filter(
-    (row) => !salesEmployeeIds.has(row.employee_id),
+    (row) => !performanceEmployeeIds.has(row.employee_id),
   );
 
-  const salesRevenue = salesRows.reduce(
-    (sum, row) => sum + Number(row.revenue_amount ?? 0),
+  const salesRevenue = performanceRows.reduce(
+    (sum, row) => sum + row.revenueAmount,
     0,
   );
-  const salesCost = salesRows.reduce(
-    (sum, row) => sum + Number(row.cost_amount ?? 0),
+  const salesCost = performanceRows.reduce(
+    (sum, row) => sum + row.costAmount,
     0,
   );
-  const salesMargin = salesRows.reduce(
-    (sum, row) => sum + Number(row.margin_amount ?? 0),
+  const salesMargin = performanceRows.reduce(
+    (sum, row) => sum + row.marginAmount,
     0,
   );
 
@@ -104,18 +228,19 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
   );
 
   const employeeMap = new Map<string, DashboardEmployeeSales>();
-  for (const row of salesRows) {
-    const key = row.employee_id ?? `shared:${row.owner_label}`;
+  for (const row of performanceRows) {
+    const key = identityKey(row);
     const current = employeeMap.get(key) ?? {
-      employeeId: row.employee_id,
-      label: row.owner_label,
+      employeeId: row.employeeId,
+      label: row.label,
+      businessUnit: row.businessUnit,
       revenueAmount: 0,
       costAmount: 0,
       marginAmount: 0,
     };
-    current.revenueAmount += Number(row.revenue_amount ?? 0);
-    current.costAmount += Number(row.cost_amount ?? 0);
-    current.marginAmount += Number(row.margin_amount ?? 0);
+    current.revenueAmount += row.revenueAmount;
+    current.costAmount += row.costAmount;
+    current.marginAmount += row.marginAmount;
     employeeMap.set(key, current);
   }
 
@@ -124,11 +249,26 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
     .filter((value): value is string => Boolean(value))
     .sort((a, b) => b.localeCompare(a))[0] ?? null;
 
-  const latestWindowCutoff = salesRows
-    .filter((row) => row.business_unit === "window")
-    .map((row) => row.source_cutoff_date)
-    .filter((value): value is string => Boolean(value))
+  const windowRows = performanceRows.filter(
+    (row) => row.businessUnit === "window",
+  );
+  const latestWindowCutoff = windowRows
+    .map((row) => row.sourceCutoffDate ?? row.periodEnd)
+    .filter(Boolean)
     .sort((a, b) => b.localeCompare(a))[0];
+
+  const interiorRows = performanceRows.filter(
+    (row) => row.businessUnit === "interior",
+  );
+  const interiorStart = interiorRows
+    .map((row) => row.periodStart)
+    .sort((a, b) => a.localeCompare(b))[0] ?? null;
+  const interiorEnd = interiorRows
+    .map((row) => row.periodEnd)
+    .sort((a, b) => b.localeCompare(a))[0] ?? null;
+  const interiorSalesIsPartial = interiorRows.some(
+    (row) => row.sourceKind === "period" && row.sourceType === "derived_summary",
+  );
 
   return {
     isFinanceAdmin: access.isFinanceAdmin,
@@ -157,7 +297,9 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
     windowSalesCutoffLabel: latestWindowCutoff
       ? `${latestWindowCutoff.slice(0, 7).replace("-", ".")}까지`
       : "미입력",
-    salesDataAvailable: salesRows.length > 0,
+    interiorSalesPeriodLabel: formatPeriodLabel(interiorStart, interiorEnd),
+    interiorSalesIsPartial,
+    salesDataAvailable: performanceRows.length > 0,
     employeeSales: [...employeeMap.values()].sort(
       (a, b) => b.revenueAmount - a.revenueAmount,
     ),
