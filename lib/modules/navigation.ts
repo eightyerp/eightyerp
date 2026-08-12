@@ -51,7 +51,8 @@ export const NAVIGATION_REGISTRY: readonly NavigationGroup[] = [
     { id: "as", label: "AS관리", route: null, icon: "!", moduleId: "projects", status: "coming_soon" },
   ] },
   { id: "finance", label: "회계·정산", items: [
-    ...[["collections", "수금관리"], ["payments", "지출관리"], ["expenses", "운영비"], ["settlements", "직원 정산"], ["profit-loss", "월 손익"], ["cash-flow", "현금흐름"], ["closing", "월 마감"]].map(([id, label]) => ({ id: `finance-${id}`, label, route: null, icon: "₩", moduleId: "finance" as const, roles: ADMIN_ROLES, status: "coming_soon" as const })),
+    { id: "finance-collections", label: "수금관리", route: "/finance/collections", icon: "₩", moduleId: "finance", match: "prefix" },
+    ...[["payments", "지출관리"], ["expenses", "운영비"], ["settlements", "직원 정산"], ["profit-loss", "월 손익"], ["cash-flow", "현금흐름"], ["closing", "월 마감"]].map(([id, label]) => ({ id: `finance-${id}`, label, route: null, icon: "₩", moduleId: "finance" as const, roles: ADMIN_ROLES, status: "coming_soon" as const })),
   ] },
   { id: "inventory", label: "자재·구매", items: [
     { id: "catalog", label: "자재 카탈로그", route: "/materials/catalog", icon: "▦", moduleId: "inventory" },
