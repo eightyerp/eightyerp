@@ -1,7 +1,9 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import SalesAnalyticsPanel from "@/components/dashboard/SalesAnalyticsPanel";
 import SettlementDashboardSummary from "@/components/dashboard/SettlementDashboardSummary";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
 import WindowYoYCard from "@/components/dashboard/WindowYoYCard";
+import { getDashboardMonthlySalesAnalytics } from "@/lib/crm/dashboard-monthly-sales";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
 import { getTodayWorkBundle } from "@/lib/crm/today-work";
 import { getWindowYoYSummary } from "@/lib/crm/window-yoy";
@@ -18,6 +20,7 @@ export default async function DashboardPage({ searchParams }: Props) {
   let bundle = null;
   let settlementSummary = null;
   let windowYoY = null;
+  let monthlyAnalytics = null;
 
   try {
     bundle = await getTodayWorkBundle({
@@ -44,6 +47,13 @@ export default async function DashboardPage({ searchParams }: Props) {
     windowYoY = null;
   }
 
+  try {
+    monthlyAnalytics = await getDashboardMonthlySalesAnalytics();
+  } catch {
+    // 분석 그래프 오류가 기존 대시보드를 막지 않도록 독립 로딩합니다.
+    monthlyAnalytics = null;
+  }
+
   const schedulesById: Record<string, CustomerSchedule> = {};
   if (bundle) {
     for (const s of [...bundle.schedulesToday, ...bundle.overdueSchedules]) {
@@ -56,6 +66,13 @@ export default async function DashboardPage({ searchParams }: Props) {
       <div className="space-y-6">
         {settlementSummary ? (
           <SettlementDashboardSummary summary={settlementSummary} />
+        ) : null}
+
+        {monthlyAnalytics && settlementSummary?.isFinanceAdmin ? (
+          <SalesAnalyticsPanel
+            analytics={monthlyAnalytics}
+            employeeSales={settlementSummary.employeeSales}
+          />
         ) : null}
 
         {windowYoY ? <WindowYoYCard summary={windowYoY} /> : null}
