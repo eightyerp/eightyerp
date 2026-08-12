@@ -3,16 +3,18 @@
 import { revalidatePath } from "next/cache";
 import {
   cancelCollectionReceipt,
-  COLLECTION_PAYMENT_LABELS,
-  COLLECTION_TYPE_LABELS,
   confirmCollectionReceipt,
   getCollectionReceiptContext,
   listMyCollectionNotifications,
   registerCollectionReceipt,
+} from "@/lib/crm/collections";
+import {
+  COLLECTION_PAYMENT_LABELS,
+  COLLECTION_TYPE_LABELS,
   type CollectionNotificationItem,
   type CollectionPaymentMethod,
   type CollectionType,
-} from "@/lib/crm/collections";
+} from "@/lib/crm/collection-shared";
 import { enqueueNotificationEvent } from "@/lib/crm/notifications";
 
 export type CollectionActionResult = {
@@ -79,7 +81,6 @@ async function enqueueCollectionReported(receiptId: string) {
         .join(" ")
     : "직원";
   const paymentLabel = COLLECTION_PAYMENT_LABELS[receipt.payment_method] ?? receipt.payment_method;
-  const typeLabel = COLLECTION_TYPE_LABELS[receipt.collection_type] ?? receipt.collection_type;
 
   await enqueueNotificationEvent({
     event_type: "collection_reported",
