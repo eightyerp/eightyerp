@@ -10,6 +10,27 @@ export type ExpenseCategory =
   | "advertising"
   | "sga"
   | "misc";
+export type ExpenseWorkTrade =
+  | "windows"
+  | "demolition"
+  | "carpentry"
+  | "electrical_lighting"
+  | "plumbing"
+  | "tile"
+  | "bathroom"
+  | "film"
+  | "wallpaper"
+  | "flooring"
+  | "painting"
+  | "furniture"
+  | "kitchen"
+  | "aircon"
+  | "doors"
+  | "glass_metal"
+  | "lifting_freight"
+  | "cleaning"
+  | "site_common"
+  | "other";
 export type ExpensePaymentMethod =
   | "bank_transfer"
   | "company_card"
@@ -66,6 +87,40 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   advertising: "광고비",
   sga: "판관비",
   misc: "기타",
+};
+
+export const SIMPLE_EXPENSE_CATEGORY_LABELS: Record<
+  Extract<ExpenseCategory, "materials" | "subcontract" | "labor" | "site" | "misc">,
+  string
+> = {
+  materials: "자재",
+  subcontract: "외주/협력",
+  labor: "인건비",
+  site: "현장경비",
+  misc: "기타",
+};
+
+export const EXPENSE_WORK_TRADE_LABELS: Record<ExpenseWorkTrade, string> = {
+  windows: "창호",
+  demolition: "철거",
+  carpentry: "목공",
+  electrical_lighting: "전기·조명",
+  plumbing: "설비",
+  tile: "타일",
+  bathroom: "욕실",
+  film: "필름",
+  wallpaper: "도배",
+  flooring: "바닥",
+  painting: "도장",
+  furniture: "가구",
+  kitchen: "주방",
+  aircon: "시스템에어컨",
+  doors: "중문·도어",
+  glass_metal: "유리·금속",
+  lifting_freight: "양중·운반",
+  cleaning: "청소",
+  site_common: "현장공통",
+  other: "기타",
 };
 
 export const EXPENSE_PAYMENT_LABELS: Record<ExpensePaymentMethod, string> = {
@@ -142,6 +197,8 @@ export type VendorRecord = {
   bank_name: string | null;
   account_number: string | null;
   account_holder: string | null;
+  default_work_trade: ExpenseWorkTrade | null;
+  default_expense_category: ExpenseCategory | null;
   review_status: "pending_review" | "approved" | "inactive";
   created_from: ExpenseDocumentType | "manual";
   created_at: string;
@@ -190,6 +247,7 @@ export type ExpenseRequestRecord = {
   project_id: string | null;
   customer_id: string | null;
   contract_id: string | null;
+  work_trade: ExpenseWorkTrade;
   category: ExpenseCategory;
   vendor_id: string | null;
   vendor_name_snapshot: string | null;
@@ -221,7 +279,10 @@ export type ExpenseRequestRecord = {
   post_settlement_note: string | null;
   projects: { id: string; name: string; address: string | null } | null;
   customers: { id: string; name: string; phone: string } | null;
-  vendors: Pick<VendorRecord, "id" | "name" | "review_status" | "business_number"> | null;
+  vendors: Pick<
+    VendorRecord,
+    "id" | "name" | "review_status" | "business_number" | "default_work_trade" | "default_expense_category"
+  > | null;
   requested_employee: { id: string; name: string; title: string } | null;
   adjustment_employee?: { id: string; name: string; title: string } | null;
   expense_documents?: ExpenseDocumentRecord[];
