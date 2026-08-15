@@ -30,6 +30,10 @@ export type DashboardSettlementSummary = {
   interiorSalesIsPartial: boolean;
   salesDataAvailable: boolean;
   employeeSales: DashboardEmployeeSales[];
+  currentEmployeeBusinessUnit: "window" | "interior" | null;
+  estimatedBaseSettlementAmount: number;
+  estimatedSettlementBasisLabel: string | null;
+  estimatedSettlementIsProxy: boolean;
 };
 
 type MonthlySalesPerformanceRow = {
@@ -71,6 +75,10 @@ type EffectivePerformanceRow = {
   sourceType?: string;
 };
 
+type EmployeeTeamRow = {
+  teams?: { name?: string | null } | { name?: string | null }[] | null;
+};
+
 function monthStart(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}-01`;
 }
@@ -105,9 +113,15 @@ function formatPeriodLabel(start: string | null, end: string | null) {
     : `${startYear}.${startMonth}~${endYear}.${endMonth}`;
 }
 
+function teamNameFromRow(row: EmployeeTeamRow | null) {
+  if (!row?.teams) return null;
+  if (Array.isArray(row.teams)) return row.teams[0]?.name ?? null;
+  return row.teams.name ?? null;
+}
+
 export async function getDashboardSettlementSummary(): Promise<DashboardSettlementSummary> {
   const access = await getSettlementAccess();
-  const [settlementRows, monthlyResult, periodResult] = await Promise.all([
+  const [settlementRows, monthlyResult, periodResult, employeeTeamResult] = await Promise.all([
     listSettlementSummaries2026(),
     (async () => {
       const supabase = await createClient();
@@ -130,9 +144,20 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
         .gte("period_end", "2026-01-01")
         .order("period_end", { ascending: true });
     })(),
+    (async () => {
+      if (access.isFinanceAdmin || !access.currentEmployeeId) {
+        return { data: null as EmployeeTeamRow | null, error: null };
+      }
+      const supabase = await createClient();
+      return supabase
+        .from("employees")
+        .select("teams ( name )")
+        .eq("id", access.currentEmployeeId)
+        .eq("company_id", access.companyId)
+        .maybeSingle();
+    })(),
   ]);
 
-  // 대시보드 공식 정산에는 작성중/취소 건을 제외합니다.
   const officialRows = settlementRows.filter(
     (row) => row.status === "confirmed" || row.status === "paid",
   );
@@ -172,8 +197,6 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
     sourceKind: "monthly",
   }));
 
-  // 기간누계가 있는 구간에는 기간누계를 우선합니다. 이후 월별 원본을 추가해도
-  // 누계 구간과 겹치는 월을 동시에 더하지 않아 이중집계를 막습니다.
   const nonOverlappingMonthly = normalizedMonthly.filter((monthly) => {
     const key = identityKey(monthly);
     return !normalizedPeriods.some(
@@ -195,8 +218,6 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
       .filter((value): value is string => Boolean(value)),
   );
 
-  // 직원별 매출 실적원장이 있으면 그것을 매출/원가/마진의 기준으로 사용합니다.
-  // 실적원장이 전혀 없는 직원만 정산원장의 매출/원가를 임시 보완값으로 사용합니다.
   const settlementFallbackRows = officialRows.filter(
     (row) => !performanceEmployeeIds.has(row.employee_id),
   );
@@ -270,6 +291,50 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
     (row) => row.sourceKind === "period" && row.sourceType === "derived_summary",
   );
 
+  const employeeSales = [...employeeMap.values()].sort(
+    (a, b) => b.revenueAmount - a.revenueAmount,
+  );
+  const currentEmployeeRows = access.currentEmployeeId
+    ? employeeSales.filter((row) => row.employeeId === access.currentEmployeeId)
+    : [];
+  const teamName = employeeTeamResult.error
+    ? null
+    : teamNameFromRow(employeeTeamResult.data as EmployeeTeamRow | null);
+  const currentEmployeeBusinessUnit: "window" | "interior" | null =
+    teamName === "인테리어"
+      ? "interior"
+      : teamName === "창호"
+        ? "window"
+        : currentEmployeeRows.some((row) => row.businessUnit === "interior")
+          ? "interior"
+          : currentEmployeeRows.some((row) => row.businessUnit === "window")
+            ? "window"
+            : null;
+  const ownRevenue = currentEmployeeRows.reduce(
+    (sum, row) => sum + Number(row.revenueAmount || 0),
+    0,
+  );
+  const ownMargin = currentEmployeeRows.reduce(
+    (sum, row) => sum + Number(row.marginAmount || 0),
+    0,
+  );
+  const estimatedBaseSettlementAmount = access.isFinanceAdmin
+    ? 0
+    : currentEmployeeBusinessUnit === "interior"
+      ? Math.floor(Math.max(0, ownMargin) * 0.5)
+      : currentEmployeeBusinessUnit === "window"
+        ? Math.floor(Math.max(0, ownRevenue) * 0.02)
+        : 0;
+  const estimatedSettlementBasisLabel = access.isFinanceAdmin
+    ? null
+    : currentEmployeeBusinessUnit === "interior"
+      ? "현장 기여마진 × 50%"
+      : currentEmployeeBusinessUnit === "window"
+        ? "영업실적 매출 × 2%"
+        : null;
+  const estimatedSettlementIsProxy =
+    !access.isFinanceAdmin && currentEmployeeBusinessUnit === "window";
+
   return {
     isFinanceAdmin: access.isFinanceAdmin,
     scopeLabel: access.isFinanceAdmin ? "회사 전체" : "내 실적",
@@ -300,8 +365,10 @@ export async function getDashboardSettlementSummary(): Promise<DashboardSettleme
     interiorSalesPeriodLabel: formatPeriodLabel(interiorStart, interiorEnd),
     interiorSalesIsPartial,
     salesDataAvailable: performanceRows.length > 0,
-    employeeSales: [...employeeMap.values()].sort(
-      (a, b) => b.revenueAmount - a.revenueAmount,
-    ),
+    employeeSales,
+    currentEmployeeBusinessUnit,
+    estimatedBaseSettlementAmount,
+    estimatedSettlementBasisLabel,
+    estimatedSettlementIsProxy,
   };
 }
