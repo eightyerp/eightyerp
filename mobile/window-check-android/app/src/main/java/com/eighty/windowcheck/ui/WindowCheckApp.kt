@@ -30,6 +30,7 @@ import com.eighty.windowcheck.data.local.InspectionDraftEntity
 import com.eighty.windowcheck.data.local.InspectionDraftSnapshot
 import com.eighty.windowcheck.data.local.WindowCheckDatabase
 import com.eighty.windowcheck.data.upload.WindowUploadScheduler
+import com.eighty.windowcheck.model.CaptureSkipReason
 import com.eighty.windowcheck.model.CaptureType
 import com.eighty.windowcheck.model.CapturedPhoto
 import com.eighty.windowcheck.model.DiagnosisResult
@@ -38,6 +39,8 @@ import com.eighty.windowcheck.model.EvidenceSlotKey
 import com.eighty.windowcheck.model.EvidenceType
 import com.eighty.windowcheck.model.InspectionSetup
 import com.eighty.windowcheck.model.LocationCondition
+import com.eighty.windowcheck.model.PhotoCaptureDecision
+import com.eighty.windowcheck.model.PhotoCaptureStatus
 import com.eighty.windowcheck.model.PhotoSlotKey
 import com.eighty.windowcheck.model.QuoteAttachment
 import com.eighty.windowcheck.model.StaffReview
@@ -108,6 +111,7 @@ fun WindowCheckApp() {
     var currentSymptomIndex by remember { mutableIntStateOf(0) }
 
     val photos = remember { mutableStateMapOf<PhotoSlotKey, CapturedPhoto>() }
+    val captureDecisions = remember { mutableStateMapOf<PhotoSlotKey, PhotoCaptureDecision>() }
     val evidencePhotos = remember { mutableStateMapOf<EvidenceSlotKey, EvidencePhoto>() }
     val conditions = remember { mutableStateMapOf<String, LocationCondition>() }
 
@@ -128,6 +132,12 @@ fun WindowCheckApp() {
                 .filter { (key, _) -> key.locationId == location.id && key.type == type }
                 .sortedBy { (key, _) -> key.sequence }
                 .map { it.value }
+        }
+    }
+
+    fun orderedCaptureDecisions(): List<PhotoCaptureDecision> = locations.flatMap { location ->
+        CaptureType.entries.mapNotNull { type ->
+            captureDecisions[PhotoSlotKey(location.id, type, 0)]
         }
     }
 
@@ -153,13 +163,17 @@ fun WindowCheckApp() {
 
     fun storePhoto(target: PendingPhotoTarget, uri: Uri) {
         target.captureType?.let { type ->
-            photos[PhotoSlotKey(target.location.id, type, target.sequence)] = CapturedPhoto(
+            val key = PhotoSlotKey(target.location.id, type, target.sequence)
+            photos[key] = CapturedPhoto(
                 locationId = target.location.id,
                 locationName = target.location.name,
                 type = type,
                 uri = uri,
                 sequence = target.sequence,
             )
+            if (target.sequence == 0) {
+                captureDecisions.remove(PhotoSlotKey(target.location.id, type, 0))
+            }
             WindowUploadScheduler.enqueueMock(
                 context = context,
                 locationId = target.location.id,
@@ -187,10 +201,29 @@ fun WindowCheckApp() {
         invalidatePublishedReport()
     }
 
+    fun setCaptureDecision(
+        location: WindowLocation,
+        type: CaptureType,
+        status: PhotoCaptureStatus,
+        reason: CaptureSkipReason,
+    ) {
+        val key = PhotoSlotKey(location.id, type, 0)
+        photos.remove(key)
+        captureDecisions[key] = PhotoCaptureDecision(
+            locationId = location.id,
+            locationName = location.name,
+            type = type,
+            status = status,
+            reason = reason,
+        )
+        invalidatePublishedReport()
+    }
+
     fun clearAllState(nextScreen: AppScreen = AppScreen.START) {
         setup = InspectionSetup()
         locations = emptyList()
         photos.clear()
+        captureDecisions.clear()
         evidencePhotos.clear()
         conditions.clear()
         currentLocationIndex = 0
@@ -283,6 +316,10 @@ fun WindowCheckApp() {
                     snapshot.photos.forEach { photo ->
                         photos[PhotoSlotKey(photo.locationId, photo.type, photo.sequence)] = photo
                     }
+                    captureDecisions.clear()
+                    snapshot.captureDecisions.forEach { decision ->
+                        captureDecisions[PhotoSlotKey(decision.locationId, decision.type, 0)] = decision
+                    }
                     evidencePhotos.clear()
                     snapshot.evidencePhotos.forEach { photo ->
                         evidencePhotos[EvidenceSlotKey(photo.locationId, photo.type, photo.sequence)] = photo
@@ -293,6 +330,7 @@ fun WindowCheckApp() {
                     hasSavedDraft = snapshot.locations.isNotEmpty() ||
                         snapshot.setup.customer.name.isNotBlank() ||
                         snapshot.photos.isNotEmpty() ||
+                        snapshot.captureDecisions.isNotEmpty() ||
                         snapshot.evidencePhotos.isNotEmpty()
                 }
                 .onFailure {
@@ -303,6 +341,7 @@ fun WindowCheckApp() {
     }
 
     val photoDraftSnapshot = photos.values.toList()
+    val decisionDraftSnapshot = captureDecisions.values.toList()
     val evidenceDraftSnapshot = evidencePhotos.values.toList()
     val conditionDraftSnapshot = conditions.values.toList()
     LaunchedEffect(
@@ -310,6 +349,7 @@ fun WindowCheckApp() {
         setup,
         locations,
         photoDraftSnapshot,
+        decisionDraftSnapshot,
         evidenceDraftSnapshot,
         conditionDraftSnapshot,
         staffReview,
@@ -319,6 +359,7 @@ fun WindowCheckApp() {
             setup.customer.name.isNotBlank() ||
             setup.customer.address.isNotBlank() ||
             photoDraftSnapshot.isNotEmpty() ||
+            decisionDraftSnapshot.isNotEmpty() ||
             evidenceDraftSnapshot.isNotEmpty()
         if (!meaningful) {
             hasSavedDraft = false
@@ -333,6 +374,7 @@ fun WindowCheckApp() {
                 evidencePhotos = evidenceDraftSnapshot,
                 conditions = conditionDraftSnapshot,
                 review = staffReview,
+                captureDecisions = decisionDraftSnapshot,
             ),
         )
         withContext(Dispatchers.IO) {
@@ -417,21 +459,16 @@ fun WindowCheckApp() {
         }
     }
 
-    LaunchedEffect(screen, photos.size, evidencePhotos.size, locations) {
+    LaunchedEffect(screen, photos.size, captureDecisions.size, evidencePhotos.size, locations) {
         if (screen != AppScreen.ANALYZING || locations.isEmpty()) return@LaunchedEffect
 
-        val expectedPhotoCount = locations.size * CaptureType.entries.size
-        val basePhotoCount = photos.keys.count { it.sequence == 0 }
-        if (basePhotoCount < expectedPhotoCount) {
-            val missingLocationIndex = locations.indexOfFirst { location ->
-                CaptureType.entries.any { type -> PhotoSlotKey(location.id, type, 0) !in photos }
-            }.coerceAtLeast(0)
-            val missingTypeIndex = CaptureType.entries.indexOfFirst { type ->
-                PhotoSlotKey(locations[missingLocationIndex].id, type, 0) !in photos
-            }.coerceAtLeast(0)
-            currentLocationIndex = missingLocationIndex
-            currentCaptureIndex = missingTypeIndex
-            Toast.makeText(context, "필수 개별 창호 사진이 누락되었습니다.", Toast.LENGTH_LONG).show()
+        val missingWholePhotoIndex = locations.indexOfFirst { location ->
+            PhotoSlotKey(location.id, CaptureType.WHOLE_WINDOW, 0) !in photos
+        }
+        if (missingWholePhotoIndex >= 0) {
+            currentLocationIndex = missingWholePhotoIndex
+            currentCaptureIndex = CaptureType.WHOLE_WINDOW.ordinal
+            Toast.makeText(context, "각 개별 창호의 전체 사진 1장은 필요합니다.", Toast.LENGTH_LONG).show()
             screen = AppScreen.CAPTURE
             return@LaunchedEffect
         }
@@ -496,6 +533,7 @@ fun WindowCheckApp() {
                 onLocationsChange = { updated ->
                     val validIds = updated.mapTo(mutableSetOf()) { it.id }
                     photos.keys.filter { it.locationId !in validIds }.forEach(photos::remove)
+                    captureDecisions.keys.filter { it.locationId !in validIds }.forEach(captureDecisions::remove)
                     evidencePhotos.keys.filter { it.locationId !in validIds }.forEach(evidencePhotos::remove)
                     conditions.keys.filter { it !in validIds }.forEach(conditions::remove)
                     locations = updated
@@ -517,6 +555,11 @@ fun WindowCheckApp() {
 
             AppScreen.GUIDE -> CaptureGuideScreen(
                 locationCount = locations.size,
+                inspectionMode = setup.inspectionMode,
+                onModeChange = { mode ->
+                    setup = setup.copy(inspectionMode = mode)
+                    invalidatePublishedReport()
+                },
                 onBack = ::navigateBack,
                 onStartCapture = {
                     currentLocationIndex = 0
@@ -530,23 +573,61 @@ fun WindowCheckApp() {
 
             AppScreen.CAPTURE -> locations.getOrNull(currentLocationIndex)?.let { location ->
                 val type = CaptureType.entries[currentCaptureIndex]
-                val currentUri = photos[PhotoSlotKey(location.id, type, 0)]?.uri
-                val capturedCount = CaptureType.entries.count { captureType ->
-                    PhotoSlotKey(location.id, captureType, 0) in photos
+                val key = PhotoSlotKey(location.id, type, 0)
+                val currentUri = photos[key]?.uri
+                val decision = captureDecisions[key]
+                val completedCount = CaptureType.entries.count { captureType ->
+                    val captureKey = PhotoSlotKey(location.id, captureType, 0)
+                    captureKey in photos || captureKey in captureDecisions
                 }
                 CaptureScreen(
                     locationName = location.name,
                     currentLocationIndex = currentLocationIndex,
                     totalLocations = locations.size,
                     currentIndex = currentCaptureIndex,
-                    capturedCount = capturedCount,
+                    completedCount = completedCount,
                     latestPhotoUri = currentUri,
+                    inspectionMode = setup.inspectionMode,
+                    decision = decision,
                     onBack = ::navigateBack,
                     onCapture = {
                         launchCamera(PendingPhotoTarget(location = location, captureType = type, sequence = 0))
                     },
                     onGallery = {
                         launchGallery(PendingPhotoTarget(location = location, captureType = type, sequence = 0))
+                    },
+                    onSkip = { reason ->
+                        setCaptureDecision(
+                            location = location,
+                            type = type,
+                            status = PhotoCaptureStatus.SKIPPED,
+                            reason = reason,
+                        )
+                    },
+                    onDefer = {
+                        setCaptureDecision(
+                            location = location,
+                            type = type,
+                            status = PhotoCaptureStatus.DEFERRED,
+                            reason = CaptureSkipReason.DETAILED_CHECK_LATER,
+                        )
+                    },
+                    onClearDecision = {
+                        captureDecisions.remove(key)
+                        invalidatePublishedReport()
+                    },
+                    onSkipRemaining = {
+                        CaptureType.entries
+                            .filter { it != CaptureType.WHOLE_WINDOW }
+                            .forEach { optionalType ->
+                                setCaptureDecision(
+                                    location = location,
+                                    type = optionalType,
+                                    status = PhotoCaptureStatus.SKIPPED,
+                                    reason = CaptureSkipReason.COVERED_BY_WHOLE_PHOTO,
+                                )
+                            }
+                        screen = AppScreen.EVIDENCE
                     },
                     onNext = {
                         if (currentCaptureIndex < CaptureType.entries.lastIndex) {
@@ -556,7 +637,7 @@ fun WindowCheckApp() {
                         }
                     },
                     nextLabel = if (currentCaptureIndex < CaptureType.entries.lastIndex) {
-                        "다음 사진"
+                        "다음 세부 항목"
                     } else {
                         "결로·누수·기타 상세사진 추가"
                     },
@@ -710,6 +791,7 @@ fun WindowCheckApp() {
                                             result = diagnosis,
                                             conditions = orderedConditions(),
                                             review = staffReview,
+                                            captureDecisions = orderedCaptureDecisions(),
                                         )
                                     }
                                 }.onSuccess {
