@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import AdminDashboardNav from "@/components/dashboard/AdminDashboardNav";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import MonthlyPnlOverview from "@/components/dashboard/MonthlyPnlOverview";
+import ManagementAiPanel from "@/components/dashboard/ManagementAiPanel";
+import MonthlyPnlOverviewV2 from "@/components/dashboard/MonthlyPnlOverviewV2";
 import { getCompanyMonthlyPnl } from "@/lib/crm/company-pnl";
 import { getCompanySalesTarget } from "@/lib/crm/company-sales-target";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
+import { buildRuleBasedManagementAnalysis } from "@/lib/crm/management-analysis";
 import { DEFAULT_COMPANY_ANNUAL_SALES_TARGET } from "@/lib/crm/sales-goals";
 
 export default async function AdminFinanceDashboardPage() {
@@ -15,17 +17,23 @@ export default async function AdminFinanceDashboardPage() {
     getCompanyMonthlyPnl(2026),
     getCompanySalesTarget(2026),
   ]);
+  const annualTarget =
+    target?.targetAmount ?? DEFAULT_COMPANY_ANNUAL_SALES_TARGET;
+  const analysis = buildRuleBasedManagementAnalysis({
+    summary,
+    pnl,
+    annualTarget,
+  });
 
   return (
     <DashboardLayout>
       <div className="space-y-5">
         <AdminDashboardNav active="finance" />
+        <ManagementAiPanel initial={analysis} compact />
         {pnl ? (
-          <MonthlyPnlOverview
+          <MonthlyPnlOverviewV2
             pnl={pnl}
-            annualTarget={
-              target?.targetAmount ?? DEFAULT_COMPANY_ANNUAL_SALES_TARGET
-            }
+            annualTarget={annualTarget}
             officialSalesRevenue={summary.revenueAmount}
             mode="detail"
           />
