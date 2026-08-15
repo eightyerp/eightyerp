@@ -52,14 +52,24 @@ fun MultiEvidencePhotosScreen(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
             Text(
-                text = "결로·누수·코킹·파손 사진을\n항목별로 여러 장 등록할 수 있습니다.",
+                text = "결로·누수·기타 증상만\n필요한 만큼 추가합니다.",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
                 color = EightyNavy,
             )
             Text(
-                text = "전체 위치사진, 증상 근접사진, 상부·측면·하부 순으로 등록하면 직원 검토와 고객 설명에 도움이 됩니다.",
-                modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
+                text = "증상이 없거나 전체사진으로 충분하면 아무 사진도 추가하지 않고 바로 다음으로 진행해도 됩니다.",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 12.dp)
+                    .background(Color(0xFFEFF7F2), RoundedCornerShape(14.dp))
+                    .padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF246746),
+            )
+            Text(
+                text = "증상이 있다면 전체 위치사진, 증상 근접사진, 상부·측면·하부 순으로 등록하면 직원 검토와 고객 설명에 도움이 됩니다.",
+                modifier = Modifier.padding(bottom = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = EightyMuted,
             )
@@ -88,9 +98,10 @@ fun MultiEvidencePhotosScreen(
                             )
                         }
                         Text(
-                            text = "${photos.size}장",
+                            text = if (photos.isEmpty()) "선택" else "${photos.size}장",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Black,
+                            color = if (photos.isEmpty()) EightyMuted else EightyNavy,
                         )
                     }
 
