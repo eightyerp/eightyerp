@@ -222,6 +222,67 @@ create trigger employee_tasks_touch_updated_at
 
 alter table public.employee_tasks enable row level security;
 
+-- 관계 테이블의 RLS를 그대로 타면 manager가 자기 팀 직원의 고객/현장/견적을 연결할 때
+-- 정상 데이터도 거부될 수 있다. 아래 함수는 데이터 내용을 반환하지 않고,
+-- "현재 회사 + 관리 가능한 담당자 + 같은 회사 관계" 여부만 boolean으로 검증한다.
+create or replace function public.employee_task_relations_in_current_company(
+  p_company_id uuid,
+  p_assigned_employee_id uuid,
+  p_customer_id uuid,
+  p_project_id uuid,
+  p_quote_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    auth.uid() is not null
+    and p_company_id is not null
+    and p_company_id = public.current_company_id()
+    and public.is_company_member(p_company_id)
+    and public.can_access_schedule_assignee(p_assigned_employee_id)
+    and (
+      p_customer_id is null
+      or exists (
+        select 1
+        from public.customers customer
+        where customer.id = p_customer_id
+          and customer.company_id = p_company_id
+      )
+    )
+    and (
+      p_project_id is null
+      or exists (
+        select 1
+        from public.projects project
+        where project.id = p_project_id
+          and project.company_id = p_company_id
+      )
+    )
+    and (
+      p_quote_id is null
+      or exists (
+        select 1
+        from public.quotes quote
+        where quote.id = p_quote_id
+          and quote.company_id = p_company_id
+      )
+    ),
+    false
+  );
+$$;
+
+revoke all on function public.employee_task_relations_in_current_company(uuid, uuid, uuid, uuid, uuid)
+  from public, anon;
+grant execute on function public.employee_task_relations_in_current_company(uuid, uuid, uuid, uuid, uuid)
+  to authenticated;
+
+comment on function public.employee_task_relations_in_current_company(uuid, uuid, uuid, uuid, uuid) is
+  'employee_tasks RLS helper. 현재 회사/담당자 범위 및 customer/project/quote 동일 회사 여부만 boolean으로 검증.';
+
 -- 회사 경계는 다른 permissive policy와 OR로 합쳐지면 안 되므로 반드시 RESTRICTIVE.
 drop policy if exists employee_tasks_company_guard on public.employee_tasks;
 create policy employee_tasks_company_guard
@@ -250,30 +311,12 @@ create policy staff_employee_tasks_insert
   to authenticated
   with check (
     auth.uid() is not null
-    and public.can_access_schedule_assignee(assigned_employee_id)
-    and (
-      customer_id is null
-      or exists (
-        select 1 from public.customers customer
-        where customer.id = employee_tasks.customer_id
-          and customer.company_id = employee_tasks.company_id
-      )
-    )
-    and (
-      project_id is null
-      or exists (
-        select 1 from public.projects project
-        where project.id = employee_tasks.project_id
-          and project.company_id = employee_tasks.company_id
-      )
-    )
-    and (
-      quote_id is null
-      or exists (
-        select 1 from public.quotes quote
-        where quote.id = employee_tasks.quote_id
-          and quote.company_id = employee_tasks.company_id
-      )
+    and public.employee_task_relations_in_current_company(
+      company_id,
+      assigned_employee_id,
+      customer_id,
+      project_id,
+      quote_id
     )
   );
 
@@ -293,33 +336,12 @@ create policy staff_employee_tasks_update
   )
   with check (
     auth.uid() is not null
-    and (
-      public.is_admin()
-      or public.can_access_schedule_assignee(assigned_employee_id)
-    )
-    and (
-      customer_id is null
-      or exists (
-        select 1 from public.customers customer
-        where customer.id = employee_tasks.customer_id
-          and customer.company_id = employee_tasks.company_id
-      )
-    )
-    and (
-      project_id is null
-      or exists (
-        select 1 from public.projects project
-        where project.id = employee_tasks.project_id
-          and project.company_id = employee_tasks.company_id
-      )
-    )
-    and (
-      quote_id is null
-      or exists (
-        select 1 from public.quotes quote
-        where quote.id = employee_tasks.quote_id
-          and quote.company_id = employee_tasks.company_id
-      )
+    and public.employee_task_relations_in_current_company(
+      company_id,
+      assigned_employee_id,
+      customer_id,
+      project_id,
+      quote_id
     )
   );
 
