@@ -34,8 +34,55 @@ enum class CaptureType(
     ),
 }
 
-data class CapturedPhoto(
+enum class EvidenceType(
+    val title: String,
+    val instruction: String,
+    val shortLabel: String,
+) {
+    CONDENSATION(
+        title = "결로 증상",
+        instruction = "물방울, 물자국, 곰팡이 또는 복층유리 내부 김서림이 보이도록 촬영해 주세요.",
+        shortLabel = "결로",
+    ),
+    EXTERIOR_LEAK(
+        title = "외부 누수 의심",
+        instruction = "비가 올 때 젖는 상부·측면·하부와 벽체 물자국을 촬영해 주세요.",
+        shortLabel = "외부누수",
+    ),
+    OTHER(
+        title = "기타 이상",
+        instruction = "파손, 뒤틀림, 소음 원인, 부식 등 추가로 확인할 부분을 촬영해 주세요.",
+        shortLabel = "기타",
+    ),
+}
+
+data class WindowLocation(
+    val id: String,
+    val name: String,
+    val note: String = "",
+)
+
+data class PhotoSlotKey(
+    val locationId: String,
     val type: CaptureType,
+)
+
+data class EvidenceSlotKey(
+    val locationId: String,
+    val type: EvidenceType,
+)
+
+data class CapturedPhoto(
+    val locationId: String,
+    val locationName: String,
+    val type: CaptureType,
+    val uri: Uri,
+)
+
+data class EvidencePhoto(
+    val locationId: String,
+    val locationName: String,
+    val type: EvidenceType,
     val uri: Uri,
 )
 
@@ -55,14 +102,70 @@ data class DiagnosisFinding(
     val recommendation: String,
 )
 
+data class LocationDiagnosisResult(
+    val locationId: String,
+    val locationName: String,
+    val grade: String,
+    val gradeTitle: String,
+    val summary: String,
+    val findings: List<DiagnosisFinding>,
+)
+
 data class DiagnosisResult(
     val grade: String,
     val gradeTitle: String,
     val confidence: Int,
     val summary: String,
     val findings: List<DiagnosisFinding>,
+    val locations: List<LocationDiagnosisResult> = emptyList(),
 )
 
+data class CustomerInfo(
+    val name: String = "",
+    val phone: String = "",
+    val address: String = "",
+    val detailAddress: String = "",
+)
+
+data class InspectorInfo(
+    val name: String = "",
+    val teamPosition: String = "",
+    val phone: String = "",
+)
+
+data class InspectionSetup(
+    val customer: CustomerInfo = CustomerInfo(),
+    val inspector: InspectorInfo = InspectorInfo(),
+)
+
+data class LocationCondition(
+    val locationId: String,
+    val locationName: String,
+    val yearsInUse: String = "모름",
+    val draftLevel: String = "보통",
+    val condensation: String = "없음",
+    val condensationArea: String = "해당 없음",
+    val exteriorLeak: String = "없음",
+    val leakArea: String = "해당 없음",
+    val openingCondition: String = "보통",
+    val noiseLevel: String = "보통",
+    val moldCondition: String = "없음",
+    val otherIssue: String = "",
+)
+
+data class StaffReview(
+    val recommendation: String = "부분 보수 점검",
+    val customerComment: String = "",
+    val internalMemo: String = "",
+    val confirmed: Boolean = false,
+)
+
+data class QuoteAttachment(
+    val uri: Uri,
+    val displayName: String,
+)
+
+// 기존 화면과의 소스 호환을 위해 유지합니다. 신규 직원용 흐름은 LocationCondition을 사용합니다.
 data class ExtraInfo(
     val yearsInUse: String = "10년 이상",
     val draftLevel: String = "많이 느껴짐",
