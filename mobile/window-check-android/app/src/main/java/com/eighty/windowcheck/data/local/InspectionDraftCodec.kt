@@ -1,14 +1,18 @@
 package com.eighty.windowcheck.data.local
 
 import android.net.Uri
+import com.eighty.windowcheck.model.CaptureSkipReason
 import com.eighty.windowcheck.model.CaptureType
 import com.eighty.windowcheck.model.CapturedPhoto
 import com.eighty.windowcheck.model.CustomerInfo
 import com.eighty.windowcheck.model.EvidencePhoto
 import com.eighty.windowcheck.model.EvidenceType
+import com.eighty.windowcheck.model.InspectionMode
 import com.eighty.windowcheck.model.InspectionSetup
 import com.eighty.windowcheck.model.InspectorInfo
 import com.eighty.windowcheck.model.LocationCondition
+import com.eighty.windowcheck.model.PhotoCaptureDecision
+import com.eighty.windowcheck.model.PhotoCaptureStatus
 import com.eighty.windowcheck.model.StaffReview
 import com.eighty.windowcheck.model.WindowLocation
 import org.json.JSONArray
@@ -21,6 +25,7 @@ data class InspectionDraftSnapshot(
     val evidencePhotos: List<EvidencePhoto>,
     val conditions: List<LocationCondition>,
     val review: StaffReview,
+    val captureDecisions: List<PhotoCaptureDecision> = emptyList(),
 )
 
 object InspectionDraftCodec {
@@ -37,6 +42,7 @@ object InspectionDraftCodec {
                 put("teamPosition", snapshot.setup.inspector.teamPosition)
                 put("phone", snapshot.setup.inspector.phone)
             })
+            put("inspectionMode", snapshot.setup.inspectionMode.name)
         })
         put("locations", JSONArray().apply {
             snapshot.locations.forEach { location ->
@@ -58,6 +64,18 @@ object InspectionDraftCodec {
                     put("uri", photo.uri.toString())
                     put("sequence", photo.sequence)
                     put("description", photo.description)
+                })
+            }
+        })
+        put("captureDecisions", JSONArray().apply {
+            snapshot.captureDecisions.forEach { decision ->
+                put(JSONObject().apply {
+                    put("locationId", decision.locationId)
+                    put("locationName", decision.locationName)
+                    put("type", decision.type.name)
+                    put("status", decision.status.name)
+                    put("reason", decision.reason.name)
+                    put("reasonText", decision.reasonText)
                 })
             }
         })
@@ -108,6 +126,9 @@ object InspectionDraftCodec {
         val setupJson = root.optJSONObject("setup") ?: JSONObject()
         val customerJson = setupJson.optJSONObject("customer") ?: JSONObject()
         val inspectorJson = setupJson.optJSONObject("inspector") ?: JSONObject()
+        val inspectionMode = runCatching {
+            InspectionMode.valueOf(setupJson.optString("inspectionMode", InspectionMode.SIMPLE.name))
+        }.getOrDefault(InspectionMode.SIMPLE)
 
         return InspectionDraftSnapshot(
             setup = InspectionSetup(
@@ -122,6 +143,7 @@ object InspectionDraftCodec {
                     teamPosition = inspectorJson.optString("teamPosition"),
                     phone = inspectorJson.optString("phone"),
                 ),
+                inspectionMode = inspectionMode,
             ),
             locations = root.optJSONArray("locations").mapObjects { item ->
                 WindowLocation(
@@ -140,6 +162,19 @@ object InspectionDraftCodec {
                     uri = Uri.parse(item.optString("uri")),
                     sequence = item.optInt("sequence"),
                     description = item.optString("description"),
+                )
+            },
+            captureDecisions = root.optJSONArray("captureDecisions").mapObjects { item ->
+                PhotoCaptureDecision(
+                    locationId = item.optString("locationId"),
+                    locationName = item.optString("locationName"),
+                    type = runCatching { CaptureType.valueOf(item.optString("type")) }
+                        .getOrDefault(CaptureType.FRAME_CORNER),
+                    status = runCatching { PhotoCaptureStatus.valueOf(item.optString("status")) }
+                        .getOrDefault(PhotoCaptureStatus.SKIPPED),
+                    reason = runCatching { CaptureSkipReason.valueOf(item.optString("reason")) }
+                        .getOrDefault(CaptureSkipReason.OTHER),
+                    reasonText = item.optString("reasonText"),
                 )
             },
             evidencePhotos = root.optJSONArray("evidencePhotos").mapObjects { item ->
