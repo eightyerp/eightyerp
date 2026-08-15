@@ -26,12 +26,15 @@ import com.eighty.windowcheck.ui.components.BrandLockup
 import com.eighty.windowcheck.ui.components.PrimaryButton
 import com.eighty.windowcheck.ui.components.SecondaryButton
 import com.eighty.windowcheck.ui.theme.EightyBlue
+import com.eighty.windowcheck.ui.theme.EightyDanger
 import com.eighty.windowcheck.ui.theme.EightyMuted
 import com.eighty.windowcheck.ui.theme.EightyNavy
 
 @Composable
 fun StartScreen(
+    hasDraft: Boolean,
     onStart: () -> Unit,
+    onResume: () -> Unit,
     onHistory: () -> Unit,
 ) {
     Column(
@@ -41,17 +44,33 @@ fun StartScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BrandLockup(modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFF0F0), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "개발 테스트 모드 · 실제 AI 분석 아님",
+                color = EightyDanger,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+        }
         Spacer(modifier = Modifier.weight(1f))
 
         Box(
             modifier = Modifier
-                .size(196.dp)
+                .size(188.dp)
                 .background(Color(0xFFEAF2FF), RoundedCornerShape(40.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
-                    .size(122.dp)
+                    .size(118.dp)
                     .background(Color.White, RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -65,7 +84,7 @@ fun StartScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(20.dp)
+                    .padding(18.dp)
                     .size(68.dp)
                     .background(EightyBlue, CircleShape),
                 contentAlignment = Alignment.Center,
@@ -79,7 +98,7 @@ fun StartScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(28.dp))
         Text(
             text = "에잇티 직원용\n창호 현장점검",
             style = MaterialTheme.typography.headlineLarge,
@@ -89,7 +108,7 @@ fun StartScreen(
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "거실·안방·작은방 등 위치별로 촬영하고\n점검 리포트와 견적서를 고객에게 발송합니다.",
+            text = "공간 안의 개별 창호를 따로 등록하고\n사진·증상·리포트·견적서를 한 번에 관리합니다.",
             style = MaterialTheme.typography.bodyLarge,
             color = EightyMuted,
             textAlign = TextAlign.Center,
@@ -106,14 +125,20 @@ fun StartScreen(
         ) {
             Text(text = "ℹ️")
             Text(
-                text = "AI 결과는 예비분석입니다. 고객 발송 전 담당직원이 위치별 사진과 진단문구를 반드시 확인합니다.",
+                text = "현재 분석결과는 서버·업무흐름 검증용 Mock입니다. 고객 발송 전 담당직원이 모든 사진과 문구를 확인해야 합니다.",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall,
                 color = EightyMuted,
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
-        PrimaryButton(text = "새 현장 점검 시작", onClick = onStart)
+        if (hasDraft) {
+            PrimaryButton(text = "작성 중 점검 이어하기", onClick = onResume)
+            Spacer(modifier = Modifier.height(10.dp))
+            SecondaryButton(text = "새 현장 점검 시작", onClick = onStart)
+        } else {
+            PrimaryButton(text = "새 현장 점검 시작", onClick = onStart)
+        }
         Spacer(modifier = Modifier.height(10.dp))
         SecondaryButton(text = "점검 기록 보기", onClick = onHistory)
     }
