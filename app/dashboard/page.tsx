@@ -82,17 +82,17 @@ export default async function DashboardPage({ searchParams }: Props) {
           )
         ) : null}
 
-        {!isAdmin && loadError && (
+        {loadError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {loadError}
           </div>
         )}
 
-        {!isAdmin && bundle ? (
+        {bundle ? (
           <TodayWorkDashboard bundle={bundle} schedulesById={schedulesById} />
         ) : null}
 
-        {!isAdmin && !bundle && !loadError ? (
+        {!bundle && !loadError ? (
           <div className="dashboard-card px-5 py-10 text-center text-sm text-slate-600">
             오늘 할 일 데이터를 준비 중입니다.
           </div>
