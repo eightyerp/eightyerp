@@ -14,7 +14,8 @@
     "test:employee-archive-ui": "node scripts/test-employee-archive-ui.mjs",
     "test:employee-security-behavior": "node scripts/test-employee-security-behavior.mjs",
     "test:interior-quote-excel": "npx --yes tsx scripts/test-interior-quote-excel.ts",
-    "test:quote-excel-engine": "npx --yes tsx scripts/test-quote-excel-engine.ts"
+    "test:quote-excel-engine": "npx --yes tsx scripts/test-quote-excel-engine.ts",
+    "test:finance-v2": "npx --yes tsx scripts/test-finance-v2-rules.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
