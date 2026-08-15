@@ -54,7 +54,7 @@ fun CaptureGuideScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             Text(
-                text = "등록한 $locationCount개 위치를\n각각 같은 기준으로 촬영합니다.",
+                text = "등록한 ${locationCount}개 위치를\n각각 같은 기준으로 촬영합니다.",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black,
                 color = EightyNavy,
@@ -132,7 +132,7 @@ fun CaptureGuideScreen(
             }
         }
         Box(modifier = Modifier.padding(20.dp)) {
-            PrimaryButton(text = "$locationCount개 위치 촬영 시작", onClick = onStartCapture)
+            PrimaryButton(text = "${locationCount}개 위치 촬영 시작", onClick = onStartCapture)
         }
     }
 }
