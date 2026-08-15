@@ -1,6 +1,7 @@
 package com.eighty.windowcheck.ui
 
 import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -19,6 +20,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,66 +28,147 @@ import com.eighty.windowcheck.data.FakeDiagnosisRepository
 import com.eighty.windowcheck.model.CaptureType
 import com.eighty.windowcheck.model.CapturedPhoto
 import com.eighty.windowcheck.model.DiagnosisResult
-import com.eighty.windowcheck.model.ExtraInfo
-import com.eighty.windowcheck.model.VisitRequest
+import com.eighty.windowcheck.model.EvidencePhoto
+import com.eighty.windowcheck.model.EvidenceSlotKey
+import com.eighty.windowcheck.model.EvidenceType
+import com.eighty.windowcheck.model.InspectionSetup
+import com.eighty.windowcheck.model.LocationCondition
+import com.eighty.windowcheck.model.PhotoSlotKey
+import com.eighty.windowcheck.model.QuoteAttachment
+import com.eighty.windowcheck.model.StaffReview
+import com.eighty.windowcheck.model.WindowLocation
 import com.eighty.windowcheck.ui.screens.AnalysisScreen
 import com.eighty.windowcheck.ui.screens.CaptureGuideScreen
 import com.eighty.windowcheck.ui.screens.CaptureScreen
-import com.eighty.windowcheck.ui.screens.CompleteScreen
+import com.eighty.windowcheck.ui.screens.CustomerReportScreen
 import com.eighty.windowcheck.ui.screens.DetailResultScreen
-import com.eighty.windowcheck.ui.screens.ExtraInfoScreen
+import com.eighty.windowcheck.ui.screens.EvidencePhotosScreen
 import com.eighty.windowcheck.ui.screens.HistoryPlaceholderScreen
-import com.eighty.windowcheck.ui.screens.ReportScreen
+import com.eighty.windowcheck.ui.screens.InspectionSetupScreen
+import com.eighty.windowcheck.ui.screens.LocationSetupScreen
+import com.eighty.windowcheck.ui.screens.LocationSymptomsScreen
 import com.eighty.windowcheck.ui.screens.ResultSummaryScreen
 import com.eighty.windowcheck.ui.screens.SolutionScreen
+import com.eighty.windowcheck.ui.screens.StaffReviewScreen
 import com.eighty.windowcheck.ui.screens.StartScreen
-import com.eighty.windowcheck.ui.screens.VisitRequestScreen
+import com.eighty.windowcheck.util.GeneratedInspectionReport
+import com.eighty.windowcheck.util.copyImageToCache
 import com.eighty.windowcheck.util.createCaptureUri
+import com.eighty.windowcheck.util.generateInspectionReportPdf
+import com.eighty.windowcheck.util.getDisplayName
+import com.eighty.windowcheck.util.shareInspectionReport
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-enum class AppScreen {
+private enum class AppScreen {
     START,
     HISTORY,
+    SETUP,
+    LOCATIONS,
     GUIDE,
     CAPTURE,
+    EVIDENCE,
     ANALYZING,
     RESULT,
     DETAIL,
-    EXTRA_INFO,
-    REPORT,
+    SYMPTOMS,
+    STAFF_REVIEW,
+    CUSTOMER_REPORT,
     SOLUTION,
-    VISIT_REQUEST,
-    COMPLETE,
 }
+
+private data class PendingPhotoTarget(
+    val location: WindowLocation,
+    val captureType: CaptureType? = null,
+    val evidenceType: EvidenceType? = null,
+)
 
 @Composable
 fun WindowCheckApp() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val repository = remember { FakeDiagnosisRepository() }
 
     var screen by remember { mutableStateOf(AppScreen.START) }
+    var setup by remember { mutableStateOf(InspectionSetup()) }
+    var locations by remember { mutableStateOf<List<WindowLocation>>(emptyList()) }
+    var currentLocationIndex by remember { mutableIntStateOf(0) }
     var currentCaptureIndex by remember { mutableIntStateOf(0) }
-    val photos = remember { mutableStateMapOf<CaptureType, CapturedPhoto>() }
-    var latestPhotoUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingCaptureType by remember { mutableStateOf<CaptureType?>(null) }
-    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    var currentSymptomIndex by remember { mutableIntStateOf(0) }
+
+    val photos = remember { mutableStateMapOf<PhotoSlotKey, CapturedPhoto>() }
+    val evidencePhotos = remember { mutableStateMapOf<EvidenceSlotKey, EvidencePhoto>() }
+    val conditions = remember { mutableStateMapOf<String, LocationCondition>() }
+
+    var pendingPhotoTarget by remember { mutableStateOf<PendingPhotoTarget?>(null) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var analysisProgress by remember { mutableFloatStateOf(0f) }
     var result by remember { mutableStateOf<DiagnosisResult?>(null) }
-    var extraInfo by remember { mutableStateOf(ExtraInfo()) }
-    var visitRequest by remember { mutableStateOf(VisitRequest()) }
+    var staffReview by remember { mutableStateOf(StaffReview()) }
+    var generatedReport by remember { mutableStateOf<GeneratedInspectionReport?>(null) }
+    var quoteAttachment by remember { mutableStateOf<QuoteAttachment?>(null) }
+    var isGeneratingReport by remember { mutableStateOf(false) }
+
+    fun orderedPhotos(): List<CapturedPhoto> = locations.flatMap { location ->
+        CaptureType.entries.mapNotNull { type -> photos[PhotoSlotKey(location.id, type)] }
+    }
+
+    fun orderedEvidencePhotos(): List<EvidencePhoto> = locations.flatMap { location ->
+        EvidenceType.entries.mapNotNull { type -> evidencePhotos[EvidenceSlotKey(location.id, type)] }
+    }
+
+    fun orderedConditions(): List<LocationCondition> = locations.map { location ->
+        conditions[location.id] ?: LocationCondition(
+            locationId = location.id,
+            locationName = location.name,
+        )
+    }
+
+    fun invalidatePublishedReport() {
+        generatedReport = null
+    }
+
+    fun storePhoto(target: PendingPhotoTarget, uri: Uri) {
+        target.captureType?.let { type ->
+            photos[PhotoSlotKey(target.location.id, type)] = CapturedPhoto(
+                locationId = target.location.id,
+                locationName = target.location.name,
+                type = type,
+                uri = uri,
+            )
+        }
+        target.evidenceType?.let { type ->
+            evidencePhotos[EvidenceSlotKey(target.location.id, type)] = EvidencePhoto(
+                locationId = target.location.id,
+                locationName = target.location.name,
+                type = type,
+                uri = uri,
+            )
+        }
+        invalidatePublishedReport()
+    }
 
     fun reset() {
+        setup = InspectionSetup()
+        locations = emptyList()
         photos.clear()
+        evidencePhotos.clear()
+        conditions.clear()
+        currentLocationIndex = 0
         currentCaptureIndex = 0
-        latestPhotoUri = null
-        pendingCaptureType = null
-        pendingCaptureUri = null
+        currentSymptomIndex = 0
+        pendingPhotoTarget = null
+        pendingCameraUri = null
         analysisProgress = 0f
         result = null
-        extraInfo = ExtraInfo()
-        visitRequest = VisitRequest()
+        staffReview = StaffReview()
+        generatedReport = null
+        quoteAttachment = null
+        isGeneratingReport = false
         screen = AppScreen.START
     }
 
@@ -93,25 +176,49 @@ fun WindowCheckApp() {
         screen = when (screen) {
             AppScreen.START -> AppScreen.START
             AppScreen.HISTORY -> AppScreen.START
-            AppScreen.GUIDE -> AppScreen.START
+            AppScreen.SETUP -> AppScreen.START
+            AppScreen.LOCATIONS -> AppScreen.SETUP
+            AppScreen.GUIDE -> AppScreen.LOCATIONS
             AppScreen.CAPTURE -> {
-                if (currentCaptureIndex > 0) {
-                    currentCaptureIndex -= 1
-                    val previousType = CaptureType.entries[currentCaptureIndex]
-                    latestPhotoUri = photos[previousType]?.uri
-                    AppScreen.CAPTURE
-                } else {
-                    AppScreen.GUIDE
+                when {
+                    currentCaptureIndex > 0 -> {
+                        currentCaptureIndex -= 1
+                        AppScreen.CAPTURE
+                    }
+                    currentLocationIndex > 0 -> {
+                        currentLocationIndex -= 1
+                        AppScreen.EVIDENCE
+                    }
+                    else -> AppScreen.GUIDE
                 }
             }
-            AppScreen.ANALYZING -> AppScreen.CAPTURE
-            AppScreen.RESULT -> AppScreen.CAPTURE
+            AppScreen.EVIDENCE -> {
+                currentCaptureIndex = CaptureType.entries.lastIndex
+                AppScreen.CAPTURE
+            }
+            AppScreen.ANALYZING -> {
+                currentLocationIndex = locations.lastIndex.coerceAtLeast(0)
+                AppScreen.EVIDENCE
+            }
+            AppScreen.RESULT -> {
+                currentLocationIndex = locations.lastIndex.coerceAtLeast(0)
+                AppScreen.EVIDENCE
+            }
             AppScreen.DETAIL -> AppScreen.RESULT
-            AppScreen.EXTRA_INFO -> AppScreen.DETAIL
-            AppScreen.REPORT -> AppScreen.EXTRA_INFO
-            AppScreen.SOLUTION -> AppScreen.REPORT
-            AppScreen.VISIT_REQUEST -> if (result == null) AppScreen.START else AppScreen.REPORT
-            AppScreen.COMPLETE -> AppScreen.START
+            AppScreen.SYMPTOMS -> {
+                if (currentSymptomIndex > 0) {
+                    currentSymptomIndex -= 1
+                    AppScreen.SYMPTOMS
+                } else {
+                    AppScreen.DETAIL
+                }
+            }
+            AppScreen.STAFF_REVIEW -> {
+                currentSymptomIndex = locations.lastIndex.coerceAtLeast(0)
+                AppScreen.SYMPTOMS
+            }
+            AppScreen.CUSTOMER_REPORT -> AppScreen.STAFF_REVIEW
+            AppScreen.SOLUTION -> AppScreen.CUSTOMER_REPORT
         }
     }
 
@@ -122,39 +229,102 @@ fun WindowCheckApp() {
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
     ) { success ->
-        val type = pendingCaptureType
-        val uri = pendingCaptureUri
-        if (success && type != null && uri != null) {
-            photos[type] = CapturedPhoto(type = type, uri = uri)
-            latestPhotoUri = uri
+        val target = pendingPhotoTarget
+        val uri = pendingCameraUri
+        if (success && target != null && uri != null) {
+            storePhoto(target, uri)
         } else if (!success) {
             Toast.makeText(context, "촬영이 취소되었습니다.", Toast.LENGTH_SHORT).show()
         }
-        pendingCaptureType = null
-        pendingCaptureUri = null
+        pendingPhotoTarget = null
+        pendingCameraUri = null
     }
 
-    fun launchCamera() {
-        val type = CaptureType.entries[currentCaptureIndex]
-        val uri = context.createCaptureUri()
-        pendingCaptureType = type
-        pendingCaptureUri = uri
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { sourceUri ->
+        val target = pendingPhotoTarget
+        pendingPhotoTarget = null
+        if (sourceUri == null || target == null) return@rememberLauncherForActivityResult
+
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { context.copyImageToCache(sourceUri) }
+            }.onSuccess { cachedUri ->
+                storePhoto(target, cachedUri)
+            }.onFailure {
+                Toast.makeText(context, "선택한 사진을 불러오지 못했습니다.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val quotePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        quoteAttachment = QuoteAttachment(
+            uri = uri,
+            displayName = context.getDisplayName(uri) ?: "창호 견적서.pdf",
+        )
+    }
+
+    fun launchCamera(target: PendingPhotoTarget) {
+        val prefix = target.captureType?.shortLabel ?: target.evidenceType?.shortLabel ?: "photo"
+        val uri = context.createCaptureUri(prefix)
+        pendingPhotoTarget = target
+        pendingCameraUri = uri
         try {
             cameraLauncher.launch(uri)
         } catch (_: ActivityNotFoundException) {
-            pendingCaptureType = null
-            pendingCaptureUri = null
+            pendingPhotoTarget = null
+            pendingCameraUri = null
             Toast.makeText(context, "사용 가능한 카메라 앱이 없습니다.", Toast.LENGTH_LONG).show()
         }
     }
 
-    LaunchedEffect(screen, photos.size) {
-        if (screen != AppScreen.ANALYZING || photos.isEmpty()) return@LaunchedEffect
+    fun launchGallery(target: PendingPhotoTarget) {
+        pendingPhotoTarget = target
+        try {
+            galleryLauncher.launch("image/*")
+        } catch (_: ActivityNotFoundException) {
+            pendingPhotoTarget = null
+            Toast.makeText(context, "사진을 선택할 앱이 없습니다.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(screen, photos.size, evidencePhotos.size, locations) {
+        if (screen != AppScreen.ANALYZING || locations.isEmpty()) return@LaunchedEffect
+
+        val expectedPhotoCount = locations.size * CaptureType.entries.size
+        if (photos.size < expectedPhotoCount) {
+            val missingLocationIndex = locations.indexOfFirst { location ->
+                CaptureType.entries.any { type -> PhotoSlotKey(location.id, type) !in photos }
+            }.coerceAtLeast(0)
+            val missingTypeIndex = CaptureType.entries.indexOfFirst { type ->
+                PhotoSlotKey(locations[missingLocationIndex].id, type) !in photos
+            }.coerceAtLeast(0)
+            currentLocationIndex = missingLocationIndex
+            currentCaptureIndex = missingTypeIndex
+            Toast.makeText(context, "필수 위치별 사진이 누락되었습니다.", Toast.LENGTH_LONG).show()
+            screen = AppScreen.CAPTURE
+            return@LaunchedEffect
+        }
 
         analysisProgress = 0f
         runCatching {
             coroutineScope {
-                val analysis = async { repository.analyze(photos.values.toList()) }
+                val analysis = async {
+                    repository.analyze(
+                        photos = orderedPhotos(),
+                        evidencePhotos = orderedEvidencePhotos(),
+                    )
+                }
                 repeat(24) { step ->
                     delay(100)
                     analysisProgress = ((step + 1) / 24f).coerceAtMost(0.98f)
@@ -163,7 +333,8 @@ fun WindowCheckApp() {
             }
         }.onFailure {
             Toast.makeText(context, "분석 중 오류가 발생했습니다.", Toast.LENGTH_LONG).show()
-            screen = AppScreen.CAPTURE
+            currentLocationIndex = locations.lastIndex.coerceAtLeast(0)
+            screen = AppScreen.EVIDENCE
             return@LaunchedEffect
         }
         analysisProgress = 1f
@@ -180,42 +351,128 @@ fun WindowCheckApp() {
     ) {
         when (screen) {
             AppScreen.START -> StartScreen(
-                onStart = { screen = AppScreen.GUIDE },
+                onStart = { screen = AppScreen.SETUP },
                 onHistory = { screen = AppScreen.HISTORY },
             )
 
             AppScreen.HISTORY -> HistoryPlaceholderScreen(onBack = ::navigateBack)
 
+            AppScreen.SETUP -> InspectionSetupScreen(
+                setup = setup,
+                onSetupChange = {
+                    setup = it
+                    invalidatePublishedReport()
+                },
+                onBack = ::navigateBack,
+                onNext = { screen = AppScreen.LOCATIONS },
+            )
+
+            AppScreen.LOCATIONS -> LocationSetupScreen(
+                locations = locations,
+                onLocationsChange = { updated ->
+                    val validIds = updated.mapTo(mutableSetOf()) { it.id }
+                    photos.keys.filter { it.locationId !in validIds }.forEach(photos::remove)
+                    evidencePhotos.keys.filter { it.locationId !in validIds }.forEach(evidencePhotos::remove)
+                    conditions.keys.filter { it !in validIds }.forEach(conditions::remove)
+                    locations = updated
+                    updated.forEach { location ->
+                        if (conditions[location.id] == null) {
+                            conditions[location.id] = LocationCondition(
+                                locationId = location.id,
+                                locationName = location.name,
+                            )
+                        }
+                    }
+                    result = null
+                    staffReview = StaffReview()
+                    invalidatePublishedReport()
+                },
+                onBack = ::navigateBack,
+                onNext = { screen = AppScreen.GUIDE },
+            )
+
             AppScreen.GUIDE -> CaptureGuideScreen(
+                locationCount = locations.size,
                 onBack = ::navigateBack,
                 onStartCapture = {
+                    currentLocationIndex = 0
                     currentCaptureIndex = 0
-                    latestPhotoUri = photos[CaptureType.entries.first()]?.uri
+                    result = null
+                    staffReview = StaffReview()
+                    invalidatePublishedReport()
                     screen = AppScreen.CAPTURE
                 },
             )
 
-            AppScreen.CAPTURE -> CaptureScreen(
-                currentIndex = currentCaptureIndex,
-                capturedCount = photos.size,
-                latestPhotoUri = latestPhotoUri,
-                onBack = ::navigateBack,
-                onCapture = ::launchCamera,
-                onRetake = ::launchCamera,
-                onNext = {
-                    if (currentCaptureIndex >= CaptureType.entries.lastIndex) {
-                        if (photos.size == CaptureType.entries.size) {
-                            screen = AppScreen.ANALYZING
+            AppScreen.CAPTURE -> locations.getOrNull(currentLocationIndex)?.let { location ->
+                val type = CaptureType.entries[currentCaptureIndex]
+                val currentUri = photos[PhotoSlotKey(location.id, type)]?.uri
+                val capturedCount = CaptureType.entries.count { captureType ->
+                    PhotoSlotKey(location.id, captureType) in photos
+                }
+                CaptureScreen(
+                    locationName = location.name,
+                    currentLocationIndex = currentLocationIndex,
+                    totalLocations = locations.size,
+                    currentIndex = currentCaptureIndex,
+                    capturedCount = capturedCount,
+                    latestPhotoUri = currentUri,
+                    onBack = ::navigateBack,
+                    onCapture = {
+                        launchCamera(PendingPhotoTarget(location = location, captureType = type))
+                    },
+                    onGallery = {
+                        launchGallery(PendingPhotoTarget(location = location, captureType = type))
+                    },
+                    onNext = {
+                        if (currentCaptureIndex < CaptureType.entries.lastIndex) {
+                            currentCaptureIndex += 1
                         } else {
-                            Toast.makeText(context, "필수 사진 5장을 모두 촬영해 주세요.", Toast.LENGTH_SHORT).show()
+                            screen = AppScreen.EVIDENCE
                         }
+                    },
+                    nextLabel = if (currentCaptureIndex < CaptureType.entries.lastIndex) {
+                        "다음 사진"
                     } else {
-                        currentCaptureIndex += 1
-                        val nextType = CaptureType.entries[currentCaptureIndex]
-                        latestPhotoUri = photos[nextType]?.uri
-                    }
-                },
-            )
+                        "결로·누수·기타 사진 추가"
+                    },
+                )
+            }
+
+            AppScreen.EVIDENCE -> locations.getOrNull(currentLocationIndex)?.let { location ->
+                val selected = EvidenceType.entries.mapNotNull { type ->
+                    evidencePhotos[EvidenceSlotKey(location.id, type)]?.uri?.let { type to it }
+                }.toMap()
+                EvidencePhotosScreen(
+                    location = location,
+                    selectedPhotos = selected,
+                    onCamera = { type ->
+                        launchCamera(PendingPhotoTarget(location = location, evidenceType = type))
+                    },
+                    onGallery = { type ->
+                        launchGallery(PendingPhotoTarget(location = location, evidenceType = type))
+                    },
+                    onRemove = { type ->
+                        evidencePhotos.remove(EvidenceSlotKey(location.id, type))
+                        invalidatePublishedReport()
+                    },
+                    onBack = ::navigateBack,
+                    onNext = {
+                        if (currentLocationIndex < locations.lastIndex) {
+                            currentLocationIndex += 1
+                            currentCaptureIndex = 0
+                            screen = AppScreen.CAPTURE
+                        } else {
+                            screen = AppScreen.ANALYZING
+                        }
+                    },
+                    nextLabel = if (currentLocationIndex < locations.lastIndex) {
+                        "다음 위치 촬영"
+                    } else {
+                        "전체 위치 분석 시작"
+                    },
+                )
+            }
 
             AppScreen.ANALYZING -> AnalysisScreen(progress = analysisProgress)
 
@@ -224,7 +481,10 @@ fun WindowCheckApp() {
                     result = diagnosis,
                     onBack = ::navigateBack,
                     onDetail = { screen = AppScreen.DETAIL },
-                    onVisit = { screen = AppScreen.VISIT_REQUEST },
+                    onVisit = {
+                        currentSymptomIndex = 0
+                        screen = AppScreen.SYMPTOMS
+                    },
                 )
             }
 
@@ -232,40 +492,133 @@ fun WindowCheckApp() {
                 DetailResultScreen(
                     result = diagnosis,
                     onBack = ::navigateBack,
-                    onNext = { screen = AppScreen.EXTRA_INFO },
+                    onNext = {
+                        currentSymptomIndex = 0
+                        locations.forEach { location ->
+                            if (conditions[location.id] == null) {
+                                conditions[location.id] = LocationCondition(
+                                    locationId = location.id,
+                                    locationName = location.name,
+                                )
+                            }
+                        }
+                        screen = AppScreen.SYMPTOMS
+                    },
                 )
             }
 
-            AppScreen.EXTRA_INFO -> ExtraInfoScreen(
-                info = extraInfo,
-                onInfoChange = { extraInfo = it },
-                onBack = ::navigateBack,
-                onSubmit = { screen = AppScreen.REPORT },
-            )
-
-            AppScreen.REPORT -> result?.let { diagnosis ->
-                ReportScreen(
-                    result = diagnosis,
-                    info = extraInfo,
+            AppScreen.SYMPTOMS -> locations.getOrNull(currentSymptomIndex)?.let { location ->
+                val condition = conditions[location.id] ?: LocationCondition(
+                    locationId = location.id,
+                    locationName = location.name,
+                )
+                LocationSymptomsScreen(
+                    location = location,
+                    condition = condition,
+                    onConditionChange = {
+                        conditions[location.id] = it
+                        invalidatePublishedReport()
+                    },
                     onBack = ::navigateBack,
+                    onNext = {
+                        if (currentSymptomIndex < locations.lastIndex) {
+                            currentSymptomIndex += 1
+                        } else {
+                            screen = AppScreen.STAFF_REVIEW
+                        }
+                    },
+                    nextLabel = if (currentSymptomIndex < locations.lastIndex) {
+                        "다음 위치 증상 입력"
+                    } else {
+                        "직원 최종 검토"
+                    },
+                )
+            }
+
+            AppScreen.STAFF_REVIEW -> result?.let { diagnosis ->
+                StaffReviewScreen(
+                    setup = setup,
+                    result = diagnosis,
+                    review = staffReview,
+                    onReviewChange = {
+                        staffReview = it
+                        invalidatePublishedReport()
+                    },
+                    onBack = ::navigateBack,
+                    onPublish = { screen = AppScreen.CUSTOMER_REPORT },
+                )
+            }
+
+            AppScreen.CUSTOMER_REPORT -> result?.let { diagnosis ->
+                CustomerReportScreen(
+                    setup = setup,
+                    locations = locations,
+                    result = diagnosis,
+                    review = staffReview,
+                    generatedReport = generatedReport,
+                    quoteAttachment = quoteAttachment,
+                    isGenerating = isGeneratingReport,
+                    onBack = ::navigateBack,
+                    onGenerateReport = {
+                        if (!staffReview.confirmed) {
+                            Toast.makeText(context, "직원 검토 완료 확인이 필요합니다.", Toast.LENGTH_LONG).show()
+                        } else {
+                            isGeneratingReport = true
+                            scope.launch {
+                                runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        context.generateInspectionReportPdf(
+                                            setup = setup,
+                                            locations = locations,
+                                            photos = orderedPhotos(),
+                                            evidencePhotos = orderedEvidencePhotos(),
+                                            result = diagnosis,
+                                            conditions = orderedConditions(),
+                                            review = staffReview,
+                                        )
+                                    }
+                                }.onSuccess {
+                                    generatedReport = it
+                                    Toast.makeText(context, "고객용 PDF 리포트를 생성했습니다.", Toast.LENGTH_SHORT).show()
+                                }.onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        "PDF 생성 중 오류가 발생했습니다: ${it.message.orEmpty()}",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                                isGeneratingReport = false
+                            }
+                        }
+                    },
+                    onPickQuote = {
+                        quotePickerLauncher.launch(arrayOf("application/pdf"))
+                    },
+                    onRemoveQuote = { quoteAttachment = null },
+                    onShare = {
+                        val reportFile = generatedReport
+                        if (reportFile == null) {
+                            Toast.makeText(context, "먼저 PDF 리포트를 생성해 주세요.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            runCatching {
+                                context.shareInspectionReport(
+                                    report = reportFile,
+                                    quoteAttachment = quoteAttachment,
+                                    customerName = setup.customer.name,
+                                )
+                            }.onFailure {
+                                Toast.makeText(context, "공유할 앱을 열지 못했습니다.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
                     onSolution = { screen = AppScreen.SOLUTION },
-                    onVisit = { screen = AppScreen.VISIT_REQUEST },
                 )
             }
 
             AppScreen.SOLUTION -> SolutionScreen(
                 onBack = ::navigateBack,
-                onVisit = { screen = AppScreen.VISIT_REQUEST },
+                onVisit = { screen = AppScreen.CUSTOMER_REPORT },
             )
-
-            AppScreen.VISIT_REQUEST -> VisitRequestScreen(
-                request = visitRequest,
-                onRequestChange = { visitRequest = it },
-                onBack = ::navigateBack,
-                onSubmit = { screen = AppScreen.COMPLETE },
-            )
-
-            AppScreen.COMPLETE -> CompleteScreen(onRestart = ::reset)
         }
     }
 }
