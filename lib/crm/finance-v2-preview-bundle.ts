@@ -54,6 +54,11 @@ type QuoteRow = {
   created_at: string;
 };
 
+type EmployeeRow = {
+  id: string;
+  teams?: { name?: string | null } | { name?: string | null }[] | null;
+};
+
 export type FinancePriorityItem = {
   key: string;
   label: string;
@@ -68,6 +73,7 @@ export type ProjectFinancePreview = {
   projectName: string;
   address: string | null;
   businessUnit: "window" | "interior" | "unclassified";
+  businessUnitSource: "quote" | "employee_team" | "unclassified";
   contractAmount: number;
   receivedAmount: number;
   outstandingAmount: number;
@@ -97,50 +103,68 @@ function normalizeBusinessUnit(value: string | null | undefined) {
   return "unclassified" as const;
 }
 
+function teamName(row: EmployeeRow | undefined) {
+  if (!row?.teams) return null;
+  if (Array.isArray(row.teams)) return row.teams[0]?.name ?? null;
+  return row.teams.name ?? null;
+}
+
 export async function getFinanceV2PreviewBundle(): Promise<FinanceV2PreviewBundle | null> {
   const access = await getSettlementAccess();
   if (!access.isFinanceAdmin) return null;
 
   const supabase = await createClient();
-  const [contractsResult, receiptsResult, expensesResult, projectsResult, quotesResult] =
-    await Promise.all([
-      supabase
-        .from("contracts")
-        .select(
-          "id, project_id, contract_number, status, contract_kind, contract_amount, cumulative_contract_amount, received_amount, outstanding_amount, assigned_employee_id, contract_date, created_at",
-        )
-        .eq("company_id", access.companyId)
-        .order("created_at", { ascending: false })
-        .limit(300),
-      supabase
-        .from("collection_receipts")
-        .select("id, contract_id, status, amount, created_at")
-        .eq("company_id", access.companyId)
-        .order("created_at", { ascending: false })
-        .limit(300),
-      supabase
-        .from("expense_requests")
-        .select(
-          "id, project_id, status, total_amount, cost_basis_amount, payment_method, tax_evidence_type, is_post_settlement, work_trade, category, created_at",
-        )
-        .eq("company_id", access.companyId)
-        .order("created_at", { ascending: false })
-        .limit(300),
-      supabase
-        .from("projects")
-        .select("id, name, address, customer_id, assigned_employee_id, created_at")
-        .eq("company_id", access.companyId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(100),
-      supabase
-        .from("quotes")
-        .select("id, project_id, quote_type, created_at")
-        .eq("company_id", access.companyId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(300),
-    ]);
+  const [
+    contractsResult,
+    receiptsResult,
+    expensesResult,
+    projectsResult,
+    quotesResult,
+    employeesResult,
+  ] = await Promise.all([
+    supabase
+      .from("contracts")
+      .select(
+        "id, project_id, contract_number, status, contract_kind, contract_amount, cumulative_contract_amount, received_amount, outstanding_amount, assigned_employee_id, contract_date, created_at",
+      )
+      .eq("company_id", access.companyId)
+      .order("created_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("collection_receipts")
+      .select("id, contract_id, status, amount, created_at")
+      .eq("company_id", access.companyId)
+      .order("created_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("expense_requests")
+      .select(
+        "id, project_id, status, total_amount, cost_basis_amount, payment_method, tax_evidence_type, is_post_settlement, work_trade, category, created_at",
+      )
+      .eq("company_id", access.companyId)
+      .order("created_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("projects")
+      .select("id, name, address, customer_id, assigned_employee_id, created_at")
+      .eq("company_id", access.companyId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("quotes")
+      .select("id, project_id, quote_type, created_at")
+      .eq("company_id", access.companyId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("employees")
+      .select("id, teams ( name )")
+      .eq("company_id", access.companyId)
+      .eq("is_active", true)
+      .is("merged_into_employee_id", null),
+  ]);
 
   const warnings: string[] = [];
   if (contractsResult.error) warnings.push("계약 Preview를 불러오지 못했습니다.");
@@ -148,12 +172,14 @@ export async function getFinanceV2PreviewBundle(): Promise<FinanceV2PreviewBundl
   if (expensesResult.error) warnings.push("지출 Preview를 불러오지 못했습니다.");
   if (projectsResult.error) warnings.push("현장 Preview를 불러오지 못했습니다.");
   if (quotesResult.error) warnings.push("견적 사업부 정보를 불러오지 못했습니다.");
+  if (employeesResult.error) warnings.push("직원 소속팀 정보를 불러오지 못했습니다.");
 
   const contracts = (contractsResult.data ?? []) as ContractRow[];
   const receipts = (receiptsResult.data ?? []) as ReceiptRow[];
   const expenses = (expensesResult.data ?? []) as ExpenseRow[];
   const projects = (projectsResult.data ?? []) as ProjectRow[];
   const quotes = (quotesResult.data ?? []) as QuoteRow[];
+  const employees = (employeesResult.data ?? []) as EmployeeRow[];
 
   const eligibleContracts = contracts.filter(
     (row) => row.contract_kind === "original" && !["draft", "cancelled", "terminated"].includes(row.status),
@@ -169,6 +195,9 @@ export async function getFinanceV2PreviewBundle(): Promise<FinanceV2PreviewBundl
     if (!quote.project_id || latestQuoteByProject.has(quote.project_id)) continue;
     latestQuoteByProject.set(quote.project_id, quote);
   }
+
+  const employeeById = new Map<string, EmployeeRow>();
+  for (const employee of employees) employeeById.set(employee.id, employee);
 
   const contractByProject = new Map<string, ContractRow>();
   for (const contract of eligibleContracts) {
@@ -188,7 +217,16 @@ export async function getFinanceV2PreviewBundle(): Promise<FinanceV2PreviewBundl
   const projectRows: ProjectFinancePreview[] = projects.map((project) => {
     const contract = contractByProject.get(project.id);
     const quote = latestQuoteByProject.get(project.id);
-    const businessUnit = normalizeBusinessUnit(quote?.quote_type);
+    const quoteUnit = normalizeBusinessUnit(quote?.quote_type);
+    const assignedTeam = teamName(project.assigned_employee_id ? employeeById.get(project.assigned_employee_id) : undefined);
+    const employeeUnit = normalizeBusinessUnit(assignedTeam);
+    const businessUnit = quoteUnit !== "unclassified" ? quoteUnit : employeeUnit;
+    const businessUnitSource: ProjectFinancePreview["businessUnitSource"] =
+      quoteUnit !== "unclassified"
+        ? "quote"
+        : employeeUnit !== "unclassified"
+          ? "employee_team"
+          : "unclassified";
     const contractAmount = Number(contract?.cumulative_contract_amount || contract?.contract_amount || 0);
     const receivedAmount = Number(contract?.received_amount || 0);
     const outstandingAmount = Number(contract?.outstanding_amount || Math.max(0, contractAmount - receivedAmount));
@@ -206,6 +244,7 @@ export async function getFinanceV2PreviewBundle(): Promise<FinanceV2PreviewBundl
       projectName: project.name,
       address: project.address,
       businessUnit,
+      businessUnitSource,
       contractAmount,
       receivedAmount,
       outstandingAmount,
