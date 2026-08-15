@@ -17,8 +17,8 @@ android {
         applicationId = "com.eighty.windowcheck.preview"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.3.0-clean"
+        versionCode = 32
+        versionName = "0.3.1-photo-skip"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
