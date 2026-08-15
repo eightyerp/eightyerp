@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/window-check-android-mvp
+      - feature/window-check-ai-backend-v1
     paths:
       - "mobile/window-check-android/**"
       - ".github/workflows/android-window-check-apk.yml"
@@ -55,7 +56,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: eighty-window-check-internal-apk
+          name: eighty-window-check-v0.3-fast-apk
           path: mobile/window-check-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
