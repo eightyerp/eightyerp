@@ -1,0 +1,45 @@
+name: Finance V2 Gate 3 CI
+
+on:
+  push:
+    branches:
+      - agent/finance-v2-gate3-preview
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NEXT_PUBLIC_SUPABASE_URL: https://zhihbyarqpkudqyomcxv.supabase.co
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_tadZy_NLwwIRA0RRES1ykg_mETtBwTa
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Gate 3 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Finance V2 rule tests
+        run: npm run test:finance-v2
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Next.js production build
+        run: npm run build
