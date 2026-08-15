@@ -55,30 +55,33 @@ function businessUnitTotals(summary: DashboardSettlementSummary) {
   return { window: sum(windowRows), interior: sum(interiorRows) };
 }
 
+function numberRate(numerator: number, denominator: number) {
+  return denominator > 0 ? (numerator / denominator) * 100 : 0;
+}
+
 export function buildRuleBasedManagementAnalysis(input: {
   summary: DashboardSettlementSummary;
   pnl: CompanyPnlSummary | null;
   annualTarget: number;
 }): ManagementAnalysis {
   const { summary, pnl, annualTarget } = input;
-  const units = businessUnitTotals(summary);
+  const officialUnits = businessUnitTotals(summary);
   const latestMonth = pnl?.latestMonth ?? 0;
-  const annualAchievement =
-    annualTarget > 0 ? (summary.revenueAmount / annualTarget) * 100 : 0;
+  const annualAchievement = numberRate(summary.revenueAmount, annualTarget);
   const elapsedTargetRate = latestMonth > 0 ? (latestMonth / 12) * 100 : 0;
   const paceGap = annualAchievement - elapsedTargetRate;
-  const windowMarginRate =
-    units.window.revenue > 0
-      ? (units.window.margin / units.window.revenue) * 100
-      : 0;
-  const interiorMarginRate =
-    units.interior.revenue > 0
-      ? (units.interior.margin / units.interior.revenue) * 100
-      : 0;
-  const sgaRatio =
-    pnl && pnl.totalRevenue > 0 ? (pnl.sgaExpense / pnl.totalRevenue) * 100 : 0;
-  const netMargin =
-    pnl && pnl.totalRevenue > 0 ? (pnl.netProfit / pnl.totalRevenue) * 100 : 0;
+
+  const officialWindowContributionRate = numberRate(
+    officialUnits.window.margin,
+    officialUnits.window.revenue,
+  );
+  const officialInteriorContributionRate = numberRate(
+    officialUnits.interior.margin,
+    officialUnits.interior.revenue,
+  );
+
+  const sgaRatio = pnl ? numberRate(pnl.sgaExpense, pnl.totalRevenue) : 0;
+  const netMargin = pnl ? numberRate(pnl.netProfit, pnl.totalRevenue) : 0;
   const latestRow = pnl?.rows.at(-1) ?? null;
   const priorRow = pnl && pnl.rows.length >= 2 ? pnl.rows.at(-2) ?? null : null;
   const latestNetChange =
@@ -95,39 +98,61 @@ export function buildRuleBasedManagementAnalysis(input: {
     insights.push({
       tone: "positive",
       title: "연간 목표 진도 양호",
-      detail: `현재 매출 달성률은 ${percent(annualAchievement)}로, ${latestMonth || "현재"}월 누적 기준 진도보다 ${percent(Math.abs(paceGap))}p 앞서 있습니다.`,
+      detail: `현재 영업실적 달성률은 ${percent(annualAchievement)}로, ${latestMonth || "현재"}월 누적 기준 진도보다 ${percent(Math.abs(paceGap))}p 앞서 있습니다.`,
     });
   } else {
     insights.push({
       tone: paceGap <= -15 ? "risk" : "warning",
-      title: "100억 목표 진도 보완 필요",
-      detail: `현재 매출 달성률은 ${percent(annualAchievement)}로, ${latestMonth || "현재"}월 누적 기준 진도보다 ${percent(Math.abs(paceGap))}p 부족합니다.`,
+      title: "100억 목표 속도 보완 필요",
+      detail: `현재 영업실적 달성률은 ${percent(annualAchievement)}로, ${latestMonth || "현재"}월 누적 기준 진도보다 ${percent(Math.abs(paceGap))}p 부족합니다.`,
     });
-    actions.push("남은 기간의 월별 목표를 창호·인테리어로 나눠 주간 수주 목표까지 역산합니다.");
-  }
-
-  const strongerUnit =
-    interiorMarginRate >= windowMarginRate ? "인테리어" : "창호";
-  const strongerRate = Math.max(interiorMarginRate, windowMarginRate);
-  const weakerUnit = strongerUnit === "인테리어" ? "창호" : "인테리어";
-  const weakerRate = Math.min(interiorMarginRate, windowMarginRate);
-  insights.push({
-    tone: strongerRate - weakerRate >= 3 ? "info" : "positive",
-    title: `${strongerUnit} 수익성이 상대적으로 우수`,
-    detail: `${strongerUnit} 마진율은 ${percent(strongerRate)}, ${weakerUnit}는 ${percent(weakerRate)}입니다. 사업부별 직접원가와 할인·외주비 차이를 확인할 필요가 있습니다.`,
-  });
-  if (strongerRate - weakerRate >= 3) {
-    actions.push(`${weakerUnit}의 할인율, 외주비, 공동매출 원가를 월별로 분해해 마진율 하락 원인을 확인합니다.`);
+    actions.push("남은 기간 목표를 창호·인테리어 수주목표와 월·주 단위 실행목표로 역산합니다.");
   }
 
   if (pnl) {
+    const windowGrossMarginRate = numberRate(
+      pnl.windowGrossProfit,
+      pnl.windowRevenue,
+    );
+    const interiorGrossMarginRate = numberRate(
+      pnl.interiorGrossProfit,
+      pnl.interiorRevenue,
+    );
+    const windowOperatingMarginRate = numberRate(
+      pnl.windowOperatingProfit,
+      pnl.windowRevenue,
+    );
+    const interiorOperatingMarginRate = numberRate(
+      pnl.interiorOperatingProfit,
+      pnl.interiorRevenue,
+    );
+
+    insights.push({
+      tone: "info",
+      title: "수익성 지표 기준을 분리해 봐야 합니다",
+      detail: `내부 손익 기준 매출총이익률은 창호 ${percent(windowGrossMarginRate)}, 인테리어 ${percent(interiorGrossMarginRate)}입니다. 반면 영업실적 원장의 현장 기여마진율은 창호 ${percent(officialWindowContributionRate)}, 인테리어 ${percent(officialInteriorContributionRate)}입니다. 영업인센티브 포함 범위와 매출 인식 시점이 달라 두 지표를 혼용하면 안 됩니다.`,
+    });
+
+    insights.push({
+      tone:
+        pnl.windowOperatingProfit < 0 || pnl.interiorOperatingProfit < 0
+          ? "warning"
+          : "positive",
+      title: "사업부별 판관비를 실제 분류로 반영",
+      detail: `현재 내부 엑셀 분류 기준 창호·본사 판관비는 ${compactMoney(pnl.windowSgaExpense)}, 인테리어 판관비는 ${compactMoney(pnl.interiorSgaExpense)}, 별도 공통비는 ${compactMoney(pnl.commonSgaExpense)}입니다. 반영 후 영업손익률은 창호 ${percent(windowOperatingMarginRate)}, 인테리어 ${percent(interiorOperatingMarginRate)}입니다.`,
+    });
+
+    if (pnl.windowSgaExpense > 0) {
+      actions.push("창호 판관비에 포함된 사무실·대표급여 등 본사성 비용을 공통비 태그로 재분류해 순수 창호 영업손익을 확정합니다.");
+    }
+
     insights.push({
       tone: sgaRatio >= 12 ? "risk" : sgaRatio >= 10 ? "warning" : "positive",
       title: "판매관리비 관리",
-      detail: `누적 판매관리비는 ${compactMoney(pnl.sgaExpense)}, 매출 대비 ${percent(sgaRatio)}입니다. 현재 판관비는 회사 공통비로 관리되며 사업부 표시는 매출비중 가배분 참고값입니다.`,
+      detail: `누적 판매관리비는 ${compactMoney(pnl.sgaExpense)}, 손익매출 대비 ${percent(sgaRatio)}입니다. 매출비중 가배분이 아니라 내부 엑셀의 사업부 경비총액을 사용합니다.`,
     });
     if (sgaRatio >= 10) {
-      actions.push("광고비·급여·차량·임차료 등 판관비를 사업부 태그로 입력해 실제 사업부 손익을 확보합니다.");
+      actions.push("급여·광고·차량·임차료·법인카드를 창호/인테리어/공통 태그로 입력해 월별 실비 손익을 관리합니다.");
     }
 
     insights.push({
@@ -139,18 +164,33 @@ export function buildRuleBasedManagementAnalysis(input: {
     if (latestRow && priorRow && latestNetChange != null) {
       const decreased = latestNetChange < 0;
       insights.push({
-        tone: decreased && latestNetChange <= -30 ? "risk" : decreased ? "warning" : "positive",
+        tone:
+          decreased && latestNetChange <= -30
+            ? "risk"
+            : decreased
+              ? "warning"
+              : "positive",
         title: `${latestRow.month}월 순이익 ${decreased ? "감소" : "증가"}`,
         detail: `${latestRow.month}월 순이익은 ${compactMoney(latestRow.netProfit)}로 전월 대비 ${percent(Math.abs(latestNetChange))} ${decreased ? "감소" : "증가"}했습니다.`,
       });
       if (decreased) {
-        actions.push(`${latestRow.month}월의 매출총이익, 판매관리비, 장려금 변동을 전월과 비교해 감소 원인을 확인합니다.`);
+        actions.push(`${latestRow.month}월 사업부별 매출총이익·판관비·장려금 변동을 전월과 비교합니다.`);
       }
     }
+  } else {
+    const strongerUnit =
+      officialInteriorContributionRate >= officialWindowContributionRate
+        ? "인테리어"
+        : "창호";
+    insights.push({
+      tone: "info",
+      title: `${strongerUnit} 현장 기여마진이 상대적으로 높음`,
+      detail: `내부 손익자료가 없어 영업실적 원장의 현장 기여마진만 비교했습니다. 창호 ${percent(officialWindowContributionRate)}, 인테리어 ${percent(officialInteriorContributionRate)}입니다.`,
+    });
   }
 
   if (actions.length === 0) {
-    actions.push("현재 추세를 유지하되 사업부별 원가율과 판관비율을 월 단위로 모니터링합니다.");
+    actions.push("현재 추세를 유지하되 사업부별 매출총이익률·판관비율·영업손익률을 월 단위로 모니터링합니다.");
   }
   actions.push("수기 자료와 ERP 자동자료가 겹치는 월은 자동자료 우선 집계 규칙을 유지합니다.");
 
@@ -163,12 +203,17 @@ export function buildRuleBasedManagementAnalysis(input: {
 
   const headline =
     status === "risk"
-      ? "매출 목표 진도와 이익 방어를 동시에 관리해야 합니다."
+      ? "목표 속도와 사업부별 비용구조를 동시에 바로잡아야 합니다."
       : status === "watch"
-        ? "성장은 이어지고 있지만 목표 속도와 비용 효율 점검이 필요합니다."
+        ? "매출은 성장하고 있지만 지표 기준과 판관비 분류를 함께 관리해야 합니다."
         : "매출과 수익성이 안정적으로 개선되고 있습니다.";
 
-  return { status, headline, insights: insights.slice(0, 5), actions: actions.slice(0, 4) };
+  return {
+    status,
+    headline,
+    insights: insights.slice(0, 6),
+    actions: actions.slice(0, 5),
+  };
 }
 
 function extractResponseText(payload: unknown) {
@@ -198,15 +243,19 @@ export async function requestOpenAiManagementBrief(input: {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const units = businessUnitTotals(input.summary);
+  const officialUnits = businessUnitTotals(input.summary);
   const payload = {
     annual_target: input.annualTarget,
-    official_sales: input.summary.revenueAmount,
-    official_cost: input.summary.costAmount,
-    official_margin: input.summary.marginAmount,
-    window: units.window,
-    interior: units.interior,
-    pnl: input.pnl
+    official_sales_performance: {
+      revenue: input.summary.revenueAmount,
+      cost: input.summary.costAmount,
+      margin: input.summary.marginAmount,
+      definition:
+        "현장·영업 실적원장 기준. 직원 목표와 매출 달성률에 사용하며 내부 손익과 원가범위가 다를 수 있음",
+      window: officialUnits.window,
+      interior: officialUnits.interior,
+    },
+    internal_pnl: input.pnl
       ? {
           through_month: input.pnl.latestMonth,
           revenue: input.pnl.totalRevenue,
@@ -215,11 +264,32 @@ export async function requestOpenAiManagementBrief(input: {
           operating_profit: input.pnl.operatingProfit,
           other_income: input.pnl.otherIncome,
           net_profit: input.pnl.netProfit,
+          window: {
+            revenue: input.pnl.windowRevenue,
+            cogs: input.pnl.windowCogs,
+            gross_profit: input.pnl.windowGrossProfit,
+            sga: input.pnl.windowSgaExpense,
+            operating_profit: input.pnl.windowOperatingProfit,
+            note: "현재 내부 엑셀의 창호 비용 블록이며 사무실·대표급여 등 본사성 비용 포함 가능",
+          },
+          interior: {
+            revenue: input.pnl.interiorRevenue,
+            cogs: input.pnl.interiorCogs,
+            gross_profit: input.pnl.interiorGrossProfit,
+            sga: input.pnl.interiorSgaExpense,
+            operating_profit: input.pnl.interiorOperatingProfit,
+          },
+          common_sga: input.pnl.commonSgaExpense,
           monthly: input.pnl.rows.map((row) => ({
             month: row.month,
             revenue: row.totalRevenue,
-            gross_profit: row.grossProfit,
-            sga: row.sgaExpense,
+            window_gross_profit: row.windowGrossProfit,
+            window_sga: row.windowSgaExpense,
+            window_operating_profit: row.windowOperatingProfit,
+            interior_gross_profit: row.interiorGrossProfit,
+            interior_sga: row.interiorSgaExpense,
+            interior_operating_profit: row.interiorOperatingProfit,
+            common_sga: row.commonSgaExpense,
             net_profit: row.netProfit,
           })),
         }
@@ -235,12 +305,12 @@ export async function requestOpenAiManagementBrief(input: {
     body: JSON.stringify({
       model: process.env.OPENAI_ANALYSIS_MODEL ?? "gpt-5-mini",
       store: false,
-      max_output_tokens: 900,
+      max_output_tokens: 1000,
       input: [
         {
           role: "developer",
           content:
-            "당신은 대한민국 주거 인테리어·창호 회사의 CFO 겸 영업전략가입니다. 제공된 집계수치만 사용하고 추측하지 마세요. 답변은 한국어로 작성하며 1) 핵심진단 2) 위험신호 3) 기회 4) 이번달 실행과제 순서로 간결하게 작성하세요. 고객 개인정보나 직원 평가는 포함하지 마세요.",
+            "당신은 대한민국 주거 인테리어·창호 회사의 CFO 겸 영업전략가입니다. 제공된 집계수치만 사용하고 추측하지 마세요. 사업부 수익성 비교는 internal_pnl을 우선 사용하고, official_sales_performance의 현장 기여마진과 절대 혼용하지 마세요. 서로 다른 지표를 언급할 때는 반드시 기준을 이름으로 밝혀야 합니다. 창호 판관비에는 본사성 비용이 포함될 수 있다는 주석도 반영하세요. 답변은 한국어로 1) 핵심진단 2) 지표기준 3) 위험신호 4) 실행과제 순서로 작성하세요. 고객 개인정보나 직원 평가는 포함하지 마세요.",
         },
         {
           role: "user",
