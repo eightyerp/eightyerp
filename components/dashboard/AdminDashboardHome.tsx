@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { updateCompanySalesTargetAction } from "@/app/actions/company-sales-target";
+import MonthlyPnlOverview from "@/components/dashboard/MonthlyPnlOverview";
+import type { CompanyPnlSummary } from "@/lib/crm/company-pnl";
 import type { CompanySalesTarget } from "@/lib/crm/company-sales-target";
 import type { DashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
 import {
@@ -10,17 +12,19 @@ import type { SettlementEmployeeOption } from "@/lib/crm/settlements";
 
 function compactMoney(value: number) {
   const amount = Number(value || 0);
-  if (Math.abs(amount) >= 100_000_000) {
-    const text = (amount / 100_000_000)
+  const sign = amount < 0 ? "-" : "";
+  const absolute = Math.abs(amount);
+  if (absolute >= 100_000_000) {
+    const text = (absolute / 100_000_000)
       .toFixed(2)
       .replace(/\.00$/, "")
       .replace(/(\.\d)0$/, "$1");
-    return `${text}억`;
+    return `${sign}${text}억`;
   }
-  if (Math.abs(amount) >= 10_000) {
-    return `${Math.round(amount / 10_000).toLocaleString("ko-KR")}만`;
+  if (absolute >= 10_000) {
+    return `${sign}${Math.round(absolute / 10_000).toLocaleString("ko-KR")}만`;
   }
-  return amount.toLocaleString("ko-KR");
+  return `${sign}${Math.round(absolute).toLocaleString("ko-KR")}`;
 }
 
 function marginRate(revenue: number, margin: number) {
@@ -32,17 +36,22 @@ const SECTIONS = [
   {
     href: "/dashboard/sales",
     label: "매출·경영 분석",
-    description: "창호·인테리어 매출, 월별 추이, 전년비, 직원 점유율, 마진을 봅니다.",
+    description: "창호·인테리어 매출, 월별 추이, 전년비, 직원 점유율과 마진을 봅니다.",
+  },
+  {
+    href: "/dashboard/finance",
+    label: "손익·비용 분석",
+    description: "월별 매출원가, 판매관리비, 장려금과 최종순이익을 봅니다.",
   },
   {
     href: "/dashboard/customers",
     label: "고객·영업 분석",
-    description: "오늘 할 일, 상담·실측·견적·계약, 미처리 고객 흐름을 봅니다.",
+    description: "오늘 할 일, 상담·실측·견적·계약과 미처리 고객 흐름을 봅니다.",
   },
   {
     href: "/dashboard/marketing",
     label: "마케팅 분석",
-    description: "유입경로, 문의→견적→계약 전환과 광고효율을 연결할 전용 화면입니다.",
+    description: "유입경로, 문의→견적→계약 전환과 광고효율을 연결합니다.",
   },
 ] as const;
 
@@ -62,10 +71,12 @@ function getTeamName(employee: SettlementEmployeeOption) {
 export default function AdminDashboardHome({
   summary,
   companyTarget,
+  companyPnl,
   salesEmployees,
 }: {
   summary: DashboardSettlementSummary;
   companyTarget: CompanySalesTarget | null;
+  companyPnl: CompanyPnlSummary | null;
   salesEmployees: SettlementEmployeeOption[];
 }) {
   const targetYear = companyTarget?.targetYear ?? 2026;
@@ -85,6 +96,15 @@ export default function AdminDashboardHome({
         : 1;
   const requiredMonthly = Math.ceil(remainingAmount / remainingMonths);
 
+  const windowRevenue = summary.employeeSales
+    .filter(
+      (row) => row.businessUnit === "window" || row.businessUnit === "shared",
+    )
+    .reduce((sum, row) => sum + Number(row.revenueAmount || 0), 0);
+  const interiorRevenue = summary.employeeSales
+    .filter((row) => row.businessUnit === "interior")
+    .reduce((sum, row) => sum + Number(row.revenueAmount || 0), 0);
+
   const employeeGoalMap = new Map<string, EmployeeGoalRow>();
   for (const employee of salesEmployees) {
     const teamName = getTeamName(employee);
@@ -98,7 +118,6 @@ export default function AdminDashboardHome({
     });
   }
 
-  // 직원 목록 조회가 일시적으로 실패해도 실적이 있는 직원은 표시합니다.
   if (employeeGoalMap.size === 0) {
     for (const row of summary.employeeSales) {
       if (!row.employeeId || row.businessUnit === "shared") continue;
@@ -121,7 +140,9 @@ export default function AdminDashboardHome({
   }
 
   const employeeGoalRows = [...employeeGoalMap.values()].sort(
-    (a, b) => b.revenueAmount - a.revenueAmount || a.label.localeCompare(b.label, "ko"),
+    (a, b) =>
+      b.revenueAmount - a.revenueAmount ||
+      a.label.localeCompare(b.label, "ko"),
   );
 
   return (
@@ -135,11 +156,13 @@ export default function AdminDashboardHome({
             2026 경영 요약
           </h1>
           <p className="mt-1 text-sm font-semibold text-slate-400">
-            상세 분석은 목적별 대시보드로 분리했습니다.
+            영업 실적은 창호와 인테리어로 분리하고, 내부 손익은 별도 원장으로 관리합니다.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-px bg-white/10 lg:grid-cols-4">
-          <DarkMetric label="누적 매출" value={compactMoney(summary.revenueAmount)} />
+        <div className="grid grid-cols-2 gap-px bg-white/10 lg:grid-cols-3 xl:grid-cols-6">
+          <DarkMetric label="총 매출" value={compactMoney(summary.revenueAmount)} />
+          <DarkMetric label="창호 매출" value={compactMoney(windowRevenue)} tone="window" />
+          <DarkMetric label="인테리어 매출" value={compactMoney(interiorRevenue)} tone="interior" />
           <DarkMetric label="매출원가" value={compactMoney(summary.costAmount)} />
           <DarkMetric label="마진" value={compactMoney(summary.marginAmount)} />
           <DarkMetric label="마진율" value={marginRate(summary.revenueAmount, summary.marginAmount)} />
@@ -165,10 +188,15 @@ export default function AdminDashboardHome({
             </p>
           </div>
 
-          <form action={updateCompanySalesTargetAction} className="flex flex-wrap items-end gap-2">
+          <form
+            action={updateCompanySalesTargetAction}
+            className="flex flex-wrap items-end gap-2"
+          >
             <input type="hidden" name="targetYear" value={targetYear} />
             <label className="block">
-              <span className="mb-1 block text-xs font-black text-slate-600">목표액(억원)</span>
+              <span className="mb-1 block text-xs font-black text-slate-600">
+                목표액(억원)
+              </span>
               <input
                 type="number"
                 name="targetEok"
@@ -203,9 +231,18 @@ export default function AdminDashboardHome({
           />
         </div>
         <p className="mt-3 text-xs font-semibold text-slate-500">
-          실적은 현재 입력된 수기·이관 데이터 기준입니다. 향후 ERP 자동실적이 같은 직원·월에 생성되면 자동실적을 우선 집계합니다.
+          영업목표 달성률은 현장·시공 실적원장 기준입니다. 동일 직원·월에 ERP 자동실적이 생성되면 자동실적을 우선합니다.
         </p>
       </section>
+
+      {companyPnl ? (
+        <MonthlyPnlOverview
+          pnl={companyPnl}
+          annualTarget={targetAmount}
+          officialSalesRevenue={summary.revenueAmount}
+          mode="home"
+        />
+      ) : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -241,7 +278,7 @@ export default function AdminDashboardHome({
         )}
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {SECTIONS.map((section) => (
           <Link
             key={section.href}
@@ -249,8 +286,12 @@ export default function AdminDashboardHome({
             className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
           >
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-black text-slate-950">{section.label}</h2>
-              <span className="text-lg font-black text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-900">→</span>
+              <h2 className="text-base font-black text-slate-950">
+                {section.label}
+              </h2>
+              <span className="text-lg font-black text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-900">
+                →
+              </span>
             </div>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
               {section.description}
@@ -338,11 +379,25 @@ function EmployeeGoalCard({ row }: { row: EmployeeGoalRow }) {
   );
 }
 
-function DarkMetric({ label, value }: { label: string; value: string }) {
+function DarkMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "window" | "interior";
+}) {
+  const valueClass =
+    tone === "window"
+      ? "text-sky-300"
+      : tone === "interior"
+        ? "text-violet-300"
+        : "text-white";
   return (
     <div className="bg-slate-950 px-5 py-4">
       <p className="text-xs font-black text-slate-400">{label}</p>
-      <p className="mt-1 text-xl font-black text-white">{value}</p>
+      <p className={`mt-1 text-xl font-black ${valueClass}`}>{value}</p>
     </div>
   );
 }
