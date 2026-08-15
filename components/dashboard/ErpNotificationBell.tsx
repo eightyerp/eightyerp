@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getMyCollectionNotificationsAction } from "@/app/actions/collections";
 import { getMyCustomerPushesAction } from "@/app/actions/customer-push";
 import { getMyExpenseNotificationsAction } from "@/app/actions/expenses";
@@ -17,6 +17,15 @@ type NotificationItem =
   | { kind: "customer"; createdAt: string; item: CustomerPushItem }
   | { kind: "collection"; createdAt: string; item: CollectionNotificationItem }
   | { kind: "expense"; createdAt: string; item: ExpenseNotificationItem };
+
+type CachedNotifications = {
+  savedAt: number;
+  items: NotificationItem[];
+};
+
+const CACHE_KEY = "eighty-erp:notifications:v1";
+const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+const OPEN_REFRESH_MS = 30 * 1000;
 
 function formatTime(value: string): string {
   const date = new Date(value);
@@ -41,20 +50,56 @@ function collectionTypeLabel(value: string): string {
   ] ?? value;
 }
 
+function readCache(): CachedNotifications | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedNotifications;
+    if (!Array.isArray(parsed.items) || !Number.isFinite(parsed.savedAt)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(items: NotificationItem[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ savedAt: Date.now(), items } satisfies CachedNotifications),
+    );
+  } catch {
+    // 저장공간이 막힌 환경에서도 알림 기능 자체는 유지합니다.
+  }
+}
+
 export default function ErpNotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
+    const cached = readCache();
+    if (!cached) return;
+    setItems(cached.items);
+    setLoadedAt(cached.savedAt);
+  }, []);
+
+  const load = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
       const [customers, collections, expenses] = await Promise.all([
         getMyCustomerPushesAction(),
         getMyCollectionNotificationsAction(),
         getMyExpenseNotificationsAction(),
       ]);
-      if (cancelled) return;
       const merged: NotificationItem[] = [
         ...customers.map((item) => ({
           kind: "customer" as const,
@@ -78,14 +123,22 @@ export default function ErpNotificationBell() {
         )
         .slice(0, 20);
       setItems(merged);
+      const now = Date.now();
+      setLoadedAt(now);
+      writeCache(merged);
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
     }
-    void load();
-    const interval = window.setInterval(() => void load(), 30_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const stale = loadedAt === null || Date.now() - loadedAt > CACHE_MAX_AGE_MS;
+    if (stale) void load();
+    const interval = window.setInterval(() => void load(), OPEN_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [open, loadedAt, load]);
 
   useEffect(() => {
     function closeOnOutside(event: MouseEvent | TouchEvent) {
@@ -128,12 +181,27 @@ export default function ErpNotificationBell() {
 
       {open ? (
         <div className="absolute right-0 top-12 z-50 w-[min(23rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">ERP 알림</p>
-            <p className="mt-0.5 text-xs text-slate-500">고객 · 수금 · 지출 알림을 확인합니다.</p>
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+            <div>
+              <p className="text-sm font-bold text-slate-900">ERP 알림</p>
+              <p className="mt-0.5 text-xs text-slate-500">상세 알림은 벨을 열 때 불러옵니다.</p>
+            </div>
+            {loading ? (
+              <span className="text-[11px] font-bold text-sky-700">새로고침 중...</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-black text-slate-600 hover:bg-slate-50"
+              >
+                새로고침
+              </button>
+            )}
           </div>
           <div className="max-h-96 overflow-y-auto">
-            {items.length === 0 ? (
+            {loading && items.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">알림을 불러오는 중입니다.</p>
+            ) : items.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-slate-500">새 알림이 없습니다.</p>
             ) : (
               items.map((notification) => {
