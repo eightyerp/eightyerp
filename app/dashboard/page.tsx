@@ -2,6 +2,7 @@ import AdminDashboardHome from "@/components/dashboard/AdminDashboardHome";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
+import { getCompanyMonthlyPnl } from "@/lib/crm/company-pnl";
 import { getCompanySalesTarget } from "@/lib/crm/company-sales-target";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
 import {
@@ -22,6 +23,7 @@ export default async function DashboardPage({ searchParams }: Props) {
   let bundle = null;
   let settlementSummary = null;
   let companyTarget = null;
+  let companyPnl = null;
   let salesEmployees: SettlementEmployeeOption[] = [];
 
   try {
@@ -33,14 +35,16 @@ export default async function DashboardPage({ searchParams }: Props) {
   const isAdmin = settlementSummary?.isFinanceAdmin === true;
 
   if (isAdmin) {
-    const [targetResult, employeeResult] = await Promise.allSettled([
+    const [targetResult, employeeResult, pnlResult] = await Promise.allSettled([
       getCompanySalesTarget(2026),
       listSettlementEmployees(),
+      getCompanyMonthlyPnl(2026),
     ]);
     companyTarget =
       targetResult.status === "fulfilled" ? targetResult.value : null;
     salesEmployees =
       employeeResult.status === "fulfilled" ? employeeResult.value : [];
+    companyPnl = pnlResult.status === "fulfilled" ? pnlResult.value : null;
   }
 
   try {
@@ -70,6 +74,7 @@ export default async function DashboardPage({ searchParams }: Props) {
             <AdminDashboardHome
               summary={settlementSummary}
               companyTarget={companyTarget}
+              companyPnl={companyPnl}
               salesEmployees={salesEmployees}
             />
           ) : (

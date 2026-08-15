@@ -3,6 +3,7 @@ import Link from "next/link";
 const ITEMS = [
   { href: "/dashboard", label: "경영 홈", key: "home" },
   { href: "/dashboard/sales", label: "매출·경영", key: "sales" },
+  { href: "/dashboard/finance", label: "손익·비용", key: "finance" },
   { href: "/dashboard/customers", label: "고객·영업", key: "customers" },
   { href: "/dashboard/marketing", label: "마케팅", key: "marketing" },
 ] as const;
