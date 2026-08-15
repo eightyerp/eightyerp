@@ -16,6 +16,7 @@
 - 내부 손익에 이미 포함된 영업인센티브를 다시 차감하지 않도록 명시
 - 영업실적 매출과 내부 손익 매출 차이 표시
 - 회사공통비 재분류 후보 Preview 추가
+- 재무업무함 / 수금 / 지출 Preview 바로가기 추가
 
 ### 3. 지출 v2 Preview
 - `/finance/payments-preview`
@@ -48,9 +49,9 @@
 - `getCurrentCompanyAccess` 요청 단위 cache
 - dashboard / finance loading Skeleton
 - 알림 상세목록 lazy load
-- 알림벨을 열기 전 고객·수금·지출 3개 상세조회 제거
-- 알림 상세 캐시를 sessionStorage에 보관
-- 알림벨이 열린 동안에만 주기 새로고침
+- 페이지 진입 시 고객·수금·지출 상세알림 3개 즉시조회 제거
+- 최근 알림을 sessionStorage에 캐시
+- 알림벨이 열린 동안에만 30초 새로고침
 
 ### 7. 정산 계산 규칙 중앙화
 - `lib/crm/settlement-preview-rules.ts`
@@ -60,6 +61,7 @@
 - 예상 지급액
 - 회사귀속마진
 - `scripts/test-finance-v2-rules.ts` 자동 테스트 추가
+- `npm run test:finance-v2` 스크립트 추가
 
 ### 8. DB 후보 설계
 - 개인 선지급 환급상태
@@ -88,16 +90,17 @@ Vercel Preview는 현재 `build-rate-limit`으로 빌드 시작 전 차단됩니
 - ESLint
 - Next.js Production Build
 - Preview 실제 화면
+- 추가된 자동 테스트 실제 실행
 
 운영 Production으로 우회하지 않습니다.
 
 ## 다음 구현 순서
 
-1. Vercel 제한 해제 즉시 Build 검증
+1. Vercel 제한 해제 즉시 Build + `test:finance-v2` 검증
 2. 오류 수정
-3. 지출 v2 실제 Preview migration 후보 완성
-4. 수금 기초잔액 이관 Preview
+3. 지출 v2 실제 Preview migration 후보와 RPC v3 완성
+4. 수금 기초잔액 이관 Preview와 배분 RPC 후보
 5. 관리자 재무업무함 동작 검증
-6. 직원·관리자 권한 테스트
-7. 성능 전후 측정
+6. 직원·관리자 RLS 행동 테스트
+7. 페이지 전환 성능 전후 측정
 8. Gate 4 변경 전후 보고
