@@ -295,10 +295,17 @@ export async function getFinanceV2PreviewBundle(): Promise<FinanceV2PreviewBundl
       severity: eligibleContracts.length === 0 ? "critical" : "normal",
       hint: "현재 계약 원장이 비어 있으면 수금관리 실사용이 불가능합니다.",
     },
-  ].sort((a, b) => {
-    const rank = { critical: 0, warning: 1, normal: 2 } as const;
-    return rank[a.severity] - rank[b.severity] || b.amount - a.amount || b.count - a.count;
-  });
+  ];
+  const priorityRank: Record<FinancePriorityItem["severity"], number> = {
+    critical: 0,
+    warning: 1,
+    normal: 2,
+  };
+  priorities.sort((a, b) =>
+    priorityRank[a.severity] - priorityRank[b.severity] ||
+    b.amount - a.amount ||
+    b.count - a.count,
+  );
 
   return {
     contractCount: eligibleContracts.length,
