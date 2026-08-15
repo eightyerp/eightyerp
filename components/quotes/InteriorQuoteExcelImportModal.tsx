@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveInteriorQuoteImportAction } from "@/app/actions/interior-quote-import";
 import InteriorQuoteErrorReviewPanel from "./InteriorQuoteErrorReviewPanel";
@@ -52,6 +52,7 @@ export default function InteriorQuoteExcelImportModal({
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const requestIdRef = useRef<string | null>(null);
   const [query, setQuery] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [employeeId, setEmployeeId] = useState(
@@ -168,6 +169,7 @@ export default function InteriorQuoteExcelImportModal({
     try {
       const buffer = await nextFile.arrayBuffer();
       const result = parseInteriorQuoteWorkbook(buffer);
+      requestIdRef.current = crypto.randomUUID();
       setFile(nextFile);
       setRecognition(recognizeQuoteWorkbook(buffer));
       setParsed(result);
@@ -259,6 +261,8 @@ export default function InteriorQuoteExcelImportModal({
   function submit(confirmDuplicate = false) {
     if (saveBlockReason) return setError(saveBlockReason);
     if (!file || !parsed || !selectedCustomer) return;
+    const requestId = requestIdRef.current ?? crypto.randomUUID();
+    requestIdRef.current = requestId;
     setError(null);
     startTransition(async () => {
       const form = new FormData();
@@ -267,7 +271,7 @@ export default function InteriorQuoteExcelImportModal({
       form.set(
         "header_json",
         JSON.stringify({
-          request_id: crypto.randomUUID(),
+          request_id: requestId,
           customer_id: selectedCustomer.id,
           assigned_employee_id: employeeId || null,
           quote_type: "인테리어",
@@ -302,6 +306,7 @@ export default function InteriorQuoteExcelImportModal({
         setError(result.error ?? "저장에 실패했습니다.");
         return;
       }
+      requestIdRef.current = null;
       router.push(`/quotes/${result.quoteId}`);
       router.refresh();
     });
