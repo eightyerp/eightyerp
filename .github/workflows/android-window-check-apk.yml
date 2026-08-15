@@ -20,7 +20,7 @@ permissions:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -44,6 +44,11 @@ jobs:
             "build-tools;35.0.0" \
             "emulator" \
             "system-images;android-36;google_apis;x86_64"
+
+      - name: Enable KVM acceleration
+        run: |
+          sudo chmod 666 /dev/kvm || true
+          ls -l /dev/kvm || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -84,11 +89,13 @@ jobs:
             -no-boot-anim \
             -gpu swiftshader_indirect \
             -no-snapshot \
+            -accel on \
             > "$RUNNER_TEMP/eighty-emulator.log" 2>&1 &
           adb wait-for-device
-          for i in $(seq 1 120); do
+          for i in $(seq 1 75); do
             BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
             if [ "$BOOT" = "1" ]; then
+              adb shell input keyevent 82 || true
               exit 0
             fi
             sleep 2
@@ -109,8 +116,9 @@ jobs:
       - name: Launch app smoke
         run: |
           PACKAGE="com.eighty.windowcheck.preview.internal"
+          adb logcat -c
           adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee launch-smoke.txt
-          sleep 3
+          sleep 4
           adb shell pidof "$PACKAGE" | tee app-pid.txt
           test -s app-pid.txt
           if adb logcat -d -t 500 | grep -E "FATAL EXCEPTION|Process: $PACKAGE"; then
@@ -118,7 +126,7 @@ jobs:
             exit 1
           fi
 
-      - name: Upload APK only after install smoke passes
+      - name: Upload APK only after Android 16 install and launch pass
         uses: actions/upload-artifact@v4
         with:
           name: eighty-window-check-install-verified-apk
