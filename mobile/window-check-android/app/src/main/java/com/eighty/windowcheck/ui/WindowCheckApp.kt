@@ -41,13 +41,13 @@ import com.eighty.windowcheck.ui.screens.AnalysisScreen
 import com.eighty.windowcheck.ui.screens.CaptureGuideScreen
 import com.eighty.windowcheck.ui.screens.CaptureScreen
 import com.eighty.windowcheck.ui.screens.CustomerReportScreen
-import com.eighty.windowcheck.ui.screens.DetailResultScreen
+import com.eighty.windowcheck.ui.screens.EmployeeDetailResultScreen
+import com.eighty.windowcheck.ui.screens.EmployeeResultSummaryScreen
 import com.eighty.windowcheck.ui.screens.EvidencePhotosScreen
 import com.eighty.windowcheck.ui.screens.HistoryPlaceholderScreen
 import com.eighty.windowcheck.ui.screens.InspectionSetupScreen
 import com.eighty.windowcheck.ui.screens.LocationSetupScreen
 import com.eighty.windowcheck.ui.screens.LocationSymptomsScreen
-import com.eighty.windowcheck.ui.screens.ResultSummaryScreen
 import com.eighty.windowcheck.ui.screens.SolutionScreen
 import com.eighty.windowcheck.ui.screens.StaffReviewScreen
 import com.eighty.windowcheck.ui.screens.StartScreen
@@ -220,6 +220,19 @@ fun WindowCheckApp() {
             AppScreen.CUSTOMER_REPORT -> AppScreen.STAFF_REVIEW
             AppScreen.SOLUTION -> AppScreen.CUSTOMER_REPORT
         }
+    }
+
+    fun beginLocationSymptoms() {
+        currentSymptomIndex = 0
+        locations.forEach { location ->
+            if (conditions[location.id] == null) {
+                conditions[location.id] = LocationCondition(
+                    locationId = location.id,
+                    locationName = location.name,
+                )
+            }
+        }
+        screen = AppScreen.SYMPTOMS
     }
 
     BackHandler(enabled = screen != AppScreen.START) {
@@ -477,33 +490,19 @@ fun WindowCheckApp() {
             AppScreen.ANALYZING -> AnalysisScreen(progress = analysisProgress)
 
             AppScreen.RESULT -> result?.let { diagnosis ->
-                ResultSummaryScreen(
+                EmployeeResultSummaryScreen(
                     result = diagnosis,
                     onBack = ::navigateBack,
                     onDetail = { screen = AppScreen.DETAIL },
-                    onVisit = {
-                        currentSymptomIndex = 0
-                        screen = AppScreen.SYMPTOMS
-                    },
+                    onContinue = ::beginLocationSymptoms,
                 )
             }
 
             AppScreen.DETAIL -> result?.let { diagnosis ->
-                DetailResultScreen(
+                EmployeeDetailResultScreen(
                     result = diagnosis,
                     onBack = ::navigateBack,
-                    onNext = {
-                        currentSymptomIndex = 0
-                        locations.forEach { location ->
-                            if (conditions[location.id] == null) {
-                                conditions[location.id] = LocationCondition(
-                                    locationId = location.id,
-                                    locationName = location.name,
-                                )
-                            }
-                        }
-                        screen = AppScreen.SYMPTOMS
-                    },
+                    onContinue = ::beginLocationSymptoms,
                 )
             }
 
