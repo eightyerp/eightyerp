@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses >/dev/null
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Enable KVM acceleration
@@ -57,13 +57,10 @@ jobs:
       - name: Verify APK signature and manifest
         working-directory: mobile/window-check-android
         run: |
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-          test -s "$APK"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apk-signature.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk | tee apk-signature.txt
           grep -F "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature.txt
-          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt
           grep -F "package: name='com.eighty.windowcheck.preview.internal'" apk-badging.txt
           grep -F "targetSdkVersion:'36'" apk-badging.txt
 
@@ -81,18 +78,16 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            APK="mobile/window-check-android/app/build/outputs/apk/debug/app-debug.apk"
-            PACKAGE="com.eighty.windowcheck.preview.internal"
-            adb install -r "$APK" | tee adb-install.txt
+            adb install -r mobile/window-check-android/app/build/outputs/apk/debug/app-debug.apk | tee adb-install.txt
             grep -F "Success" adb-install.txt
-            adb shell pm path "$PACKAGE" | tee installed-path.txt
+            adb shell pm path com.eighty.windowcheck.preview.internal | tee installed-path.txt
             grep -F "package:" installed-path.txt
             adb logcat -c
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee launch-smoke.txt
+            adb shell monkey -p com.eighty.windowcheck.preview.internal -c android.intent.category.LAUNCHER 1 | tee launch-smoke.txt
             sleep 5
-            adb shell pidof "$PACKAGE" | tee app-pid.txt
+            adb shell pidof com.eighty.windowcheck.preview.internal | tee app-pid.txt
             test -s app-pid.txt
-            if adb logcat -d -t 700 | grep -E "FATAL EXCEPTION|Process: $PACKAGE"; then
+            if adb logcat -d -t 700 | grep -E "FATAL EXCEPTION|Process: com.eighty.windowcheck.preview.internal"; then
               echo "App crash detected after launch"
               exit 1
             fi
