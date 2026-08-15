@@ -36,30 +36,46 @@ const ACCEPTED_EXCEL_MIME_TYPES = new Set([
 ]);
 
 function cleanFileName(name: string): string {
-  const normalized = name.normalize("NFKC").replace(/[^0-9A-Za-z가-힣._-]+/g, "-").replace(/-+/g, "-");
+  const normalized = name
+    .normalize("NFKC")
+    .replace(/[^0-9A-Za-z가-힣._-]+/g, "-")
+    .replace(/-+/g, "-");
   return normalized.slice(-120) || "interior-quote.xlsx";
 }
 
 function validateSignature(bytes: Uint8Array, ext: "xlsx" | "xls") {
   const xlsx = bytes[0] === 0x50 && bytes[1] === 0x4b;
-  const xls = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every((value, index) => bytes[index] === value);
-  if ((ext === "xlsx" && !xlsx) || (ext === "xls" && !xls)) throw new Error("파일 내용과 Excel 확장자가 일치하지 않습니다.");
+  const xls = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every(
+    (value, index) => bytes[index] === value,
+  );
+  if ((ext === "xlsx" && !xlsx) || (ext === "xls" && !xls)) {
+    throw new Error("파일 내용과 Excel 확장자가 일치하지 않습니다.");
+  }
 }
 
-function parseJsonObject(value: FormDataEntryValue | null, label: string): Record<string, unknown> {
+function parseJsonObject(
+  value: FormDataEntryValue | null,
+  label: string,
+): Record<string, unknown> {
   try {
     const parsed = JSON.parse(String(value ?? "")) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error();
+    }
     return parsed as Record<string, unknown>;
   } catch {
     throw new Error(`${label} 형식이 올바르지 않습니다.`);
   }
 }
 
-function parseItems(value: FormDataEntryValue | null): Array<Record<string, unknown>> {
+function parseItems(
+  value: FormDataEntryValue | null,
+): Array<Record<string, unknown>> {
   try {
     const parsed = JSON.parse(String(value ?? "")) as unknown;
-    if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 2000) throw new Error();
+    if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 2000) {
+      throw new Error();
+    }
     return parsed as Array<Record<string, unknown>>;
   } catch {
     throw new Error("견적 항목 형식이 올바르지 않습니다.");
@@ -68,7 +84,9 @@ function parseItems(value: FormDataEntryValue | null): Array<Record<string, unkn
 
 function finiteNonnegative(value: unknown, label: string): number {
   const parsed = Number(value ?? 0);
-  if (!Number.isFinite(parsed) || parsed < 0) validationError(`${label}은 0 이상의 숫자여야 합니다.`);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    validationError(`${label}은 0 이상의 숫자여야 합니다.`);
+  }
   return parsed;
 }
 
@@ -78,18 +96,40 @@ function finiteMoney(value: unknown, label: string): number {
 }
 
 function safeSaveError(error: unknown): string {
-  const message = error instanceof Error ? error.message : "알 수 없는 서버 오류";
+  const message =
+    error instanceof Error ? error.message : "알 수 없는 서버 오류";
   if (error instanceof InteriorImportValidationError) return message;
   if (/permission|forbidden|unauthorized|권한|접근할 수 없/i.test(message)) {
     return "견적을 저장할 권한이 없습니다. 고객과 담당 직원의 권한 범위를 확인해 주세요.";
   }
-  if (/고객을 선택|담당 직원|유상 품목|총액|견적 항목|마이그레이션/i.test(message)) {
+  if (
+    /고객을 선택|담당 직원|유상 품목|총액|견적 항목|마이그레이션/i.test(
+      message,
+    )
+  ) {
     return message;
   }
-  const summary = /[가-힣]/.test(message) && message.length <= 180
-    ? message
-    : "서버 저장 요청을 처리하지 못했습니다. 관리자 로그를 확인해 주세요.";
+  const summary =
+    /[가-힣]/.test(message) && message.length <= 180
+      ? message
+      : "서버 저장 요청을 처리하지 못했습니다. 관리자 로그를 확인해 주세요.";
   return `견적 저장에 실패했습니다: ${summary}`;
+}
+
+/**
+ * 같은 request_id 재시도는 같은 quote_id를 돌려받으므로 quote_files PK도 고정한다.
+ * 이렇게 하면 사용자가 더블클릭하거나 두 요청이 동시에 들어와도 원본 메타데이터가
+ * 중복 생성되지 않고, 한 요청의 insert가 먼저 끝난 경우 나머지는 정상 재생으로 처리된다.
+ */
+function deterministicUuid(seed: string): string {
+  const hex = createHash("sha256").update(seed).digest("hex").slice(0, 32);
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join("-");
 }
 
 /**
@@ -102,6 +142,7 @@ function safeSaveError(error: unknown): string {
 async function ensureInteriorImportFile(input: {
   customerId: string;
   quoteId: string;
+  requestId: string;
   fileName: string;
   fileHash: string;
   fileSize: number;
@@ -110,6 +151,9 @@ async function ensureInteriorImportFile(input: {
 }) {
   const supabase = await createClient();
   const filePath = `${input.customerId}/${input.quoteId}/interior-import-${input.fileHash}.${input.ext}`;
+  const metadataId = deterministicUuid(
+    `interior-import:${input.quoteId}:${input.requestId}`,
+  );
 
   const { data: alreadyLinked, error: linkedError } = await supabase
     .from("quote_files")
@@ -134,7 +178,11 @@ async function ensureInteriorImportFile(input: {
   if (otherImportError) {
     throw new Error("기존 Excel 원본을 확인하지 못했습니다.");
   }
-  if ((otherImport ?? []).some((row) => row.file_path && row.file_path !== filePath)) {
+  if (
+    (otherImport ?? []).some(
+      (row) => row.file_path && row.file_path !== filePath,
+    )
+  ) {
     throw new Error(
       "같은 저장 요청에 다른 Excel 파일이 연결되어 있습니다. 화면을 새로고침한 뒤 다시 저장해 주세요.",
     );
@@ -153,6 +201,7 @@ async function ensureInteriorImportFile(input: {
   }
 
   const { error: metadataError } = await supabase.from("quote_files").insert({
+    id: metadataId,
     quote_id: input.quoteId,
     file_type: input.ext,
     file_path: filePath,
@@ -163,23 +212,47 @@ async function ensureInteriorImportFile(input: {
     is_primary: false,
   });
 
-  if (metadataError) {
-    // DB 메타데이터가 실패하면 고아 Storage 객체를 남기지 않는다.
-    await supabase.storage.from(QUOTE_FILES_BUCKET).remove([filePath]);
-    throw new Error(
-      "견적은 임시 저장되었지만 원본 Excel 정보를 연결하지 못했습니다. 같은 화면에서 다시 저장해 주세요.",
-    );
+  if (!metadataError) return;
+
+  // 동시 요청이면 동일 deterministic PK 중 하나만 성공한다. 실패한 요청은 실제로
+  // 같은 메타데이터가 생성됐는지 다시 확인하고 성공으로 취급한다.
+  const { data: linkedAfterConflict, error: recheckError } = await supabase
+    .from("quote_files")
+    .select("id,file_path,deleted_at")
+    .eq("id", metadataId)
+    .maybeSingle();
+  if (
+    !recheckError &&
+    linkedAfterConflict &&
+    !linkedAfterConflict.deleted_at &&
+    linkedAfterConflict.file_path === filePath
+  ) {
+    return;
   }
+
+  // Storage 객체는 지우지 않는다. 객체 경로가 멱등적이므로 다음 재시도에서 그대로
+  // upsert 후 메타데이터 연결을 복구할 수 있고, 동시 요청 중 다른 성공 경로를 깨지 않는다.
+  throw new Error(
+    "견적은 임시 저장되었지만 원본 Excel 정보를 연결하지 못했습니다. 같은 화면에서 다시 저장해 주세요.",
+  );
 }
 
-export async function saveInteriorQuoteImportAction(formData: FormData): Promise<InteriorQuoteImportActionResult> {
+export async function saveInteriorQuoteImportAction(
+  formData: FormData,
+): Promise<InteriorQuoteImportActionResult> {
   try {
     const file = formData.get("file");
-    if (!(file instanceof File) || file.size <= 0) throw new Error("Excel 파일을 선택해 주세요.");
-    if (file.size > INTERIOR_EXCEL_MAX_BYTES) throw new Error("Excel 파일은 15MB 이하여야 합니다.");
+    if (!(file instanceof File) || file.size <= 0) {
+      throw new Error("Excel 파일을 선택해 주세요.");
+    }
+    if (file.size > INTERIOR_EXCEL_MAX_BYTES) {
+      throw new Error("Excel 파일은 15MB 이하여야 합니다.");
+    }
     const cleanName = cleanFileName(file.name);
     const ext = cleanName.split(".").pop()?.toLowerCase();
-    if (ext !== "xlsx" && ext !== "xls") throw new Error("xlsx 또는 xls 파일만 업로드할 수 있습니다.");
+    if (ext !== "xlsx" && ext !== "xls") {
+      throw new Error("xlsx 또는 xls 파일만 업로드할 수 있습니다.");
+    }
     if (!ACCEPTED_EXCEL_MIME_TYPES.has(file.type)) {
       throw new Error("Excel MIME 형식이 올바르지 않습니다.");
     }
@@ -191,34 +264,53 @@ export async function saveInteriorQuoteImportAction(formData: FormData): Promise
     const items = parseItems(formData.get("items_json"));
     const customerId = String(header.customer_id ?? "").trim();
     const employeeId = String(header.assigned_employee_id ?? "").trim();
+    const requestId = String(header.request_id ?? "").trim();
     if (!customerId) validationError("고객을 선택해 주세요.");
     if (!employeeId) validationError("담당 직원을 선택해 주세요.");
-    if (String(header.quote_type ?? "") !== "인테리어") validationError("견적 유형이 올바르지 않습니다.");
+    if (String(header.quote_type ?? "") !== "인테리어") {
+      validationError("견적 유형이 올바르지 않습니다.");
+    }
 
     const normalizedItems = items.map((item, index) => {
       const itemName = String(item.item_name ?? "").trim();
       const description = String(item.description ?? "").trim();
-      if (!itemName && !description) validationError(`${index + 1}번째 품목의 품목명 또는 설명이 필요합니다.`);
+      if (!itemName && !description) {
+        validationError(
+          `${index + 1}번째 품목의 품목명 또는 설명이 필요합니다.`,
+        );
+      }
       return {
         ...item,
         item_name: itemName || null,
         description: description || null,
-        quantity: finiteNonnegative(item.quantity, `${index + 1}번째 품목 수량`),
-        unit_price: finiteMoney(item.unit_price, `${index + 1}번째 품목 단가`),
+        quantity: finiteNonnegative(
+          item.quantity,
+          `${index + 1}번째 품목 수량`,
+        ),
+        unit_price: finiteMoney(
+          item.unit_price,
+          `${index + 1}번째 품목 단가`,
+        ),
         amount: finiteMoney(item.amount, `${index + 1}번째 품목 금액`),
       };
     }) as unknown as QuoteItemInput[];
     const paidItemCount = normalizedItems.filter((item) => item.amount > 0).length;
     const referenceItemCount = normalizedItems.length - paidItemCount;
-    if (paidItemCount === 0) validationError("유효한 유상 품목이 1개 이상 필요합니다.");
+    if (paidItemCount === 0) {
+      validationError("유효한 유상 품목이 1개 이상 필요합니다.");
+    }
     const subtotal = normalizedItems.reduce((sum, item) => sum + item.amount, 0);
     const headerSubtotal = finiteMoney(header.total_amount, "품목 소계");
-    if (Math.abs(subtotal - headerSubtotal) > 1) validationError("저장 품목 소계와 화면 계산 소계가 일치하지 않습니다.");
+    if (Math.abs(subtotal - headerSubtotal) > 1) {
+      validationError("저장 품목 소계와 화면 계산 소계가 일치하지 않습니다.");
+    }
     const discount = finiteMoney(header.discount_amount, "할인 금액");
     const supply = finiteMoney(header.supply_amount, "공급가");
     const vat = finiteMoney(header.vat_amount, "부가세");
     const total = finiteMoney(header.customer_total_amount, "총액");
-    if (Math.abs(supply + vat - total) > 1) validationError("공급가·부가세·총액이 일치하지 않습니다.");
+    if (Math.abs(supply + vat - total) > 1) {
+      validationError("공급가·부가세·총액이 일치하지 않습니다.");
+    }
 
     console.info("[interior-quote-import] save-attempt", {
       customerId,
@@ -233,14 +325,25 @@ export async function saveInteriorQuoteImportAction(formData: FormData): Promise
       fileHashPrefix: fileHash.slice(0, 12),
     });
     const quote = await createQuote({
-      requestId: String(header.request_id ?? ""),
+      requestId,
       form: {
-        customer_id: customerId, project_id: null, quote_type: "인테리어", quote_mode: "detailed",
-        title: String(header.title ?? "인테리어 견적"), quote_number: null, status: "작성중",
-        total_amount: subtotal, discount_amount: discount,
-        lx_discount_rate: 0, final_amount: Number(header.final_amount ?? 0), valid_until: null,
-        issued_at: String(header.issued_at ?? ""), assigned_employee_id: employeeId,
-        is_contract_quote: false, customer_message: null, memo: `Excel Import · SHA-256 ${fileHash.slice(0, 12)}`,
+        customer_id: customerId,
+        project_id: null,
+        quote_type: "인테리어",
+        quote_mode: "detailed",
+        title: String(header.title ?? "인테리어 견적"),
+        quote_number: null,
+        status: "작성중",
+        total_amount: subtotal,
+        discount_amount: discount,
+        lx_discount_rate: 0,
+        final_amount: Number(header.final_amount ?? 0),
+        valid_until: null,
+        issued_at: String(header.issued_at ?? ""),
+        assigned_employee_id: employeeId,
+        is_contract_quote: false,
+        customer_message: null,
+        memo: `Excel Import · SHA-256 ${fileHash.slice(0, 12)}`,
       },
       items: normalizedItems,
       // 원본 Excel은 아래 멱등 연결 단계에서 처리한다. createQuote의 created-only 첨부를 사용하면
@@ -248,11 +351,14 @@ export async function saveInteriorQuoteImportAction(formData: FormData): Promise
       files: [],
     });
     const quoteId = quote.quote_id || quote.id;
-    if (!quoteId) throw new Error("생성된 견적 ID를 확인할 수 없습니다.");
+    if (!quoteId) {
+      throw new Error("생성된 견적 ID를 확인할 수 없습니다.");
+    }
 
     await ensureInteriorImportFile({
       customerId,
       quoteId,
+      requestId,
       fileName: cleanName,
       fileHash,
       fileSize: file.size,
@@ -264,7 +370,11 @@ export async function saveInteriorQuoteImportAction(formData: FormData): Promise
     revalidatePath(`/customers/${customerId}`);
     return { success: true, quoteId };
   } catch (error) {
-    const detail = error as Error & { code?: string; details?: string; hint?: string };
+    const detail = error as Error & {
+      code?: string;
+      details?: string;
+      hint?: string;
+    };
     console.error("[interior-quote-import] save-failed", {
       name: detail?.name ?? null,
       message: detail?.message ?? String(error),
