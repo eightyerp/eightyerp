@@ -39,8 +39,15 @@ jobs:
         run: npx tsc --noEmit
 
       - name: ESLint diagnostic
+        id: lint
         continue-on-error: true
         run: npm run lint
 
       - name: Next.js production build
         run: npm run build
+
+      - name: Enforce lint gate after build diagnostics
+        if: steps.lint.outcome == 'failure'
+        run: |
+          echo "ESLint errors remain. Build diagnostics completed, but Gate 3 is not ready to merge."
+          exit 1
