@@ -30,7 +30,7 @@ export async function getWindowYoYSummary(): Promise<WindowYoYSummary | null> {
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("sales_performance_monthly")
+    .from("sales_performance_effective")
     .select("sales_year, sales_month, revenue_amount, cost_amount, margin_amount")
     .eq("company_id", access.companyId)
     .eq("business_unit", "window")

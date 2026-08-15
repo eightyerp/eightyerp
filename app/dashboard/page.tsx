@@ -2,6 +2,7 @@ import AdminDashboardHome from "@/components/dashboard/AdminDashboardHome";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
+import { getCompanySalesTarget } from "@/lib/crm/company-sales-target";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
 import { getTodayWorkBundle } from "@/lib/crm/today-work";
 import type { CustomerSchedule } from "@/types/database";
@@ -16,11 +17,22 @@ export default async function DashboardPage({ searchParams }: Props) {
   let loadError: string | null = null;
   let bundle = null;
   let settlementSummary = null;
+  let companyTarget = null;
 
   try {
     settlementSummary = await getDashboardSettlementSummary();
   } catch {
     settlementSummary = null;
+  }
+
+  const isAdmin = settlementSummary?.isFinanceAdmin === true;
+
+  if (isAdmin) {
+    try {
+      companyTarget = await getCompanySalesTarget(2026);
+    } catch {
+      companyTarget = null;
+    }
   }
 
   try {
@@ -42,14 +54,15 @@ export default async function DashboardPage({ searchParams }: Props) {
     }
   }
 
-  const isAdmin = settlementSummary?.isFinanceAdmin === true;
-
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {settlementSummary ? (
           isAdmin ? (
-            <AdminDashboardHome summary={settlementSummary} />
+            <AdminDashboardHome
+              summary={settlementSummary}
+              companyTarget={companyTarget}
+            />
           ) : (
             <EmployeeGoalDashboard summary={settlementSummary} />
           )

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { DashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
-
-const ANNUAL_SALES_GOAL = 800_000_000;
+import { DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET } from "@/lib/crm/sales-goals";
 
 function money(value: number) {
   return `${Math.round(Number(value || 0)).toLocaleString("ko-KR")}원`;
@@ -41,11 +40,14 @@ export default function EmployeeGoalDashboard({
     (sum, row) => sum + Number(row.marginAmount || 0),
     0,
   ) || summary.marginAmount;
-  const achievement = ANNUAL_SALES_GOAL > 0
-    ? (revenue / ANNUAL_SALES_GOAL) * 100
+  const achievement = DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET > 0
+    ? (revenue / DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET) * 100
     : 0;
   const progressWidth = Math.min(100, Math.max(0, achievement));
-  const remaining = Math.max(0, ANNUAL_SALES_GOAL - revenue);
+  const remaining = Math.max(
+    0,
+    DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET - revenue,
+  );
   const businessUnit = ownRows[0]?.businessUnit === "interior" ? "인테리어" : "창호";
   const periodLabel = businessUnit === "인테리어"
     ? summary.interiorSalesPeriodLabel
@@ -100,7 +102,7 @@ export default function EmployeeGoalDashboard({
           </div>
           <div className="mt-2 flex justify-between gap-3 text-xs font-bold text-slate-400">
             <span>0원</span>
-            <span>목표 {money(ANNUAL_SALES_GOAL)}</span>
+            <span>목표 {money(DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET)}</span>
           </div>
         </div>
       </div>
