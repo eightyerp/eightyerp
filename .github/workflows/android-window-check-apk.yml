@@ -20,7 +20,7 @@ permissions:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -38,7 +38,12 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-36" "build-tools;35.0.0"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "emulator" \
+            "system-images;android-36;google_apis;x86_64"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -49,7 +54,7 @@ jobs:
         working-directory: mobile/window-check-android
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Verify APK signature and installability
+      - name: Verify APK signature
         working-directory: mobile/window-check-android
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
@@ -62,10 +67,61 @@ jobs:
         working-directory: mobile/window-check-android
         run: gradle --no-daemon :app:testDebugUnitTest
 
-      - name: Upload APK
+      - name: Create Android 16 emulator
+        run: |
+          echo no | avdmanager create avd \
+            --force \
+            --name eightyApi36 \
+            --package "system-images;android-36;google_apis;x86_64" \
+            --device "pixel_6"
+
+      - name: Boot emulator
+        run: |
+          nohup emulator \
+            -avd eightyApi36 \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            > "$RUNNER_TEMP/eighty-emulator.log" 2>&1 &
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/eighty-emulator.log" || true
+          exit 1
+
+      - name: Real install smoke on Android 16
+        working-directory: mobile/window-check-android
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          PACKAGE="com.eighty.windowcheck.preview.internal"
+          adb install -r "$APK" | tee adb-install.txt
+          grep -F "Success" adb-install.txt
+          adb shell pm path "$PACKAGE" | tee installed-path.txt
+          grep -F "package:" installed-path.txt
+
+      - name: Launch app smoke
+        run: |
+          PACKAGE="com.eighty.windowcheck.preview.internal"
+          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee launch-smoke.txt
+          sleep 3
+          adb shell pidof "$PACKAGE" | tee app-pid.txt
+          test -s app-pid.txt
+          if adb logcat -d -t 500 | grep -E "FATAL EXCEPTION|Process: $PACKAGE"; then
+            echo "App crash detected after launch"
+            exit 1
+          fi
+
+      - name: Upload APK only after install smoke passes
         uses: actions/upload-artifact@v4
         with:
-          name: eighty-window-check-v0.3-fast-apk
+          name: eighty-window-check-install-verified-apk
           path: mobile/window-check-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
