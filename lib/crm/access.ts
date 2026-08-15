@@ -11,6 +11,8 @@ export type CurrentUserAccess = {
   userId: string | null;
   profile: ProfileWithEmployee | null;
   role: UserRole | null;
+  /** 현재 회사 멤버십 역할. getCurrentUserAccess에서 이미 조회한 값을 재사용한다. */
+  companyRole: string | null;
   isAdmin: boolean;
   isAuthenticated: boolean;
   /** 승인 + 활성 — ERP 업무 접근 가능 */
@@ -66,6 +68,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
       userId: null,
       profile: null,
       role: null,
+      companyRole: null,
       isAdmin: false,
       isAuthenticated: false,
       canAccessErp: false,
@@ -89,6 +92,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
       userId: user.id,
       profile: null,
       role: null,
+      companyRole: null,
       isAdmin: false,
       isAuthenticated: true,
       canAccessErp: false,
@@ -100,7 +104,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
   const typed = profile as ProfileWithEmployee | null;
   const resolved = resolveApproval(typed);
   const companyRole =
-    typeof companyRoleResult.data === "string"
+    !companyRoleResult.error && typeof companyRoleResult.data === "string"
       ? companyRoleResult.data
       : null;
   const hasScopedEmployee =
@@ -111,7 +115,6 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
     );
   const canAccessErp =
     resolved.canAccessErp &&
-    !companyRoleResult.error &&
     companyRole !== null &&
     hasScopedEmployee;
   const effectiveRole: UserRole | null = !canAccessErp
@@ -128,6 +131,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
     userId: user.id,
     profile: typed,
     role: effectiveRole,
+    companyRole,
     isAdmin: isAdminRole(effectiveRole),
     isAuthenticated: true,
     canAccessErp,
@@ -159,19 +163,16 @@ export async function requireAuthenticatedAccess() {
 /**
  * 승인된 세션의 현재 회사 역할과 동일한 Supabase 클라이언트를 반환한다.
  * 전역 profiles.role은 회사별 관리 권한의 근거로 사용하지 않는다.
+ * current_company_role은 getCurrentUserAccess에서 이미 검증했으므로 같은 요청에서 재조회하지 않는다.
  */
 export async function getCurrentCompanyAccess() {
   const access = await requireAuthenticatedAccess();
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("current_company_role");
-  if (error) {
-    throw new Error("현재 회사 역할을 확인할 수 없습니다.");
-  }
 
   return {
     access,
     supabase,
-    companyRole: typeof data === "string" ? data : null,
+    companyRole: access.companyRole,
   };
 }
 
