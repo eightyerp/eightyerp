@@ -12,11 +12,13 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.eighty.windowcheck"
+        // Fast-track test package intentionally uses a separate application id so it can
+        // be installed alongside older v0.1/v0.2 debug builds signed with a different key.
+        applicationId = "com.eighty.windowcheck.preview"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 31
+        versionName = "0.3.0-clean"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
