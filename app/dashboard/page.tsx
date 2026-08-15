@@ -1,4 +1,4 @@
-import AdminDashboardHome from "@/components/dashboard/AdminDashboardHome";
+import AdminDashboardHomeV2 from "@/components/dashboard/AdminDashboardHomeV2";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
@@ -71,7 +71,7 @@ export default async function DashboardPage({ searchParams }: Props) {
       <div className="space-y-6">
         {settlementSummary ? (
           isAdmin ? (
-            <AdminDashboardHome
+            <AdminDashboardHomeV2
               summary={settlementSummary}
               companyTarget={companyTarget}
               companyPnl={companyPnl}
