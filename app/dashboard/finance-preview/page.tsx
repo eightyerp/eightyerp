@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import AdminDashboardNav from "@/components/dashboard/AdminDashboardNav";
 import CommonCostReclassPreview from "@/components/dashboard/CommonCostReclassPreview";
@@ -18,6 +19,17 @@ export default async function FinanceV2PreviewPage() {
     <DashboardLayout>
       <div className="space-y-5">
         <AdminDashboardNav active="finance" />
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+          <Link href="/finance/work-preview" className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800">
+            재무 통합 업무함 Preview
+          </Link>
+          <Link href="/finance/payments-preview" className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-xs font-black text-indigo-900 hover:bg-indigo-100">
+            지출 v2 Preview
+          </Link>
+          <Link href="/finance/collections-preview" className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-xs font-black text-indigo-900 hover:bg-indigo-100">
+            수금 v2 Preview
+          </Link>
+        </div>
         {pnl ? (
           <>
             <FinanceV2Preview summary={summary} pnl={pnl} />
