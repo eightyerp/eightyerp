@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import AdminDashboardNav from "@/components/dashboard/AdminDashboardNav";
+import CommonCostReclassPreview from "@/components/dashboard/CommonCostReclassPreview";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import FinanceV2Preview from "@/components/dashboard/FinanceV2Preview";
 import { getCompanyMonthlyPnl } from "@/lib/crm/company-pnl";
@@ -18,7 +19,10 @@ export default async function FinanceV2PreviewPage() {
       <div className="space-y-5">
         <AdminDashboardNav active="finance" />
         {pnl ? (
-          <FinanceV2Preview summary={summary} pnl={pnl} />
+          <>
+            <FinanceV2Preview summary={summary} pnl={pnl} />
+            <CommonCostReclassPreview pnl={pnl} />
+          </>
         ) : (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-10 text-center text-sm font-bold text-amber-900">
             내부 손익자료가 없어 Finance V2 Preview를 계산할 수 없습니다.
