@@ -13,6 +13,10 @@ on:
       - "mobile/window-check-android/**"
       - ".github/workflows/android-window-check-apk.yml"
 
+concurrency:
+  group: android-window-check-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
