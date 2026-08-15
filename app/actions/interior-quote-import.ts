@@ -3,7 +3,9 @@
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { INTERIOR_EXCEL_MAX_BYTES } from "@/lib/crm/interior-quote-excel";
+import { QUOTE_FILES_BUCKET } from "@/lib/crm/quote-constants";
 import { createQuote, type QuoteItemInput } from "@/lib/crm/quote-mgmt";
+import { createClient } from "@/lib/supabase-server";
 
 export type InteriorQuoteImportActionResult = {
   success: boolean;
@@ -90,6 +92,86 @@ function safeSaveError(error: unknown): string {
   return `견적 저장에 실패했습니다: ${summary}`;
 }
 
+/**
+ * 인테리어 Excel 원본을 견적에 멱등적으로 연결한다.
+ *
+ * create_quote_with_items는 request_id로 재생(replay)될 수 있으므로 원본 파일도
+ * 동일 SHA-256 경로를 사용해야 "DB 견적 생성 후 Storage 실패 → 같은 요청 재시도"가
+ * 안전하게 복구된다. 공통 createQuote의 created-only 첨부 업로드를 사용하지 않는 이유다.
+ */
+async function ensureInteriorImportFile(input: {
+  customerId: string;
+  quoteId: string;
+  fileName: string;
+  fileHash: string;
+  fileSize: number;
+  ext: "xlsx" | "xls";
+  bytes: Uint8Array;
+}) {
+  const supabase = await createClient();
+  const filePath = `${input.customerId}/${input.quoteId}/interior-import-${input.fileHash}.${input.ext}`;
+
+  const { data: alreadyLinked, error: linkedError } = await supabase
+    .from("quote_files")
+    .select("id,file_path")
+    .eq("quote_id", input.quoteId)
+    .eq("file_path", filePath)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (linkedError) {
+    throw new Error("원본 Excel 연결 상태를 확인하지 못했습니다.");
+  }
+  if (alreadyLinked) return;
+
+  const prefix = `${input.customerId}/${input.quoteId}/interior-import-`;
+  const { data: otherImport, error: otherImportError } = await supabase
+    .from("quote_files")
+    .select("id,file_path")
+    .eq("quote_id", input.quoteId)
+    .like("file_path", `${prefix}%`)
+    .is("deleted_at", null)
+    .limit(1);
+  if (otherImportError) {
+    throw new Error("기존 Excel 원본을 확인하지 못했습니다.");
+  }
+  if ((otherImport ?? []).some((row) => row.file_path && row.file_path !== filePath)) {
+    throw new Error(
+      "같은 저장 요청에 다른 Excel 파일이 연결되어 있습니다. 화면을 새로고침한 뒤 다시 저장해 주세요.",
+    );
+  }
+
+  const { error: uploadError } = await supabase.storage
+    .from(QUOTE_FILES_BUCKET)
+    .upload(filePath, input.bytes, {
+      contentType: MIME_BY_EXT[input.ext],
+      upsert: true,
+    });
+  if (uploadError) {
+    throw new Error(
+      "견적은 임시 저장되었지만 원본 Excel 업로드에 실패했습니다. 같은 화면에서 다시 저장해 주세요.",
+    );
+  }
+
+  const { error: metadataError } = await supabase.from("quote_files").insert({
+    quote_id: input.quoteId,
+    file_type: input.ext,
+    file_path: filePath,
+    file_name: input.fileName,
+    original_file_name: input.fileName,
+    mime_type: MIME_BY_EXT[input.ext],
+    file_size: input.fileSize,
+    is_primary: false,
+  });
+
+  if (metadataError) {
+    // DB 메타데이터가 실패하면 고아 Storage 객체를 남기지 않는다.
+    await supabase.storage.from(QUOTE_FILES_BUCKET).remove([filePath]);
+    throw new Error(
+      "견적은 임시 저장되었지만 원본 Excel 정보를 연결하지 못했습니다. 같은 화면에서 다시 저장해 주세요.",
+    );
+  }
+}
+
 export async function saveInteriorQuoteImportAction(formData: FormData): Promise<InteriorQuoteImportActionResult> {
   try {
     const file = formData.get("file");
@@ -161,10 +243,23 @@ export async function saveInteriorQuoteImportAction(formData: FormData): Promise
         is_contract_quote: false, customer_message: null, memo: `Excel Import · SHA-256 ${fileHash.slice(0, 12)}`,
       },
       items: normalizedItems,
-      files: [new File([bytes], cleanName, { type: MIME_BY_EXT[ext] })],
+      // 원본 Excel은 아래 멱등 연결 단계에서 처리한다. createQuote의 created-only 첨부를 사용하면
+      // Storage 실패 후 request_id replay 시 파일이 영구 누락될 수 있다.
+      files: [],
     });
     const quoteId = quote.quote_id || quote.id;
     if (!quoteId) throw new Error("생성된 견적 ID를 확인할 수 없습니다.");
+
+    await ensureInteriorImportFile({
+      customerId,
+      quoteId,
+      fileName: cleanName,
+      fileHash,
+      fileSize: file.size,
+      ext,
+      bytes,
+    });
+
     revalidatePath("/quotes");
     revalidatePath(`/customers/${customerId}`);
     return { success: true, quoteId };
