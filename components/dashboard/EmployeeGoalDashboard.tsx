@@ -48,10 +48,23 @@ export default function EmployeeGoalDashboard({
     0,
     DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET - revenue,
   );
-  const businessUnit = ownRows[0]?.businessUnit === "interior" ? "인테리어" : "창호";
-  const periodLabel = businessUnit === "인테리어"
+  const businessUnit = summary.currentEmployeeBusinessUnit === "interior"
+    ? "인테리어"
+    : summary.currentEmployeeBusinessUnit === "window"
+      ? "창호"
+      : "미분류";
+  const periodLabel = summary.currentEmployeeBusinessUnit === "interior"
     ? summary.interiorSalesPeriodLabel
-    : summary.windowSalesCutoffLabel;
+    : summary.currentEmployeeBusinessUnit === "window"
+      ? summary.windowSalesCutoffLabel
+      : "미입력";
+  const estimatedPayable = Math.max(
+    0,
+    summary.estimatedBaseSettlementAmount
+      + summary.additionalIncentiveAmount
+      - summary.deductionAmount
+      - summary.paidAmount,
+  );
 
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -107,7 +120,7 @@ export default function EmployeeGoalDashboard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-slate-100 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px bg-slate-100 lg:grid-cols-5">
         <Metric label="현재 매출" value={compactMoney(revenue)} sub={money(revenue)} />
         <Metric
           label="남은 목표"
@@ -115,31 +128,65 @@ export default function EmployeeGoalDashboard({
           sub={remaining > 0 ? money(remaining) : "8억원 이상 달성"}
         />
         <Metric
-          label="내 마진"
+          label="내 현장 기여마진"
           value={compactMoney(margin)}
-          sub={`마진율 ${marginRate(revenue, margin)}`}
+          sub={`기여마진율 ${marginRate(revenue, margin)}`}
         />
         <Metric
-          label="정산 지급"
+          label="잠정 예상 기본정산"
+          value={compactMoney(summary.estimatedBaseSettlementAmount)}
+          sub={summary.estimatedSettlementBasisLabel ?? "정산기준 미설정"}
+          accent
+        />
+        <Metric
+          label="지급완료 정산"
           value={compactMoney(summary.paidAmount)}
           sub={summary.latestPayoutDate ? `최근 ${summary.latestPayoutDate}` : "지급완료 없음"}
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-px border-t border-slate-100 bg-slate-100">
-        <SmallMetric label="기본 정산" value={compactMoney(summary.baseSettlementAmount)} />
+      <div className="grid grid-cols-4 gap-px border-t border-slate-100 bg-slate-100">
+        <SmallMetric label="잠정 기본정산" value={compactMoney(summary.estimatedBaseSettlementAmount)} />
         <SmallMetric label="추가 인센" value={compactMoney(summary.additionalIncentiveAmount)} />
         <SmallMetric label="차감" value={compactMoney(summary.deductionAmount)} />
+        <SmallMetric label="잠정 예상 지급액" value={compactMoney(estimatedPayable)} />
+      </div>
+
+      <div className="border-t border-amber-200 bg-amber-50 px-5 py-4 text-xs font-semibold leading-5 text-amber-950 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-amber-100 px-2 py-1 font-black">잠정값</span>
+          <span className="rounded-full bg-white px-2 py-1 font-black">2026년 7월 기준</span>
+          {summary.estimatedSettlementIsProxy ? (
+            <span className="rounded-full bg-white px-2 py-1 font-black text-orange-800">
+              실제 계약 연동 전 대체계산
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-2">
+          잠정 예상 정산금은 현재 입력된 매출·원가를 기준으로 계산한 값이며 실제 지급확정액이 아닙니다. 관리자 원가확정, 승인대기 지출, 사후지출, 추가인센티브와 차감에 따라 변경될 수 있습니다.
+        </p>
       </div>
     </section>
   );
 }
 
-function Metric({ label, value, sub }: { label: string; value: string; sub: string }) {
+function Metric({
+  label,
+  value,
+  sub,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  accent?: boolean;
+}) {
   return (
-    <div className="bg-white px-5 py-4">
+    <div className={accent ? "bg-emerald-50 px-5 py-4" : "bg-white px-5 py-4"}>
       <p className="text-xs font-black text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
+      <p className={accent ? "mt-1 text-xl font-black text-emerald-800" : "mt-1 text-xl font-black text-slate-950"}>
+        {value}
+      </p>
       <p className="mt-1 text-xs font-semibold text-slate-500">{sub}</p>
     </div>
   );
