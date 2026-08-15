@@ -12,13 +12,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        // Fast-track test package intentionally uses a separate application id so it can
-        // be installed alongside older v0.1/v0.2 debug builds signed with a different key.
         applicationId = "com.eighty.windowcheck.preview"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
-        versionName = "0.3.1-photo-skip"
+        versionCode = 33
+        versionName = "0.3.2-install-tested"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
