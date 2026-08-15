@@ -6,6 +6,7 @@ import {
   DEFAULT_COMPANY_ANNUAL_SALES_TARGET,
   DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET,
 } from "@/lib/crm/sales-goals";
+import type { SettlementEmployeeOption } from "@/lib/crm/settlements";
 
 function compactMoney(value: number) {
   const amount = Number(value || 0);
@@ -48,25 +49,24 @@ const SECTIONS = [
 type EmployeeGoalRow = {
   employeeId: string;
   label: string;
-  businessUnits: Set<"window" | "interior" | "shared">;
+  businessUnit: "window" | "interior";
   revenueAmount: number;
   marginAmount: number;
 };
 
-function employeeUnitLabel(units: Set<"window" | "interior" | "shared">) {
-  if (units.size > 1) return "복수사업부";
-  const unit = [...units][0];
-  if (unit === "interior") return "인테리어";
-  if (unit === "window") return "창호";
-  return "공동";
+function getTeamName(employee: SettlementEmployeeOption) {
+  if (Array.isArray(employee.team)) return employee.team[0]?.name ?? null;
+  return employee.team?.name ?? null;
 }
 
 export default function AdminDashboardHome({
   summary,
   companyTarget,
+  salesEmployees,
 }: {
   summary: DashboardSettlementSummary;
   companyTarget: CompanySalesTarget | null;
+  salesEmployees: SettlementEmployeeOption[];
 }) {
   const targetYear = companyTarget?.targetYear ?? 2026;
   const targetAmount =
@@ -86,22 +86,42 @@ export default function AdminDashboardHome({
   const requiredMonthly = Math.ceil(remainingAmount / remainingMonths);
 
   const employeeGoalMap = new Map<string, EmployeeGoalRow>();
-  for (const row of summary.employeeSales) {
-    if (!row.employeeId) continue;
-    const current = employeeGoalMap.get(row.employeeId) ?? {
-      employeeId: row.employeeId,
-      label: row.label,
-      businessUnits: new Set<"window" | "interior" | "shared">(),
+  for (const employee of salesEmployees) {
+    const teamName = getTeamName(employee);
+    if (teamName !== "창호" && teamName !== "인테리어") continue;
+    employeeGoalMap.set(employee.id, {
+      employeeId: employee.id,
+      label: employee.name,
+      businessUnit: teamName === "인테리어" ? "interior" : "window",
       revenueAmount: 0,
       marginAmount: 0,
-    };
-    current.businessUnits.add(row.businessUnit);
+    });
+  }
+
+  // 직원 목록 조회가 일시적으로 실패해도 실적이 있는 직원은 표시합니다.
+  if (employeeGoalMap.size === 0) {
+    for (const row of summary.employeeSales) {
+      if (!row.employeeId || row.businessUnit === "shared") continue;
+      employeeGoalMap.set(row.employeeId, {
+        employeeId: row.employeeId,
+        label: row.label,
+        businessUnit: row.businessUnit,
+        revenueAmount: 0,
+        marginAmount: 0,
+      });
+    }
+  }
+
+  for (const row of summary.employeeSales) {
+    if (!row.employeeId) continue;
+    const current = employeeGoalMap.get(row.employeeId);
+    if (!current) continue;
     current.revenueAmount += Number(row.revenueAmount || 0);
     current.marginAmount += Number(row.marginAmount || 0);
-    employeeGoalMap.set(row.employeeId, current);
   }
+
   const employeeGoalRows = [...employeeGoalMap.values()].sort(
-    (a, b) => b.revenueAmount - a.revenueAmount,
+    (a, b) => b.revenueAmount - a.revenueAmount || a.label.localeCompare(b.label, "ko"),
   );
 
   return (
@@ -197,7 +217,7 @@ export default function AdminDashboardHome({
               직원별 8억원 목표 달성률
             </h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              공동매출은 제외하고 직원 ID별 공식 실적만 합산합니다.
+              창호·인테리어팀 활성 직원 {employeeGoalRows.length}명 전체를 표시하며, 실적 미입력 직원은 0%로 표시합니다.
             </p>
           </div>
           <Link
@@ -216,7 +236,7 @@ export default function AdminDashboardHome({
           </div>
         ) : (
           <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm font-semibold text-slate-500">
-            직원별 매출실적이 아직 입력되지 않았습니다.
+            직원 목록을 불러오지 못했습니다.
           </div>
         )}
       </section>
@@ -267,8 +287,8 @@ function EmployeeGoalCard({ row }: { row: EmployeeGoalRow }) {
     0,
     DEFAULT_EMPLOYEE_ANNUAL_SALES_TARGET - row.revenueAmount,
   );
-  const unitLabel = employeeUnitLabel(row.businessUnits);
-  const isInterior = unitLabel === "인테리어";
+  const isInterior = row.businessUnit === "interior";
+  const unitLabel = isInterior ? "인테리어" : "창호";
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

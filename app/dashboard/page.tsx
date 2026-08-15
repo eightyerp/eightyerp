@@ -4,6 +4,10 @@ import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard"
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
 import { getCompanySalesTarget } from "@/lib/crm/company-sales-target";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
+import {
+  listSettlementEmployees,
+  type SettlementEmployeeOption,
+} from "@/lib/crm/settlements";
 import { getTodayWorkBundle } from "@/lib/crm/today-work";
 import type { CustomerSchedule } from "@/types/database";
 
@@ -18,6 +22,7 @@ export default async function DashboardPage({ searchParams }: Props) {
   let bundle = null;
   let settlementSummary = null;
   let companyTarget = null;
+  let salesEmployees: SettlementEmployeeOption[] = [];
 
   try {
     settlementSummary = await getDashboardSettlementSummary();
@@ -28,11 +33,14 @@ export default async function DashboardPage({ searchParams }: Props) {
   const isAdmin = settlementSummary?.isFinanceAdmin === true;
 
   if (isAdmin) {
-    try {
-      companyTarget = await getCompanySalesTarget(2026);
-    } catch {
-      companyTarget = null;
-    }
+    const [targetResult, employeeResult] = await Promise.allSettled([
+      getCompanySalesTarget(2026),
+      listSettlementEmployees(),
+    ]);
+    companyTarget =
+      targetResult.status === "fulfilled" ? targetResult.value : null;
+    salesEmployees =
+      employeeResult.status === "fulfilled" ? employeeResult.value : [];
   }
 
   try {
@@ -62,6 +70,7 @@ export default async function DashboardPage({ searchParams }: Props) {
             <AdminDashboardHome
               summary={settlementSummary}
               companyTarget={companyTarget}
+              salesEmployees={salesEmployees}
             />
           ) : (
             <EmployeeGoalDashboard summary={settlementSummary} />
