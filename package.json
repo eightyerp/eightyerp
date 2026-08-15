@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
+    "test:migration-sql": "node scripts/validate-migration-sql.mjs",
     "test:parse-inquiry": "npx --yes tsx scripts/test-parse-inquiry-run.ts",
     "test:lx-window-excel": "npx --yes tsx scripts/test-lx-window-excel.ts",
     "test:employee-merge": "node scripts/test-employee-merge.mjs && node scripts/test-employee-merge-permissions.mjs && node scripts/test-staff-approval-security.mjs && node scripts/test-employee-account-security.mjs && node scripts/test-employee-security-behavior.mjs && node scripts/test-employee-master-migration-db.mjs && node scripts/test-employee-archive-ui.mjs",
