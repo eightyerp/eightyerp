@@ -86,6 +86,40 @@ enum class EvidenceType(
     ),
 }
 
+enum class InspectionMode(
+    val label: String,
+    val description: String,
+) {
+    SIMPLE(
+        label = "간편 점검",
+        description = "창호 전체 사진 1장을 우선 등록하고 필요한 세부사진만 추가합니다.",
+    ),
+    DETAILED(
+        label = "정밀 점검",
+        description = "세부 부위를 순서대로 확인하되 불필요한 항목은 사유를 남기고 건너뜁니다.",
+    ),
+}
+
+enum class PhotoCaptureStatus(
+    val label: String,
+) {
+    SKIPPED("촬영 생략"),
+    DEFERRED("나중에 촬영"),
+    NOT_APPLICABLE("해당 없음"),
+}
+
+enum class CaptureSkipReason(
+    val label: String,
+) {
+    COVERED_BY_WHOLE_PHOTO("전체사진으로 확인 가능"),
+    NO_VISIBLE_ISSUE("육안상 이상 없음"),
+    NOT_NEEDED_ON_SITE("현장상 불필요"),
+    CUSTOMER_REQUEST("고객 요청상 생략"),
+    DETAILED_CHECK_LATER("정밀점검 시 추가 예정"),
+    CANNOT_CAPTURE_SAFELY("안전상 촬영 불가"),
+    OTHER("기타"),
+}
+
 data class WindowLocation(
     val id: String,
     val name: String,
@@ -113,6 +147,15 @@ data class CapturedPhoto(
     val uri: Uri,
     val sequence: Int = 0,
     val description: String = "",
+)
+
+data class PhotoCaptureDecision(
+    val locationId: String,
+    val locationName: String,
+    val type: CaptureType,
+    val status: PhotoCaptureStatus,
+    val reason: CaptureSkipReason,
+    val reasonText: String = "",
 )
 
 data class EvidencePhoto(
@@ -175,6 +218,7 @@ data class InspectorInfo(
 data class InspectionSetup(
     val customer: CustomerInfo = CustomerInfo(),
     val inspector: InspectorInfo = InspectorInfo(),
+    val inspectionMode: InspectionMode = InspectionMode.SIMPLE,
 )
 
 data class LocationCondition(
