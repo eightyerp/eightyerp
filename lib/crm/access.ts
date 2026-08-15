@@ -28,7 +28,6 @@ function resolveApproval(profile: ProfileWithEmployee | null): {
     return { canAccessErp: false, approvalStatus: null, role: null };
   }
 
-  // 마이그레이션 전: is_approved 컬럼 없음 → 기존처럼 is_active만 사용
   const hasApprovalColumn = typeof profile.is_approved === "boolean";
   const isApproved = hasApprovalColumn ? profile.is_approved === true : true;
   const status: ApprovalStatus =
@@ -144,7 +143,6 @@ export async function requireAdminAccess() {
   return access;
 }
 
-/** 로그인 + ERP 승인 필요 (고객/현장 등 업무 액션) */
 export async function requireAuthenticatedAccess() {
   const access = await getCurrentUserAccess();
   if (!access.isAuthenticated || !access.userId) {
@@ -158,9 +156,9 @@ export async function requireAuthenticatedAccess() {
 
 /**
  * 승인된 세션의 현재 회사 역할과 동일한 Supabase 클라이언트를 반환한다.
- * 전역 profiles.role은 회사별 관리 권한의 근거로 사용하지 않는다.
+ * 한 Server Render/Action 안에서 반복 호출돼도 회사 역할 RPC는 1회만 실행한다.
  */
-export async function getCurrentCompanyAccess() {
+export const getCurrentCompanyAccess = cache(async () => {
   const access = await requireAuthenticatedAccess();
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("current_company_role");
@@ -173,7 +171,7 @@ export async function getCurrentCompanyAccess() {
     supabase,
     companyRole: typeof data === "string" ? data : null,
   };
-}
+});
 
 export async function requireCurrentCompanyRoleAccess(
   allowedRoles: readonly string[],
@@ -189,7 +187,6 @@ export async function requireCurrentCompanyRoleAccess(
   return context;
 }
 
-/** 세션만 필요 (승인 대기 화면 등) */
 export async function requireSessionAccess() {
   const access = await getCurrentUserAccess();
   if (!access.isAuthenticated || !access.userId) {
