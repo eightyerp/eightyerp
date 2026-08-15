@@ -63,12 +63,12 @@ function readCache(): CachedNotifications | null {
   }
 }
 
-function writeCache(items: NotificationItem[]) {
+function writeCache(items: NotificationItem[], savedAt: number) {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ savedAt: Date.now(), items } satisfies CachedNotifications),
+      JSON.stringify({ savedAt, items } satisfies CachedNotifications),
     );
   } catch {
     // 저장공간이 막힌 환경에서도 알림 기능 자체는 유지합니다.
@@ -86,8 +86,11 @@ export default function ErpNotificationBell() {
   useEffect(() => {
     const cached = readCache();
     if (!cached) return;
-    setItems(cached.items);
-    setLoadedAt(cached.savedAt);
+    const timer = window.setTimeout(() => {
+      setItems(cached.items);
+      setLoadedAt(cached.savedAt);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const load = useCallback(async () => {
@@ -122,10 +125,10 @@ export default function ErpNotificationBell() {
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         )
         .slice(0, 20);
-      setItems(merged);
       const now = Date.now();
+      setItems(merged);
       setLoadedAt(now);
-      writeCache(merged);
+      writeCache(merged, now);
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -155,10 +158,12 @@ export default function ErpNotificationBell() {
     };
   }, []);
 
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const recentCount = items.filter(
-    (item) => new Date(item.createdAt).getTime() >= cutoff,
-  ).length;
+  const cutoff = (loadedAt ?? 0) - 24 * 60 * 60 * 1000;
+  const recentCount = loadedAt === null
+    ? 0
+    : items.filter(
+        (item) => new Date(item.createdAt).getTime() >= cutoff,
+      ).length;
 
   return (
     <div ref={wrapperRef} className="relative">
