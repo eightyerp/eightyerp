@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:railway": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
     "lint": "eslint",
     "verify:supabase": "node --env-file=.env.local scripts/verify-supabase.mjs",
     "test:parse-inquiry": "npx --yes tsx scripts/test-parse-inquiry-run.ts",
