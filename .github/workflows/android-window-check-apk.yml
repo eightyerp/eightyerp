@@ -8,13 +8,9 @@ on:
     paths:
       - "mobile/window-check-android/**"
       - ".github/workflows/android-window-check-apk.yml"
-  pull_request:
-    paths:
-      - "mobile/window-check-android/**"
-      - ".github/workflows/android-window-check-apk.yml"
 
 concurrency:
-  group: android-window-check-${{ github.ref }}
+  group: android-window-check-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions:
