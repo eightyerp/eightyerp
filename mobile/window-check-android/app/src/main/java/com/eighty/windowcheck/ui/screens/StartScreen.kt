@@ -71,25 +71,25 @@ fun StartScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "AI",
+                    text = "CHECK",
                     color = Color.White,
                     fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(34.dp))
+        Spacer(modifier = Modifier.height(32.dp))
         Text(
-            text = "우리집 창호\nAI 예비진단",
+            text = "에잇티 직원용\n창호 현장점검",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Black,
             color = EightyNavy,
             textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "사진 5장과 간단한 증상 입력으로\n창호 상태를 빠르게 점검합니다.",
+            text = "거실·안방·작은방 등 위치별로 촬영하고\n점검 리포트와 견적서를 고객에게 발송합니다.",
             style = MaterialTheme.typography.bodyLarge,
             color = EightyMuted,
             textAlign = TextAlign.Center,
@@ -106,15 +106,15 @@ fun StartScreen(
         ) {
             Text(text = "ℹ️")
             Text(
-                text = "AI 결과는 예비진단이며, 최종 판단은 전문가 현장점검 후 확정합니다.",
+                text = "AI 결과는 예비분석입니다. 고객 발송 전 담당직원이 위치별 사진과 진단문구를 반드시 확인합니다.",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall,
                 color = EightyMuted,
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
-        PrimaryButton(text = "AI 진단 시작하기", onClick = onStart)
+        PrimaryButton(text = "새 현장 점검 시작", onClick = onStart)
         Spacer(modifier = Modifier.height(10.dp))
-        SecondaryButton(text = "진단 기록 보기", onClick = onHistory)
+        SecondaryButton(text = "점검 기록 보기", onClick = onHistory)
     }
 }
