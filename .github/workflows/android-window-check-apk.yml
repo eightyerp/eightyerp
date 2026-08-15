@@ -87,10 +87,8 @@ jobs:
             sleep 5
             adb shell pidof com.eighty.windowcheck.preview.internal | tee app-pid.txt
             test -s app-pid.txt
-            if adb logcat -d -t 700 | grep -E "FATAL EXCEPTION|Process: com.eighty.windowcheck.preview.internal"; then
-              echo "App crash detected after launch"
-              exit 1
-            fi
+            adb logcat -d -t 700 > launch-logcat.txt
+            ! grep -E "FATAL EXCEPTION|Process: com.eighty.windowcheck.preview.internal" launch-logcat.txt
 
       - name: Upload APK only after Android 16 install and launch pass
         uses: actions/upload-artifact@v4
