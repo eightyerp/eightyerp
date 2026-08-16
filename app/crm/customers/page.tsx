@@ -1,6 +1,6 @@
 import Link from "next/link";
 import CrmCustomerCard from "@/components/crm/CrmCustomerCard";
-import { getCustomers } from "@/lib/crm/customers";
+import { listCrmMobileCustomers } from "@/lib/crm/crm-mobile-customer-list";
 import {
   CUSTOMER_PIPELINE_STAGES,
   getMobileCustomerPipelineView,
@@ -210,7 +210,7 @@ export default async function CrmCustomersPage({ searchParams }: Props) {
       : "";
   const q = params.q?.trim() || "";
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
-  const result = await getCustomers({
+  const result = await listCrmMobileCustomers({
     q: q || undefined,
     status,
     contact,
