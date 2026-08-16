@@ -24,6 +24,7 @@ function badgeClass(item: TodayWorkItem) {
 }
 
 function itemHref(item: TodayWorkItem) {
+  if (item.source === "schedule") return `/crm/schedules/${item.sourceId}`;
   if (item.customerId) return `/crm/customers/${item.customerId}`;
   if (item.quoteId) return `/quotes/${item.quoteId}`;
   return "/crm/schedules";
