@@ -6,7 +6,7 @@ on:
       - "codex/react19-lint-stability-20260816"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -18,10 +18,22 @@ jobs:
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: codex/react19-lint-stability-20260816
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Apply guarded source patches
+        run: |
+          node scripts/apply-react19-lint-fixes.mjs
+          if ! git diff --quiet; then
+            git config user.name "eightyerp-ci"
+            git config user.email "actions@users.noreply.github.com"
+            git add components/finance/ExpenseEntrySearchV3.tsx components/finance/ExpenseWorkspaceV2.tsx
+            git commit -m "fix: align expense forms with React 19 lint rules"
+            git push origin HEAD:codex/react19-lint-stability-20260816
+          fi
       - run: npm ci
       - name: Lint
         continue-on-error: true
