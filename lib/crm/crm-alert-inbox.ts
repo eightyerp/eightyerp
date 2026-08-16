@@ -149,7 +149,7 @@ export async function listMyCrmAlerts(limit = 40): Promise<CrmAlertItem[]> {
         isScheduleDeepLink && row.schedule_id
           ? `/crm/schedules/${row.schedule_id}`
           : isAdminAssignmentLink && row.customer_id
-            ? `/customers/${row.customer_id}/edit`
+            ? `/crm/customers/${row.customer_id}/assignee`
             : row.customer_id
               ? `/crm/customers/${row.customer_id}`
               : "/crm";
