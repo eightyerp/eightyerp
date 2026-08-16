@@ -32,6 +32,9 @@ jobs:
       - name: CRM mobile contract guard
         run: node scripts/test-crm-mobile-contract.mjs
 
+      - name: CRM mobile layout guard
+        run: node scripts/test-crm-mobile-layout.mjs
+
       - name: Lint
         run: npm run lint
 
