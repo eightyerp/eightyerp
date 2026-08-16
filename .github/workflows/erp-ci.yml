@@ -35,6 +35,9 @@ jobs:
       - name: CRM mobile layout guard
         run: node scripts/test-crm-mobile-layout.mjs
 
+      - name: CRM home performance guard
+        run: node scripts/test-crm-home-performance.mjs
+
       - name: Lint
         run: npm run lint
 
