@@ -20,6 +20,19 @@ type SubscriptionRow = {
   auth_key: string;
 };
 
+const SCHEDULE_EVENT_TYPES = [
+  "schedule_changed",
+  "consult_remind_1h",
+  "consult_unhandled",
+  "customer_assignment_uncontacted_30m",
+  "customer_unassigned_10m",
+  "customer_stale_3d",
+  "customer_stale_7d",
+] as const;
+
+const PROCESSING_RECOVERY_MINUTES = 10;
+const MAX_TRANSIENT_RETRIES = 3;
+
 function env(name: string): string {
   const value = Deno.env.get(name)?.trim();
   if (!value) throw new Error(`missing_env:${name}`);
@@ -45,8 +58,12 @@ function assignmentEmployeeId(payload: Record<string, unknown>): string | null {
 
 function allowedInternalPayloadUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  if (value.startsWith("/crm") || value.startsWith("/customers/")) return value;
-  return null;
+  return value.startsWith("/crm") ? value : null;
+}
+
+function retryCount(payload: Record<string, unknown>): number {
+  const value = Number(payload.push_retry_count ?? 0);
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
 }
 
 function pushPayload(event: QueueEvent) {
@@ -163,8 +180,27 @@ Deno.serve(async (req: Request) => {
       env("CRM_WEB_PUSH_VAPID_PRIVATE_KEY"),
     );
 
+    // 비정상 종료로 processing에 멈춘 CRM 이벤트만 제한적으로 복구한다.
+    // 다른 ERP notification event는 건드리지 않는다.
+    const recoveryCutoff = new Date(
+      Date.now() - PROCESSING_RECOVERY_MINUTES * 60 * 1000,
+    ).toISOString();
+    await Promise.all([
+      supabase
+        .from("notification_events")
+        .update({ status: "pending", processed_at: null })
+        .eq("status", "processing")
+        .eq("event_type", "customer_assigned")
+        .lt("processed_at", recoveryCutoff),
+      supabase
+        .from("schedule_alert_events")
+        .update({ status: "pending", processed_at: null })
+        .eq("status", "processing")
+        .in("event_type", [...SCHEDULE_EVENT_TYPES])
+        .lt("processed_at", recoveryCutoff),
+    ]);
+
     // 동일 worker가 예약/미처리, 장기방치, 신규배분 첫 연락 누락, 미배정 문의를 함께 판정한다.
-    // 운영 scheduler는 하나만 유지해 알림 판정 로직의 중복을 막는다.
     const [
       scheduleEnqueueResult,
       staleEnqueueResult,
@@ -193,15 +229,7 @@ Deno.serve(async (req: Request) => {
         .from("schedule_alert_events")
         .select("id, event_type, schedule_id, customer_id, assigned_employee_id, payload")
         .eq("status", "pending")
-        .in("event_type", [
-          "schedule_changed",
-          "consult_remind_1h",
-          "consult_unhandled",
-          "customer_assignment_uncontacted_30m",
-          "customer_unassigned_10m",
-          "customer_stale_3d",
-          "customer_stale_7d",
-        ])
+        .in("event_type", [...SCHEDULE_EVENT_TYPES])
         .order("created_at", { ascending: true })
         .limit(200),
     ]);
@@ -238,7 +266,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (events.length === 0) {
-      return new Response(JSON.stringify({ processed: 0, sent: 0, skipped: 0, failed: 0 }), {
+      return new Response(JSON.stringify({ processed: 0, sent: 0, skipped: 0, failed: 0, retried: 0 }), {
         headers: { "content-type": "application/json" },
       });
     }
@@ -314,11 +342,34 @@ Deno.serve(async (req: Request) => {
       byEmployee.set(row.employee_id, list);
     }
 
+    let processed = 0;
     let sent = 0;
     let skipped = 0;
     let failed = 0;
+    let retried = 0;
 
     for (const event of events) {
+      // 여러 Worker가 겹쳐 실행되어도 pending 이벤트를 한 Worker만 선점한다.
+      const claimedAt = new Date().toISOString();
+      const { data: claimed, error: claimError } = await supabase
+        .from(event.table)
+        .update({ status: "processing", processed_at: claimedAt })
+        .eq("id", event.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+
+      if (claimError) {
+        console.error("[crm-push] claim failed", {
+          eventId: event.id,
+          table: event.table,
+          message: claimError.message,
+        });
+        continue;
+      }
+      if (!claimed) continue;
+      processed += 1;
+
       if (selfScheduleChangedEventIds.has(event.id)) {
         await supabase
           .from(event.table)
@@ -327,14 +378,16 @@ Deno.serve(async (req: Request) => {
             processed_at: new Date().toISOString(),
             payload: { ...event.payload, skip_reason: "self_schedule_change" },
           })
-          .eq("id", event.id);
+          .eq("id", event.id)
+          .eq("status", "processing");
         skipped += 1;
         continue;
       }
 
       const targets = byEmployee.get(event.employeeId) ?? [];
       let eventSent = 0;
-      let eventFailed = 0;
+      let transientFailures = 0;
+      let permanentFailures = 0;
 
       for (const subscription of targets) {
         try {
@@ -352,12 +405,18 @@ Deno.serve(async (req: Request) => {
           eventSent += 1;
           await supabase
             .from("crm_push_subscriptions")
-            .update({ last_success_at: new Date().toISOString(), last_error: null, last_error_at: null })
+            .update({
+              last_success_at: new Date().toISOString(),
+              last_error: null,
+              last_error_at: null,
+            })
             .eq("id", subscription.id);
         } catch (error) {
-          eventFailed += 1;
           const statusCode = Number(error?.statusCode ?? 0);
           const permanent = statusCode === 404 || statusCode === 410;
+          if (permanent) permanentFailures += 1;
+          else transientFailures += 1;
+
           await supabase
             .from("crm_push_subscriptions")
             .update({
@@ -369,28 +428,74 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const status =
-        eventSent > 0 ? "sent" : targets.length === 0 ? "skipped" : "failed";
+      if (eventSent > 0) {
+        await supabase
+          .from(event.table)
+          .update({ status: "sent", processed_at: new Date().toISOString() })
+          .eq("id", event.id)
+          .eq("status", "processing");
+        sent += 1;
+        continue;
+      }
+
+      if (targets.length === 0) {
+        await supabase
+          .from(event.table)
+          .update({ status: "skipped", processed_at: new Date().toISOString() })
+          .eq("id", event.id)
+          .eq("status", "processing");
+        skipped += 1;
+        continue;
+      }
+
+      const currentRetry = retryCount(event.payload);
+      if (transientFailures > 0 && currentRetry < MAX_TRANSIENT_RETRIES) {
+        await supabase
+          .from(event.table)
+          .update({
+            status: "pending",
+            processed_at: null,
+            payload: {
+              ...event.payload,
+              push_retry_count: currentRetry + 1,
+              last_push_retry_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", event.id)
+          .eq("status", "processing");
+        retried += 1;
+        continue;
+      }
+
       await supabase
         .from(event.table)
-        .update({ status, processed_at: new Date().toISOString() })
-        .eq("id", event.id);
+        .update({
+          status: "failed",
+          processed_at: new Date().toISOString(),
+          payload: {
+            ...event.payload,
+            push_retry_count: currentRetry,
+            push_failure_summary: {
+              transient: transientFailures,
+              permanent: permanentFailures,
+            },
+          },
+        })
+        .eq("id", event.id)
+        .eq("status", "processing");
+      failed += 1;
 
-      if (status === "sent") sent += 1;
-      else if (status === "skipped") skipped += 1;
-      else failed += 1;
-
-      if (eventFailed > 0 && eventSent === 0) {
-        console.error("[crm-push] all subscriptions failed", {
-          eventId: event.id,
-          eventType: event.eventType,
-          failures: eventFailed,
-        });
-      }
+      console.error("[crm-push] all subscriptions failed", {
+        eventId: event.id,
+        eventType: event.eventType,
+        transientFailures,
+        permanentFailures,
+        retries: currentRetry,
+      });
     }
 
     return new Response(
-      JSON.stringify({ processed: events.length, sent, skipped, failed }),
+      JSON.stringify({ processed, sent, skipped, failed, retried }),
       { headers: { "content-type": "application/json" } },
     );
   } catch (error) {
