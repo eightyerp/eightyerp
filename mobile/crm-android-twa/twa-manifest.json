@@ -1,0 +1,41 @@
+{
+  "packageId": "com.eighty.crm.internal",
+  "host": "eightyerp.vercel.app",
+  "name": "EIGHTY CRM",
+  "launcherName": "EIGHTY CRM",
+  "display": "standalone",
+  "themeColor": "#071426",
+  "themeColorDark": "#071426",
+  "navigationColor": "#071426",
+  "navigationColorDark": "#071426",
+  "navigationDividerColor": "#071426",
+  "navigationDividerColorDark": "#071426",
+  "backgroundColor": "#f8fafc",
+  "enableNotifications": true,
+  "startUrl": "/crm",
+  "iconUrl": "https://raw.githubusercontent.com/eightyerp/eightyerp/main/public/pwa/eighty-icon-512.png",
+  "maskableIconUrl": "https://raw.githubusercontent.com/eightyerp/eightyerp/main/public/pwa/eighty-icon-512.png",
+  "splashScreenFadeOutDuration": 200,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "eightycrm"
+  },
+  "appVersionCode": 1,
+  "appVersion": "0.1.0-test.1",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://raw.githubusercontent.com/eightyerp/eightyerp/feat/crm-mobile-pwa-push-foundation/public/crm-manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 26,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

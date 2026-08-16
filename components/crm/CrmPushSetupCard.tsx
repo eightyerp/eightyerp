@@ -1,0 +1,253 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+  disableCrmPushSubscriptionAction,
+  registerCrmPushSubscriptionAction,
+} from "@/app/actions/crm-push-subscription";
+
+type PushState =
+  | "loading"
+  | "install_required"
+  | "unsupported"
+  | "server_not_ready"
+  | "off"
+  | "on"
+  | "denied"
+  | "saving"
+  | "error";
+
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_CRM_WEB_PUSH_VAPID_PUBLIC_KEY ?? "";
+
+function urlBase64ToUint8Array(value: string) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) {
+    output[i] = raw.charCodeAt(i);
+  }
+  return output;
+}
+
+function isIosDevice() {
+  const ua = navigator.userAgent.toLowerCase();
+  return (
+    /iphone|ipad|ipod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isStandaloneApp() {
+  const iosNavigator = navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    iosNavigator.standalone === true
+  );
+}
+
+export default function CrmPushSetupCard() {
+  const [state, setState] = useState<PushState>(() =>
+    VAPID_PUBLIC_KEY ? "loading" : "server_not_ready",
+  );
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!VAPID_PUBLIC_KEY) return;
+
+    let cancelled = false;
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+
+      // iPhone/iPad Web Push는 홈 화면에 설치한 웹 앱에서만 사용한다.
+      // Safari 탭에서 곧바로 "미지원"으로 보이지 않게 설치 단계부터 안내한다.
+      if (isIosDevice() && !isStandaloneApp()) {
+        setState("install_required");
+        return;
+      }
+
+      if (
+        !("serviceWorker" in navigator) ||
+        !("PushManager" in window) ||
+        !("Notification" in window)
+      ) {
+        setState("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setState("denied");
+        return;
+      }
+
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (!cancelled) setState(subscription ? "on" : "off");
+      } catch {
+        if (!cancelled) setState("off");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function enablePush() {
+    setMessage(null);
+    if (!VAPID_PUBLIC_KEY) {
+      setState("server_not_ready");
+      return;
+    }
+    if (isIosDevice() && !isStandaloneApp()) {
+      setState("install_required");
+      return;
+    }
+
+    try {
+      setState("saving");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setState(permission === "denied" ? "denied" : "off");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+
+      const json = subscription.toJSON();
+      const p256dh = json.keys?.p256dh;
+      const auth = json.keys?.auth;
+      if (!p256dh || !auth) {
+        throw new Error("push_keys_missing");
+      }
+
+      const result = await registerCrmPushSubscriptionAction({
+        endpoint: subscription.endpoint,
+        p256dh,
+        auth,
+        userAgent: navigator.userAgent,
+      });
+      if (!result.success) {
+        setMessage(result.error ?? "푸시 알림을 등록하지 못했습니다.");
+        setState("error");
+        return;
+      }
+
+      setState("on");
+      setMessage("이 휴대폰에서 에잇티 CRM 알림을 받을 수 있습니다.");
+    } catch {
+      setState("error");
+      setMessage("푸시 알림을 켜지 못했습니다. 휴대폰 알림 권한을 확인해 주세요.");
+    }
+  }
+
+  async function disablePush() {
+    setMessage(null);
+    try {
+      setState("saving");
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await disableCrmPushSubscriptionAction(subscription.endpoint);
+        await subscription.unsubscribe();
+      }
+      setState("off");
+      setMessage("이 휴대폰의 CRM 푸시 알림을 껐습니다.");
+    } catch {
+      setState("error");
+      setMessage("푸시 알림 해제에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
+
+  const enabled = state === "on";
+  const disabled = state === "saving" || state === "loading";
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-slate-950">휴대폰 업무 알림</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            배분 고객, 예약 1시간 전, 미연락 고객을 놓치지 않도록 알려줍니다.
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${
+            enabled
+              ? "bg-emerald-50 text-emerald-700"
+              : state === "denied"
+                ? "bg-red-50 text-red-700"
+                : state === "install_required"
+                  ? "bg-amber-50 text-amber-800"
+                  : "bg-slate-100 text-slate-600"
+          }`}
+        >
+          {enabled
+            ? "켜짐"
+            : state === "denied"
+              ? "권한차단"
+              : state === "install_required"
+                ? "설치필요"
+                : "꺼짐"}
+        </span>
+      </div>
+
+      {state === "install_required" && (
+        <div className="mt-3 rounded-xl bg-amber-50 px-3 py-3 text-xs font-semibold leading-5 text-amber-900">
+          <p>iPhone에서는 먼저 Safari에서 EIGHTY CRM을 홈 화면에 추가해야 PUSH를 받을 수 있습니다.</p>
+          <Link href="/crm/install" className="mt-2 inline-flex font-black underline underline-offset-2">
+            iPhone 설치방법 보기 →
+          </Link>
+        </div>
+      )}
+      {state === "unsupported" && (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+          이 브라우저에서는 Web Push를 사용할 수 없습니다. 최신 Chrome/Safari와 설치형 CRM을 사용해 주세요.
+        </p>
+      )}
+      {state === "server_not_ready" && (
+        <p className="mt-3 rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">
+          푸시 서버 키 연결 전입니다. CRM 화면 테스트는 계속할 수 있습니다.
+        </p>
+      )}
+      {state === "denied" && (
+        <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+          휴대폰 설정에서 EIGHTY CRM의 알림 권한을 허용해야 합니다.
+        </p>
+      )}
+      {message && (
+        <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${state === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+          {message}
+        </p>
+      )}
+
+      {!enabled && state !== "install_required" ? (
+        <button
+          type="button"
+          onClick={enablePush}
+          disabled={disabled || state === "unsupported" || state === "server_not_ready" || state === "denied"}
+          className="mt-4 w-full rounded-xl bg-navy-900 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {state === "saving" ? "연결 중..." : "업무 알림 켜기"}
+        </button>
+      ) : enabled ? (
+        <button
+          type="button"
+          onClick={disablePush}
+          disabled={disabled}
+          className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
+        >
+          업무 알림 끄기
+        </button>
+      ) : null}
+    </section>
+  );
+}

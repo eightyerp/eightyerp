@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: erp-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -28,6 +32,18 @@ jobs:
 
       - name: Window workflow lifecycle guard
         run: node scripts/test-window-workflow-lifecycle.mjs
+
+      - name: CRM mobile contract guard
+        run: node scripts/test-crm-mobile-contract.mjs
+
+      - name: CRM mobile layout guard
+        run: node scripts/test-crm-mobile-layout.mjs
+
+      - name: CRM Android iPhone install guard
+        run: node scripts/test-crm-platform-install.mjs
+
+      - name: CRM home performance guard
+        run: node scripts/test-crm-home-performance.mjs
 
       - name: Lint
         run: npm run lint
