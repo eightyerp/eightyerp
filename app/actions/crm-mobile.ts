@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   completeCustomerSchedule,
   createCustomerSchedule,
+  findCustomerScheduleConflicts,
   getCustomerSchedule,
 } from "@/lib/crm/customer-schedules";
 import {
@@ -72,6 +73,32 @@ const CRM_STATUS_OPTIONS: CustomerStatus[] = [
   "취소",
 ];
 
+const STATUS_RANK: Partial<Record<CustomerStatus, number>> = {
+  신규: 0,
+  미연락: 0,
+  "1차 연락완료": 1,
+  상담중: 2,
+  방문예약: 3,
+  실측예약: 4,
+  견적작성중: 5,
+  견적제출: 6,
+  계약협의: 7,
+  계약완료: 8,
+  계약: 8,
+  시공예정: 9,
+  시공중: 10,
+  완료: 11,
+};
+
+const SCHEDULE_STAGE_TARGET: Partial<
+  Record<(typeof CRM_SCHEDULE_TYPES)[number], CustomerStatus>
+> = {
+  방문상담: "방문예약",
+  실측: "실측예약",
+  견적작성: "견적작성중",
+  계약상담: "계약협의",
+};
+
 export type CrmCreateCustomerState = {
   success: boolean;
   error?: string;
@@ -111,6 +138,13 @@ function koreaDateFromIso(iso: string) {
   return `${map.year}-${map.month}-${map.day}`;
 }
 
+function shouldAdvanceStatus(current: CustomerStatus, target: CustomerStatus) {
+  const currentRank = STATUS_RANK[current];
+  const targetRank = STATUS_RANK[target];
+  if (currentRank === undefined || targetRank === undefined) return false;
+  return targetRank > currentRank;
+}
+
 function revalidateCrmCustomer(customerId: string) {
   revalidatePath("/crm");
   revalidatePath("/crm/customers");
@@ -123,6 +157,8 @@ export async function createCrmCustomerAction(
   _prev: CrmCreateCustomerState,
   formData: FormData,
 ): Promise<CrmCreateCustomerState> {
+  let createdCustomerId: string;
+
   try {
     const name = requiredText(formData, "name");
     const phone = requiredText(formData, "phone");
@@ -146,25 +182,19 @@ export async function createCrmCustomerAction(
       next_contact_at: null,
       interest_items: [],
     });
-
-    revalidatePath("/crm");
-    revalidatePath("/crm/customers");
-    revalidatePath("/customers");
-    revalidatePath("/dashboard");
-    redirect(`/crm/customers/${customer.id}?created=1`);
+    createdCustomerId = customer.id;
   } catch (error) {
-    // redirect()는 성공 시 throw 형태로 동작하므로 NEXT_REDIRECT는 그대로 전달한다.
-    if (
-      error instanceof Error &&
-      (error.message === "NEXT_REDIRECT" || error.message.includes("NEXT_REDIRECT"))
-    ) {
-      throw error;
-    }
     return {
       success: false,
       error: error instanceof Error ? error.message : "고객 등록에 실패했습니다.",
     };
   }
+
+  revalidatePath("/crm");
+  revalidatePath("/crm/customers");
+  revalidatePath("/customers");
+  revalidatePath("/dashboard");
+  redirect(`/crm/customers/${createdCustomerId}?created=1`);
 }
 
 export async function createCrmScheduleAction(formData: FormData) {
@@ -185,6 +215,14 @@ export async function createCrmScheduleAction(formData: FormData) {
   }
 
   const startAt = parseKoreaLocalDateTime(startRaw);
+  const conflicts = await findCustomerScheduleConflicts({
+    assignedEmployeeId: customer.assigned_employee_id,
+    startAt,
+  });
+  if (conflicts.length > 0) {
+    redirect(`/crm/customers/${customerId}/schedule/new?conflict=1`);
+  }
+
   const description = optionalText(formData, "description");
   const location = optionalText(formData, "location") || customer.address || null;
   const schedule = await createCustomerSchedule({
@@ -204,6 +242,20 @@ export async function createCrmScheduleAction(formData: FormData) {
     next_action: scheduleType === "재연락" ? "고객 재연락" : scheduleType,
     next_contact_at: null,
   });
+
+  const targetStatus = SCHEDULE_STAGE_TARGET[
+    scheduleType as (typeof CRM_SCHEDULE_TYPES)[number]
+  ];
+  if (targetStatus && shouldAdvanceStatus(customer.status, targetStatus)) {
+    try {
+      await updateCustomerQuickFields({
+        customer_id: customerId,
+        status: targetStatus,
+      });
+    } catch {
+      // 일정은 정상 생성됐으므로 단계 자동전환 실패가 일정 중복등록을 유발하지 않게 한다.
+    }
+  }
 
   // 연락 성격 일정은 날짜 요약도 함께 맞춰 두되, 정확한 시간의 Source of Truth는 customer_schedules다.
   if (["전화상담", "재연락", "해피콜"].includes(scheduleType)) {
@@ -251,8 +303,6 @@ export async function saveCrmConsultationAction(formData: FormData) {
     next_contact_date: nextContactDate,
   });
 
-  // 직원이 첫 상담기록을 남겼는데 고객 상태가 계속 신규/미연락으로 남지 않게 자동 전진한다.
-  // 이미 더 뒤 단계라면 상태를 되돌리지 않는다.
   if (customer.status === "신규" || customer.status === "미연락") {
     const nextStatus: CustomerStatus =
       consultTypeRaw === "방문" ? "상담중" : "1차 연락완료";
