@@ -7,7 +7,7 @@ export default function CrmServiceWorkerRegistration() {
     if (!("serviceWorker" in navigator)) return;
 
     void navigator.serviceWorker
-      .register("/sw-crm.js", { scope: "/crm/" })
+      .register("/sw-crm.js", { scope: "/crm" })
       .catch(() => {
         // PWA 등록 실패가 CRM 업무 자체를 막으면 안 된다.
       });
