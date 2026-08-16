@@ -30,6 +30,7 @@ jobs:
         run: |
           node scripts/test-window-workflow-lifecycle.mjs
           node scripts/test-window-workflow-readiness.mjs
+          node scripts/test-contract-transition-replay-integrity.mjs
 
       - name: Lint
         run: npm run lint

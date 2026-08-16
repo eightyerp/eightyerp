@@ -92,6 +92,7 @@ declare
   v_customer_a uuid;
   v_customer_b uuid;
   v_project_a uuid;
+  v_project_a2 uuid;
   v_project_b uuid;
   v_inspection_1 uuid := gen_random_uuid();
   v_inspection_2 uuid := gen_random_uuid();
@@ -102,6 +103,8 @@ declare
   v_valid_request uuid := gen_random_uuid();
   v_quote_id uuid;
   v_item_id uuid;
+  v_contract_id uuid;
+  v_budget_id uuid;
   v_result jsonb;
   v_header jsonb;
   v_items jsonb;
@@ -213,6 +216,27 @@ begin
     v_user_id
   )
   returning id into v_project_a;
+
+  insert into public.projects(
+    customer_id,
+    name,
+    address,
+    status,
+    assigned_employee_id,
+    company_id,
+    created_by,
+    updated_by
+  ) values (
+    v_customer_a,
+    v_marker || '-project-a2',
+    'rollback-only',
+    '준비',
+    v_employee_id,
+    v_company_id,
+    v_user_id,
+    v_user_id
+  )
+  returning id into v_project_a2;
 
   insert into public.projects(
     customer_id,
@@ -530,6 +554,88 @@ begin
     null;
   end;
 
+  -- 5) 견적→계약 최초 전환, exact replay, 다른 현장 replay 무결성.
+  -- 기존 quote/source relink 검증을 모두 마친 뒤 실행해야 계약 잠금과 간섭하지 않는다.
+  update public.quotes
+  set
+    status = '발송완료',
+    updated_by = v_user_id,
+    updated_at = now()
+  where id = v_quote_id;
+
+  v_result := public.transition_quote_to_contract(
+    v_quote_id,
+    'link',
+    v_project_a,
+    null,
+    null,
+    v_employee_id,
+    current_date,
+    left(v_marker, 30) || '-contract'
+  );
+
+  if coalesce((v_result->>'already_converted')::boolean, true) then
+    raise exception 'first contract transition was reported as replay=%', v_result;
+  end if;
+
+  v_contract_id := (v_result->>'contract_id')::uuid;
+  v_budget_id := (v_result->>'execution_budget_id')::uuid;
+
+  v_result := public.transition_quote_to_contract(
+    v_quote_id,
+    'link',
+    v_project_a,
+    null,
+    null,
+    v_employee_id,
+    current_date,
+    left(v_marker, 30) || '-contract'
+  );
+
+  if coalesce((v_result->>'already_converted')::boolean, false) is not true
+     or (v_result->>'contract_id')::uuid is distinct from v_contract_id
+     or (v_result->>'project_id')::uuid is distinct from v_project_a
+     or (v_result->>'execution_budget_id')::uuid is distinct from v_budget_id then
+    raise exception 'exact contract replay failed=%', v_result;
+  end if;
+
+  begin
+    perform public.transition_quote_to_contract(
+      v_quote_id,
+      'link',
+      v_project_a2,
+      null,
+      null,
+      v_employee_id,
+      current_date,
+      left(v_marker, 30) || '-contract'
+    );
+    raise exception 'different-project contract replay unexpectedly allowed';
+  exception when sqlstate '23514' then
+    null;
+  end;
+
+  select count(*)::integer into v_count
+  from public.contracts c
+  join public.execution_budgets b
+    on b.contract_id = c.id
+  where c.id = v_contract_id
+    and c.quote_id = v_quote_id
+    and c.project_id = v_project_a
+    and c.contract_number = left(v_marker, 30) || '-contract'
+    and b.id = v_budget_id
+    and b.project_id = v_project_a;
+
+  if v_count <> 1
+     or exists (
+       select 1
+       from public.contracts c
+       where c.quote_id = v_quote_id
+         and c.project_id = v_project_a2
+     ) then
+    raise exception 'contract replay changed or duplicated the project chain';
+  end if;
+
   perform set_config('app.wqwf_marker', v_marker, true);
   perform set_config('app.wqwf_quote_id', v_quote_id::text, true);
   perform set_config('app.wqwf_ok', 'true', true);
@@ -570,6 +676,13 @@ select
    from public.quote_items i
    join public.quotes q on q.id = i.quote_id
    where q.title like 'WQWF-VERIFY-%') as quote_items_remaining,
+  (select count(*)::integer
+   from public.contracts
+   where contract_number like 'WQWF-VERIFY-%') as contracts_remaining,
+  (select count(*)::integer
+   from public.execution_budgets b
+   join public.contracts c on c.id = b.contract_id
+   where c.contract_number like 'WQWF-VERIFY-%') as budgets_remaining,
   (
     not exists (
       select 1 from public.customers where name like 'WQWF-VERIFY-%'
@@ -589,5 +702,16 @@ select
     )
     and not exists (
       select 1 from public.quotes where title like 'WQWF-VERIFY-%'
+    )
+    and not exists (
+      select 1
+      from public.contracts
+      where contract_number like 'WQWF-VERIFY-%'
+    )
+    and not exists (
+      select 1
+      from public.execution_budgets b
+      join public.contracts c on c.id = b.contract_id
+      where c.contract_number like 'WQWF-VERIFY-%'
     )
   ) as residue_clean;

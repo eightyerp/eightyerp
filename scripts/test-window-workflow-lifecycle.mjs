@@ -24,15 +24,32 @@ const quoteIntegrityMigration = read(
 const quoteIntegrityRollback = read(
   "supabase/rollback/20260816074308_quote_workflow_atomic_integrity_down.sql",
 );
+const quoteContractRetryMigration = read(
+  "supabase/migrations/20260816100000_quote_contract_retry_project_guard.sql",
+);
+const quoteContractRetryRollback = read(
+  "supabase/rollback/20260816100000_quote_contract_retry_project_guard_down.sql",
+);
 const quoteIntegrityVerification = read(
   "supabase/verification/20260816074308_quote_workflow_atomic_integrity_verify.sql",
 );
 const workflowReadiness = read("scripts/test-window-workflow-readiness.mjs");
+const contractRetryReadiness = read(
+  "scripts/test-contract-transition-replay-integrity.mjs",
+);
 const contractActions = read("app/actions/quote-contract-transition.ts");
 const transition = read("lib/crm/quote-contract-transition.ts");
 const quoteDetail = read("components/quotes/QuoteDetailView.tsx");
 const contractPanel = read("components/quotes/ContractTransitionPanel.tsx");
 const lifecycle = read("docs/WINDOW_WORKFLOW_LIFECYCLE.md");
+const quoteContractRetryFunction = quoteContractRetryMigration.slice(
+  quoteContractRetryMigration.indexOf(
+    "create or replace function public.transition_quote_to_contract",
+  ),
+  quoteContractRetryMigration.indexOf(
+    "revoke all on function public.transition_quote_to_contract",
+  ),
+);
 
 assert(
   !/customerStatus\s*===\s*["']계약완료["']/.test(projectConstants),
@@ -128,6 +145,40 @@ assert(
 assert(
   /supabase\.rpc\(["']transition_quote_to_contract["']/.test(transition),
   "실제 계약전환은 운영 원자적 RPC를 사용한다",
+);
+assert(
+  quoteContractRetryFunction.split("contract replay project mismatch").length -
+      1 ===
+      2 &&
+    quoteContractRetryFunction.split(
+      "v_contract.project_id is distinct from p_project_id",
+    ).length -
+      1 ===
+      2 &&
+    quoteContractRetryFunction.split("errcode = '23514'").length - 1 === 2,
+  "계약 재시도 일반·경쟁 반환 경로 모두 다른 project_id를 fail-closed 한다",
+);
+assert(
+  !quoteContractRetryRollback.includes(
+    "contract replay project mismatch",
+  ) &&
+    quoteContractRetryRollback.includes(
+      "발송완료 상태의 견적만 전환할 수 있습니다.",
+    ),
+  "emergency rollback은 migration 39 상태 가드를 정확히 복원한다",
+);
+assert(
+  transition.includes("result.already_converted === true") &&
+    transition.includes("result.idempotent === true") &&
+    transition.includes("contract replay project mismatch") &&
+    transition.includes("기존 계약 현장을 확인해 주세요"),
+  "RPC 멱등 결과와 현장 불일치 오류를 사용자에게 정확히 매핑한다",
+);
+assert(
+  contractRetryReadiness.includes("already_converted") &&
+    contractRetryReadiness.includes("23514") &&
+    contractRetryReadiness.includes("projectA2"),
+  "isolated DB가 최초 전환·exact replay·다른 현장 replay를 실행 검증한다",
 );
 assert(
   /if \(input\.projectMode === ["']link["']\)/.test(transition) &&

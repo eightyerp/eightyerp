@@ -149,6 +149,11 @@ export async function transitionQuoteToContract(input: {
     if (message.includes("발송완료")) {
       throw new Error("고객전송을 완료한 견적만 계약으로 전환할 수 있습니다.");
     }
+    if (message.includes("contract replay project mismatch")) {
+      throw new Error(
+        "이미 전환된 계약의 현장과 선택한 현장이 다릅니다. 기존 계약 현장을 확인해 주세요.",
+      );
+    }
     if (message.includes("project")) {
       throw new Error("계약에 연결할 현장 정보를 다시 확인해 주세요.");
     }
@@ -183,6 +188,7 @@ export async function transitionQuoteToContract(input: {
     contractId,
     projectId: resultProjectId,
     executionBudgetId,
-    idempotent: result.idempotent === true,
+    idempotent:
+      result.already_converted === true || result.idempotent === true,
   };
 }
