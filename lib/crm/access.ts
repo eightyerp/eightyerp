@@ -59,11 +59,11 @@ function resolveApproval(profile: ProfileWithEmployee | null): {
 
 export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId =
+    typeof claimsData?.claims?.sub === "string" ? claimsData.claims.sub : null;
 
-  if (!user) {
+  if (!userId) {
     return {
       userId: null,
       profile: null,
@@ -81,7 +81,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
     supabase
       .from("profiles")
       .select("id, employee_id, active_company_id, role, permissions, is_active, email, full_name, phone, requested_team, requested_title, is_approved, approval_status, approved_at, approved_by, rejected_at, rejection_reason, created_at, updated_at, employees ( id, company_id, name, title, team_id, is_active, teams ( name ) )")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle(),
     supabase.rpc("current_company_role"),
   ]);
@@ -89,7 +89,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
 
   if (error) {
     return {
-      userId: user.id,
+      userId,
       profile: null,
       role: null,
       companyRole: null,
@@ -128,7 +128,7 @@ export const getCurrentUserAccess = cache(async (): Promise<CurrentUserAccess> =
         : "staff";
 
   return {
-    userId: user.id,
+    userId,
     profile: typed,
     role: effectiveRole,
     companyRole,
