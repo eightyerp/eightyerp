@@ -6,10 +6,12 @@
 --   1) 신규고객 배분 이벤트에 30분 첫 연락 추적 eligibility 표시
 --   2) 배분 후 30분 동안 실제 연락/상담/예약이 없는 고객을 1회 알림
 --   3) 멀티회사 company_id를 모든 이벤트에 명시
+--   4) 관리자 수동배분뿐 아니라 service_role 자동 유입/자동배분도 동일하게 처리
 --
 -- 안전
 --   - 고객/상담/일정 데이터 삭제 없음
 --   - 기존 customer_assigned 이벤트는 follow-up 비대상으로 표시해 최초 활성화 폭주 방지
+--   - 일반 직원이 본인 고객을 직접 등록한 경우에는 자동 배분 PUSH를 생성하지 않음
 --   - 실제 PUSH 발송/cron/Secret 활성화는 별도 승인 후 수행
 -- =============================================================================
 
@@ -21,25 +23,36 @@ set payload = coalesce(payload, '{}'::jsonb) || jsonb_build_object(
 where event_type = 'customer_assigned'
   and not (coalesce(payload, '{}'::jsonb) ? 'assignment_followup_eligible');
 
--- 앞으로 관리자/회사가 담당자를 배정한 이벤트는 30분 첫 연락 추적 대상으로 표시한다.
+-- 앞으로 관리자/회사 또는 서버 자동유입이 담당자를 배정한 이벤트는
+-- 30분 첫 연락 추적 대상으로 표시한다.
 create or replace function public.enqueue_crm_customer_assignment_event()
 returns trigger
 language plpgsql
 security invoker
 set search_path = public
 as $$
+declare
+  v_jwt_role text := coalesce(current_setting('request.jwt.claim.role', true), '');
+  v_source text;
 begin
   if new.assigned_employee_id is null then
     return new;
   end if;
 
-  if not public.is_admin() then
+  -- 관리자 배분 또는 서버(service_role) 자동유입만 자동 배분 이벤트를 생성한다.
+  -- 일반 직원의 본인 고객 직접등록은 자기 자신에게 불필요한 배분 PUSH를 만들지 않는다.
+  if not public.is_admin() and v_jwt_role <> 'service_role' then
     return new;
   end if;
 
   if tg_op = 'UPDATE' and old.assigned_employee_id is not distinct from new.assigned_employee_id then
     return new;
   end if;
+
+  v_source := case
+    when v_jwt_role = 'service_role' then 'automatic_system_assignment'
+    else 'automatic_company_assignment'
+  end;
 
   insert into public.notification_events (
     event_type,
@@ -53,7 +66,7 @@ begin
     new.id,
     new.company_id,
     jsonb_build_object(
-      'source', 'automatic_company_assignment',
+      'source', v_source,
       'assignment_followup_eligible', true,
       'assigned_employee_id', new.assigned_employee_id,
       'customer_name', new.name,
