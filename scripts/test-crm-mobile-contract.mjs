@@ -26,6 +26,12 @@ assertIncludes(shell, 'href="/crm/customers/new"', "new customer registration st
 const mobileAction = read("app/actions/crm-mobile.ts");
 assertIncludes(mobileAction, "createCrmCustomerAction", "mobile quick customer registration action exists");
 assertIncludes(mobileAction, "createCrmScheduleAction", "mobile customer schedule registration action exists");
+assertIncludes(mobileAction, "findCustomerScheduleConflicts", "mobile scheduling checks assignee conflicts");
+assertIncludes(mobileAction, "SCHEDULE_STAGE_TARGET", "mobile schedule types drive stage progression");
+assertIncludes(mobileAction, '방문상담: "방문예약"', "visit schedule advances to visit reservation");
+assertIncludes(mobileAction, '실측: "실측예약"', "survey schedule advances to survey reservation");
+assertIncludes(mobileAction, '견적작성: "견적작성중"', "quote-work schedule advances quote stage");
+assertIncludes(mobileAction, '계약상담: "계약협의"', "contract consultation advances contract stage");
 assertIncludes(mobileAction, "saveCrmConsultationAction", "mobile consultation action exists");
 assertIncludes(mobileAction, "updateCrmCustomerStatusAction", "mobile status quick action exists");
 assertIncludes(mobileAction, 'customer.status === "신규"', "first consultation auto-advances new customer");
@@ -40,6 +46,7 @@ assertIncludes(newCustomerPage, "CrmNewCustomerForm", "CRM has compact in-app cu
 
 const newSchedulePage = read("app/crm/customers/[id]/schedule/new/page.tsx");
 assertIncludes(newSchedulePage, "createCrmScheduleAction", "CRM has in-app customer schedule registration screen");
+assertIncludes(newSchedulePage, 'query.conflict === "1"', "schedule conflict feedback is visible to employee");
 
 const statusPage = read("app/crm/customers/[id]/status/page.tsx");
 assertIncludes(statusPage, "계약 (기존)", "legacy contract state is visible instead of silently resetting");
