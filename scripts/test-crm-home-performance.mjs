@@ -24,6 +24,7 @@ function checkNot(content, needle, label) {
 const homePage = read("app/crm/page.tsx");
 check(homePage, "getCrmMobileHomeBundle", "CRM home uses dedicated lightweight bundle");
 check(homePage, "listCrmMobileCustomers", "CRM home new-customer count uses lightweight customer query");
+check(homePage, "employeeId: employeeId ?? undefined", "CRM home keeps explicit assignee scope for admin users");
 checkNot(homePage, "getTodayWorkBundle", "CRM home does not reload full ERP today-work bundle");
 checkNot(homePage, "getCustomers({", "CRM home avoids heavy shared customer list query");
 
@@ -38,5 +39,12 @@ check(homeQuery, 'in("status", ACTIVE_QUOTE_STATUSES)', "CRM home avoids loading
 check(homeQuery, 'customer_schedules', "quote follow-up check reuses schedule data server-side");
 checkNot(homeQuery, '.limit(800)', "CRM home never loads 800 schedules");
 checkNot(homeQuery, '.limit(500)', "CRM home never loads 500 quotes");
+
+const nextAction = read("lib/crm/next-action.ts");
+check(nextAction, "next_contact_at.is.null", "next-action query filters missing contact dates in DB");
+check(nextAction, "next_contact_at.lt.", "next-action query filters overdue contact dates in DB");
+check(nextAction, 'select("customer_id")', "next-action schedule check fetches only customer ids");
+check(nextAction, 'in("status", [...OPEN_SCHEDULE_STATUSES])', "next-action query loads only open schedules");
+checkNot(nextAction, '.limit(500)', "next-action query no longer loads 500 mixed schedules");
 
 console.log("PASS: EIGHTY CRM home performance guard complete");
