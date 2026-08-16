@@ -19,6 +19,7 @@ const SCHEDULE_EVENT_TYPES = [
   "consult_remind_1h",
   "consult_unhandled",
   "customer_assignment_uncontacted_30m",
+  "customer_unassigned_10m",
   "customer_stale_3d",
   "customer_stale_7d",
 ] as const;
@@ -47,6 +48,12 @@ function scheduleAlertCopy(eventType: string) {
       return {
         title: "배분 후 30분 미연락",
         body: "신규 배분 고객의 첫 연락이 아직 확인되지 않았습니다.",
+        tone: "danger" as const,
+      };
+    case "customer_unassigned_10m":
+      return {
+        title: "담당자 미배정 신규문의",
+        body: "신규 고객이 10분 이상 미배정 상태입니다. 담당자를 지정해 주세요.",
         tone: "danger" as const,
       };
     case "customer_stale_3d":
@@ -129,12 +136,15 @@ export async function listMyCrmAlerts(limit = 40): Promise<CrmAlertItem[]> {
         "consult_remind_1h",
         "consult_unhandled",
       ].includes(row.event_type);
+      const isAdminAssignmentLink = row.event_type === "customer_unassigned_10m";
       const href =
         isScheduleDeepLink && row.schedule_id
           ? `/crm/schedules/${row.schedule_id}`
-          : row.customer_id
-            ? `/crm/customers/${row.customer_id}`
-            : "/crm";
+          : isAdminAssignmentLink && row.customer_id
+            ? `/customers/${row.customer_id}/edit`
+            : row.customer_id
+              ? `/crm/customers/${row.customer_id}`
+              : "/crm";
 
       alerts.push({
         id: `schedule:${row.id}`,
