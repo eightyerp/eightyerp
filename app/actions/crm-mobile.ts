@@ -183,9 +183,11 @@ export async function completeCrmScheduleAction(formData: FormData) {
 
   revalidateCrmCustomer(customerId);
   revalidatePath(`/crm/schedules/${scheduleId}`);
-  redirect(
-    `/crm/customers/${customerId}?saved=schedule${
-      nextContactIso && !followUpCreated ? "&followup=failed" : ""
-    }`,
-  );
+
+  const followUpStatus = nextContactIso
+    ? followUpCreated
+      ? "created"
+      : "failed"
+    : "none";
+  redirect(`/crm/schedules/${scheduleId}?completed=1&followup=${followUpStatus}`);
 }
