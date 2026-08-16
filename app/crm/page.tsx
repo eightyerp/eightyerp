@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import CrmTodayWorkList from "@/components/crm/CrmTodayWorkList";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { listCrmMobileCustomers } from "@/lib/crm/crm-mobile-customer-list";
@@ -39,6 +40,46 @@ function SummaryCard({
   );
 }
 
+function SummarySkeleton({ wide = false }: { wide?: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`animate-pulse rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${wide ? "col-span-2" : ""}`}
+    >
+      <div className="h-3 w-16 rounded bg-slate-100" />
+      <div className="mt-3 h-7 w-10 rounded bg-slate-100" />
+    </div>
+  );
+}
+
+function PrimarySummarySkeleton() {
+  return (
+    <>
+      <SummarySkeleton />
+      <SummarySkeleton />
+      <SummarySkeleton />
+      <SummarySkeleton />
+    </>
+  );
+}
+
+function PrioritySkeleton() {
+  return (
+    <section className="space-y-3" aria-hidden="true">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-4 w-20 rounded bg-slate-100" />
+          <div className="mt-2 h-3 w-48 rounded bg-slate-100" />
+        </div>
+      </div>
+      <div className="animate-pulse rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="h-4 w-24 rounded bg-slate-100" />
+        <div className="mt-3 h-3 w-40 rounded bg-slate-100" />
+      </div>
+    </section>
+  );
+}
+
 function mergePriorityItems(
   bundleItems: TodayWorkItem[],
   nextActionItems: TodayWorkItem[],
@@ -48,40 +89,24 @@ function mergePriorityItems(
   return [...overdue, ...nextActionItems, ...normal];
 }
 
-export default async function CrmHomePage() {
-  const access = await getCurrentUserAccess();
-  const employeeId = access.profile?.employee_id ?? null;
+type HomeBundlePromise = ReturnType<typeof getCrmMobileHomeBundle>;
+type NewCustomerPromise = ReturnType<typeof listCrmMobileCustomers>;
+type NextActionPromise = ReturnType<typeof listCrmCustomersWithoutNextAction>;
 
-  const [bundleResult, newCustomerResult, nextActionResult] = await Promise.allSettled([
-    getCrmMobileHomeBundle({ employeeId }),
-    listCrmMobileCustomers({
-      status: "신규",
-      employeeId: employeeId ?? undefined,
-      page: 1,
-      pageSize: 1,
-    }),
-    listCrmCustomersWithoutNextAction({ employeeId, limit: 50 }),
+async function PrimarySummaryCards({
+  bundlePromise,
+  newCustomerPromise,
+}: {
+  bundlePromise: HomeBundlePromise;
+  newCustomerPromise: NewCustomerPromise;
+}) {
+  const [bundleResult, newCustomerResult] = await Promise.allSettled([
+    bundlePromise,
+    newCustomerPromise,
   ]);
-
   const bundle = bundleResult.status === "fulfilled" ? bundleResult.value : null;
   const newCustomerCount =
     newCustomerResult.status === "fulfilled" ? newCustomerResult.value.total : 0;
-  const nextActionItems =
-    nextActionResult.status === "fulfilled" ? nextActionResult.value : [];
-  const priorityItems = mergePriorityItems(bundle?.items ?? [], nextActionItems);
-  const loadError =
-    bundleResult.status === "rejected"
-      ? bundleResult.reason instanceof Error
-        ? bundleResult.reason.message
-        : "오늘 할 일을 불러오지 못했습니다."
-      : null;
-
-  const profileEmployeeName = access.profile?.employees?.name?.trim();
-  const profileName = access.profile?.full_name?.trim();
-  const userName =
-    profileEmployeeName ||
-    (profileName ? profileName.split(/\s+/)[0] : null) ||
-    "직원";
   const todayScheduleCount = bundle
     ? bundle.summary.todayConsult +
       bundle.summary.todaySurvey +
@@ -89,6 +114,100 @@ export default async function CrmHomePage() {
       bundle.summary.todayQuoteSend +
       bundle.summary.todayContract
     : 0;
+
+  return (
+    <>
+      <SummaryCard label="신규 문의" value={newCustomerCount} href="/crm/customers?status=신규" />
+      <SummaryCard label="오늘 연락" value={bundle?.summary.todayContact ?? 0} href="/crm/schedules?focus=contact" />
+      <SummaryCard label="오늘 일정" value={todayScheduleCount} href="/crm/schedules" />
+      <SummaryCard
+        label="미처리"
+        value={bundle?.summary.overdue ?? 0}
+        href="/crm/schedules?focus=overdue"
+        alert
+      />
+      {bundleResult.status === "rejected" && (
+        <div className="col-span-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {bundleResult.reason instanceof Error
+            ? bundleResult.reason.message
+            : "오늘 할 일을 불러오지 못했습니다."}
+        </div>
+      )}
+    </>
+  );
+}
+
+async function NextActionSummaryCard({
+  nextActionPromise,
+}: {
+  nextActionPromise: NextActionPromise;
+}) {
+  const result = await Promise.allSettled([nextActionPromise]);
+  const nextActionItems = result[0].status === "fulfilled" ? result[0].value : [];
+  return (
+    <SummaryCard
+      label="다음 행동 없음"
+      value={nextActionItems.length}
+      href="/crm/schedules?focus=next_action"
+      alert
+      wide
+    />
+  );
+}
+
+async function PrioritySection({
+  bundlePromise,
+  nextActionPromise,
+}: {
+  bundlePromise: HomeBundlePromise;
+  nextActionPromise: NextActionPromise;
+}) {
+  const [bundleResult, nextActionResult] = await Promise.allSettled([
+    bundlePromise,
+    nextActionPromise,
+  ]);
+  const bundleItems = bundleResult.status === "fulfilled" ? bundleResult.value.items : [];
+  const nextActionItems =
+    nextActionResult.status === "fulfilled" ? nextActionResult.value : [];
+  const priorityItems = mergePriorityItems(bundleItems, nextActionItems);
+
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-black text-slate-950">우선 처리</h2>
+          <p className="mt-0.5 text-xs text-slate-500">미처리 → 다음 행동 없음 → 긴급·예정시간 순으로 확인합니다.</p>
+        </div>
+        <Link href="/crm/schedules" className="text-xs font-bold text-navy-900">
+          전체 보기
+        </Link>
+      </div>
+      <CrmTodayWorkList items={priorityItems} />
+    </section>
+  );
+}
+
+export default async function CrmHomePage() {
+  const access = await getCurrentUserAccess();
+  const employeeId = access.profile?.employee_id ?? null;
+
+  // 느린 업무 데이터가 CRM 앱 셸/인사말의 첫 렌더를 막지 않도록
+  // Promise만 시작하고 Suspense 경계 안에서 병렬 스트리밍한다.
+  const bundlePromise = getCrmMobileHomeBundle({ employeeId });
+  const newCustomerPromise = listCrmMobileCustomers({
+    status: "신규",
+    employeeId: employeeId ?? undefined,
+    page: 1,
+    pageSize: 1,
+  });
+  const nextActionPromise = listCrmCustomersWithoutNextAction({ employeeId, limit: 50 });
+
+  const profileEmployeeName = access.profile?.employees?.name?.trim();
+  const profileName = access.profile?.full_name?.trim();
+  const userName =
+    profileEmployeeName ||
+    (profileName ? profileName.split(/\s+/)[0] : null) ||
+    "직원";
 
   return (
     <div className="space-y-6">
@@ -110,43 +229,24 @@ export default async function CrmHomePage() {
         </div>
       </section>
 
-      {loadError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {loadError}
-        </div>
-      )}
-
       <section className="grid grid-cols-2 gap-3">
-        <SummaryCard label="신규 문의" value={newCustomerCount} href="/crm/customers?status=신규" />
-        <SummaryCard label="오늘 연락" value={bundle?.summary.todayContact ?? 0} href="/crm/schedules?focus=contact" />
-        <SummaryCard label="오늘 일정" value={todayScheduleCount} href="/crm/schedules" />
-        <SummaryCard
-          label="미처리"
-          value={bundle?.summary.overdue ?? 0}
-          href="/crm/schedules?focus=overdue"
-          alert
-        />
-        <SummaryCard
-          label="다음 행동 없음"
-          value={nextActionItems.length}
-          href="/crm/schedules?focus=next_action"
-          alert
-          wide
-        />
+        <Suspense fallback={<PrimarySummarySkeleton />}>
+          <PrimarySummaryCards
+            bundlePromise={bundlePromise}
+            newCustomerPromise={newCustomerPromise}
+          />
+        </Suspense>
+        <Suspense fallback={<SummarySkeleton wide />}>
+          <NextActionSummaryCard nextActionPromise={nextActionPromise} />
+        </Suspense>
       </section>
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-black text-slate-950">우선 처리</h2>
-            <p className="mt-0.5 text-xs text-slate-500">미처리 → 다음 행동 없음 → 긴급·예정시간 순으로 확인합니다.</p>
-          </div>
-          <Link href="/crm/schedules" className="text-xs font-bold text-navy-900">
-            전체 보기
-          </Link>
-        </div>
-        <CrmTodayWorkList items={priorityItems} />
-      </section>
+      <Suspense fallback={<PrioritySkeleton />}>
+        <PrioritySection
+          bundlePromise={bundlePromise}
+          nextActionPromise={nextActionPromise}
+        />
+      </Suspense>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3">
