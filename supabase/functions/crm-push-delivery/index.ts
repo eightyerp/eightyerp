@@ -43,16 +43,19 @@ function assignmentEmployeeId(payload: Record<string, unknown>): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function allowedInternalPayloadUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (value.startsWith("/crm") || value.startsWith("/customers/")) return value;
+  return null;
+}
+
 function pushPayload(event: QueueEvent) {
   const scheduleDeepLink =
     event.scheduleId &&
     ["schedule_changed", "consult_remind_1h", "consult_unhandled"].includes(event.eventType)
       ? `/crm/schedules/${event.scheduleId}`
       : null;
-  const payloadUrl =
-    typeof event.payload.url === "string" && event.payload.url.startsWith("/crm")
-      ? event.payload.url
-      : null;
+  const payloadUrl = allowedInternalPayloadUrl(event.payload.url);
   const url =
     scheduleDeepLink ||
     payloadUrl ||
@@ -240,6 +243,62 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // 본인이 자기 일정을 등록/변경한 즉시 자기 자신에게 다시 PUSH가 오는 것은 피한다.
+    // 다만 1시간 전/미처리 알림은 실제 리마인더이므로 그대로 발송한다.
+    const selfScheduleChangedEventIds = new Set<string>();
+    const scheduleChangedEvents = events.filter(
+      (event) => event.eventType === "schedule_changed" && event.scheduleId,
+    );
+    if (scheduleChangedEvents.length > 0) {
+      const scheduleIds = [
+        ...new Set(scheduleChangedEvents.map((event) => event.scheduleId).filter(Boolean)),
+      ];
+      const { data: actorSchedules, error: actorScheduleError } = await supabase
+        .from("customer_schedules")
+        .select("id, created_by, updated_by")
+        .in("id", scheduleIds);
+
+      if (!actorScheduleError) {
+        const actorUserIds = [
+          ...new Set(
+            (actorSchedules ?? [])
+              .flatMap((row) => [row.created_by, row.updated_by])
+              .filter(Boolean),
+          ),
+        ];
+        let profileByUser = new Map<string, string>();
+        if (actorUserIds.length > 0) {
+          const { data: actorProfiles } = await supabase
+            .from("profiles")
+            .select("id, employee_id")
+            .in("id", actorUserIds);
+          profileByUser = new Map(
+            (actorProfiles ?? [])
+              .filter((row) => row.id && row.employee_id)
+              .map((row) => [row.id, row.employee_id]),
+          );
+        }
+        const scheduleById = new Map(
+          (actorSchedules ?? []).map((row) => [row.id, row]),
+        );
+
+        for (const event of scheduleChangedEvents) {
+          const schedule = scheduleById.get(event.scheduleId);
+          if (!schedule) continue;
+          const actorUserId =
+            event.payload.action === "create"
+              ? schedule.created_by
+              : schedule.updated_by || schedule.created_by;
+          const actorEmployeeId = actorUserId
+            ? profileByUser.get(actorUserId) ?? null
+            : null;
+          if (actorEmployeeId && actorEmployeeId === event.employeeId) {
+            selfScheduleChangedEventIds.add(event.id);
+          }
+        }
+      }
+    }
+
     const employeeIds = [...new Set(events.map((event) => event.employeeId))];
     const { data: subscriptions, error: subscriptionError } = await supabase
       .from("crm_push_subscriptions")
@@ -260,6 +319,19 @@ Deno.serve(async (req: Request) => {
     let failed = 0;
 
     for (const event of events) {
+      if (selfScheduleChangedEventIds.has(event.id)) {
+        await supabase
+          .from(event.table)
+          .update({
+            status: "skipped",
+            processed_at: new Date().toISOString(),
+            payload: { ...event.payload, skip_reason: "self_schedule_change" },
+          })
+          .eq("id", event.id);
+        skipped += 1;
+        continue;
+      }
+
       const targets = byEmployee.get(event.employeeId) ?? [];
       let eventSent = 0;
       let eventFailed = 0;
