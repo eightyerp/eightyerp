@@ -59,6 +59,15 @@ const assigneePage = read("app/crm/customers/[id]/assignee/page.tsx");
 assertIncludes(assigneePage, "담당자 배정", "unassigned customer can be assigned inside CRM PWA");
 assertIncludes(assigneePage, "updateCrmCustomerAssigneeAction", "assignee screen uses mobile secure action");
 
+const mobileCustomerList = read("lib/crm/crm-mobile-customer-list.ts");
+assertIncludes(mobileCustomerList, 'timeZone: "Asia/Seoul"', "mobile customer today filter uses Korea timezone");
+assertIncludes(mobileCustomerList, 'T00:00:00+09:00', "mobile customer period starts at KST midnight");
+assertIncludes(mobileCustomerList, 'T23:59:59.999+09:00', "mobile customer period ends at KST day end");
+assertIncludes(mobileCustomerList, "pageSize ?? 30", "mobile customer list keeps small page size");
+
+const customerListPage = read("app/crm/customers/page.tsx");
+assertIncludes(customerListPage, "listCrmMobileCustomers", "CRM customer list uses KST-safe mobile query");
+
 const pushFoundation = read("supabase/migrations/20260816090000_crm_mobile_push_foundation.sql");
 assertIncludes(pushFoundation, "customer_assigned", "company assignment push event exists");
 assertIncludes(pushFoundation, "consult_remind_1h", "1-hour reminder event exists");
