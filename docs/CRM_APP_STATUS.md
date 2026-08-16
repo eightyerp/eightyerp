@@ -1,16 +1,13 @@
 # EIGHTY CRM APP — CURRENT STATUS / SOURCE OF TRUTH
 
-> 이 문서는 EIGHTY CRM 개발의 단일 진행상황 기준 문서다.
-> 채팅 내용보다 이 문서를 우선한다.
-> 새 채팅/새 Agent는 반드시 `AGENTS.md` → 이 문서 → `docs/CRM_APP_MISSION_AND_PUSH_POLICY.md` → PR #70 최신 상태 순으로 확인한 뒤 작업을 이어간다.
+> 이 문서는 EIGHTY CRM 개발의 단일 진행상황 기준 문서다. 채팅보다 이 문서를 우선한다.
+> 새 채팅/새 Agent는 `AGENTS.md` → 이 문서 → `docs/CRM_APP_MISSION_AND_PUSH_POLICY.md` → PR #70 최신 상태 순으로 확인한다.
 
 ## 1. 최상위 임무
 
 EIGHTY CRM은 ERP 모바일 복제품이 아니다.
 
-목표는 직원이 휴대폰에서 빠르게 고객을 확인하고,
-`고객 → 연락 → 상담기록 → 다음 행동 → 일정 → 견적 → 계약/수금 확인`
-을 놓치지 않고 처리하는 설치형 직원 영업 앱(PWA)을 완성하는 것이다.
+직원이 휴대폰에서 `고객 → 연락 → 상담기록 → 다음 행동 → 일정 → 견적 → 계약/수금 확인`을 빠르게 처리하고 고객을 놓치지 않게 만드는 설치형 직원 영업앱(PWA)이다.
 
 우선순위:
 1. 직원 사용성
@@ -19,12 +16,12 @@ EIGHTY CRM은 ERP 모바일 복제품이 아니다.
 4. 데이터 일관성
 5. 기능 확장
 
-ERP = 관리자/사무/회계/상세업무
-CRM = 직원 현장 영업 실행
-Window Lab = 창호 전문상담
-Window Check = 현장 점검
-
-공통 고객/직원/현장/견적/계약 데이터는 기존 ERP/Supabase를 Single Source of Truth로 사용한다.
+역할 경계:
+- ERP = 관리자/사무/회계/상세업무
+- CRM = 직원 현장 영업 실행
+- Window Lab = 창호 전문상담
+- Window Check = 현장 점검
+- 공통 고객/직원/현장/견적/계약 데이터는 기존 ERP/Supabase를 Single Source of Truth로 사용
 
 ## 2. 현재 개발 기준
 
@@ -32,7 +29,9 @@ Window Check = 현장 점검
 - Branch: `feat/crm-mobile-pwa-push-foundation`
 - PR: #70 `feat: 직원용 EIGHTY CRM 모바일 PWA 기반`
 - PR 상태: Draft / main 미병합
-- 운영 DB 변경: 미적용
+- 운영 DB PUSH migration: 미적용
+- PUSH Edge Function: 운영 미배포
+- Production Secret/VAPID: 미등록
 - Production 배포: 미적용
 
 ## 3. 현재 구현 완료
@@ -40,9 +39,10 @@ Window Check = 현장 점검
 ### 앱/PWA
 - `/crm` 독립 App Shell
 - 하단 메뉴: 홈 / 고객 / 일정 / 견적 / 더보기
-- CRM manifest + service worker
+- manifest + service worker + standalone 설치
 - Android/iPhone 설치 안내 `/crm/install`
 - 고객 개인정보 Service Worker 캐시 금지
+- 헤더에서 `+ 고객` → `/crm/customers/new`로 PWA 범위 안에서 신규등록
 
 ### CRM 홈
 - 신규 문의
@@ -53,202 +53,229 @@ Window Check = 현장 점검
 - `다음 행동 없음` 고객 자동 탐지
 
 ### 고객
-- 카드형 고객 목록
-- 이름/전화/주소 검색
-- 접수기간 시작일~종료일 조회
+- 카드형 목록 / 이름·전화·주소 검색
+- 접수기간 시작일~종료일 서버 조회
 - 접수일 + D+ 경과일
 - 모바일 파이프라인
-- 고객 상세
+- 고객상세
 - 전화 / 문자 / 상담기록 / 다음 연락 / 견적 / 일정 빠른 행동
-- 카드에서 `상태` 빠른 변경 진입
-- `/crm/customers/[id]/status` 모바일 상태 변경 화면
-- 진행 고객인데 다음 연락·열린 일정이 없으면 `다음 행동 없음` 경고
-- 계약금액·확정수금·미수금·확인대기 금액 읽기 전용 요약
+- 고객카드: 전화 / 문자 / 상담기록 / 일정 잡기 / 상태 변경
+- `/crm/customers/new` 간편 신규고객 등록
+  - 고객명 / 연락처 / 주소 / 상담유형 / 유입경로 / 담당자 / 접수메모
+  - 기존 `customers` 및 `createCustomer` 재사용
+  - 직원은 본인 담당으로 등록, 관리자는 담당자 선택
+- `/crm/customers/[id]/status` 모바일 상태 변경
+- 레거시 상태 `계약`을 `계약 (기존)`으로 보존하여 상태 초기화 회귀 방지
+- 계약금액·확정수금·미수금·확인대기 읽기 전용 요약
 - Window Lab 창호 전문상담 연결
 
 ### 상담/다음 행동
 - 상담기록 저장
-- 다음 연락시간 입력
-- 다음 연락시간 입력 시 `재연락` 일정 자동 생성
-- 신규/미연락 고객 첫 상담기록 시 자동 상태 전진
-  - 방문상담 → `상담중`
-  - 그 외 첫 상담 → `1차 연락완료`
-- 이미 더 뒤 단계인 고객 상태는 자동으로 되돌리지 않음
+- 다음 연락시간 입력 시 실제 `재연락` 일정 생성
+- 신규/미연락 고객의 첫 상담기록은 자동 상태 전진
+  - 방문 → `상담중`
+  - 그 외 → `1차 연락완료`
+- 이미 뒤 단계인 고객 상태는 되돌리지 않음
 
 ### 일정
-- 모바일 일정 집중 목록
-- `/crm/schedules/[id]` 일정 처리 화면
-- 전화 → 결과 한 줄 → 선택적 다음 연락시간 → 완료
-- 다음 연락시간 입력 시 새 재연락 일정 자동 생성
-- 일정 관련 PUSH 클릭 시 일정 처리 화면으로 deep link 준비
+- 모바일 일정 목록 `/crm/schedules`
+- 일정 처리 `/crm/schedules/[id]`
+  - 전화 → 결과 한 줄 → 선택적 다음 연락 → 완료/재예약
+- `/crm/customers/[id]/schedule/new` 모바일 고객 일정 등록
+  - 전화상담 / 방문상담 / 실측 / 견적작성 / 견적발송 / 계약상담 / 재연락 / 해피콜 / 기타
+  - 시간 / 장소 / 메모
+  - 실제 `customer_schedules` 사용
+- 고객카드에서 `일정 잡기`로 바로 진입
+- 연락 성격 일정은 `customers.next_contact_at` 날짜 요약도 동기화하되 정확한 시간 Source of Truth는 `customer_schedules`
+- 일정 PUSH 클릭 → `/crm/schedules/[id]` 처리화면 deep link
 
 ### 견적
 - 직원 범위 견적 목록
 - `/crm/quotes/[id]` CRM 견적 요약
 - 금액/VAT/상태/발행·발송·유효기간 확인
-- 복잡한 편집만 ERP 상세화면으로 연결
+- 복잡한 수정만 기존 ERP 견적 상세 재사용
 
-### 알림함
-- 기존 `배분 고객만` 표시하던 화면을 통합 CRM 알림함으로 변경
+### 통합 알림함
+- `/crm/notifications`
 - 신규 고객 배분
+- 배분 후 30분 첫 연락 없음
+- 관리자용 10분 이상 담당자 미배정 신규문의
 - 일정 등록/변경
 - 예약 1시간 전
 - 일정 +30분 미처리
-- 배분 후 30분 첫 연락 없음
 - 3일/7일 장기방치
-- 관리자용 10분 이상 미배정 신규문의
-- OS PUSH를 꺼도 앱 안에서 알림 이력 확인 가능 구조
+- OS PUSH를 꺼도 앱에서 알림 이력 확인
+- 본인이 만든 자기 일정의 즉시 `schedule_changed` 알림은 Worker에서 skipped 처리하고 Inbox에서도 숨김
 
-## 4. 필수 PUSH 정책
+## 4. 고객 누락 방지 PUSH 계약
 
-PUSH는 CRM의 핵심 고객누락 방지 엔진이다.
-
-1. 회사 신규고객 배분
-   - 담당자 배정/변경 즉시 담당 직원에게 1회
-2. 신규 배분 후 첫 연락 누락
-   - 배분 후 30분 동안 실제 연락/상담/예약이 없으면 담당 직원에게 1회
-   - 상담 또는 일정이 생기면 재촉하지 않음
-3. 신규문의 담당자 미배정
-   - 10분 이상 미배정 상태면 같은 회사 admin/super_admin에게 1회
-4. 일정 등록/변경
-   - 등록/변경 즉시 담당 직원에게 1회
-5. 일정 사전 알림
-   - 전화상담/방문상담/실측/계약상담/재연락/해피콜 등 예정 1시간 전 1회
-6. 일정 미처리
-   - 예정시간 +30분 후 완료·취소·재예약이 아니면 1회
-7. 장기 방치 고객
-   - 3일: 담당 직원 1차
-   - 7일: 담당 직원 2차 + 관리자/팀장 표시
-   - 14일: 반복 PUSH 대신 CRM Home/ERP 관리자 강한 경고
-
-추가 검토:
-- 견적 발송 후 후속 없음
-- 계약 확인/약속 입금일 경과 시 필요한 영업 행동 알림
-- 비긴급 야간 알림 21:00~08:00 유예 정책
+1. 회사/관리자 신규고객 배분 즉시 담당자 1회
+2. 서버 자동유입/service_role이 담당자를 지정한 고객도 배분 PUSH 대상
+3. 직원이 본인 고객을 직접 등록한 경우 불필요한 자기 배분 PUSH는 생성하지 않음
+4. 배분 후 30분 동안 첫 연락·상담·예약 없음 → 담당자 1회
+5. 신규문의 10분 이상 담당자 미배정 → 같은 회사 admin/super_admin 1회
+6. 일정 등록/변경 → 담당자 1회. 단 본인이 자기 일정을 만든 즉시 자기 PUSH는 억제
+7. 예약 1시간 전 → 담당자 1회
+8. 예정시간 +30분 미처리 → 담당자 1회
+9. 3일 후속 없음 → 담당자 1차
+10. 7일 장기방치 → 담당자 2차 + 관리자 경고
+11. 14일은 반복 PUSH 대신 CRM/ERP 강한 경고 유지 방향
 
 PUSH 피로 방지:
-- 동일 이벤트 dedupe 필수
-- 완료/취소/재예약 시 알림조건 해제
-- 첫 상담/후속 일정 생성 시 관련 미연락 조건 해제
+- dedupe key 필수
+- 완료/취소/재예약/상담/후속일정 발생 시 관련 조건 해제
 - 장기방치 매일 반복 금지
-- 알림 클릭 시 해당 CRM 고객/일정 deep link
+- 일정 1시간 전/+30분 리마인드는 본인이 만든 일정도 정상 발송
+- 외부 URL 금지, 허용 deep link는 `/crm...` 및 관리자용 same-origin `/customers/...`
 
-## 5. PUSH preflight 현황
+향후 실사용 후 판단:
+- 비긴급 21:00~08:00 Quiet Hours
+- 견적 발송 후 후속 없음 PUSH
+- 약속 입금일/계약 확인일 PUSH
+- 알림 읽음/안읽음
+
+## 5. PUSH 운영 preflight
 
 운영 DB에는 아직 적용하지 않았다.
 
-읽기 전용 운영 스키마 검증 결과:
-- `customers`, `employees`, `customer_schedules`, `customer_activities`: 존재
-- `notification_events`, `schedule_alert_events`: 존재
-- `current_employee_id`, `current_company_id`, `is_erp_user`, `is_admin`: 존재
-- 멀티회사 `company_id` RLS/기본값 존재
-- 상담기록은 `customer_activities`에도 mirror되어 장기방치 타이머가 정상 reset 가능
+읽기 전용 운영 Supabase `eighty-erp` (`zhihbyarqpkudqyomcxv`) 확인 결과:
+- `customers`, `employees`, `customer_schedules`, `customer_activities` 존재
+- `notification_events`, `schedule_alert_events` 존재
+- `current_employee_id`, `current_company_id`, `is_erp_user`, `is_admin` 존재
+- 멀티회사 company_id 기본값/RLS 존재
+- 상담기록은 `customer_activities`에도 mirror → 장기방치 타이머 reset 가능
 - `notification_events.event_type`에 `customer_assigned` 허용
-- `schedule_alert_events`에는 event_type CHECK 제약 없음
-- `crm_push_subscriptions`, `dedupe_key`는 아직 운영 미적용 — migration 적용 대상
+- `schedule_alert_events` event_type CHECK 없음
+- `crm_push_subscriptions`, `schedule_alert_events.dedupe_key`는 아직 운영 미적용
+
+준비 migration:
+- `20260816090000_crm_mobile_push_foundation.sql`
+- `20260816093000_crm_push_policy_completion.sql`
+- `20260816110000_crm_assignment_followup.sql`
+- `20260816111500_crm_unassigned_customer_alert.sql`
 
 preflight에서 발견 후 수정:
-- service_role scheduler에서 `company_id` 누락 가능성 → 모든 scheduler 이벤트에 company_id 명시
-- 일정 PUSH가 고객상세로만 가던 문제 → 일정 이벤트는 `/crm/schedules/[id]` deep link
-- 기존 과거 배분 이벤트가 30분 재촉으로 한꺼번에 재생되는 문제 → 기존 이벤트 follow-up 비대상 처리
+- service_role scheduler의 company_id 누락 가능성 → 모든 scheduler 이벤트에 company_id 명시
+- 과거 배분 이벤트 30분 알림 일괄 재생 방지
+- 서버 자동유입 담당자 배정도 배분 이벤트로 처리
+- 일정 PUSH를 고객상세가 아닌 일정 처리화면으로 deep link
+- 미배정 관리자 PUSH를 고객 담당자 편집화면으로 deep link
+- 본인 일정 생성/수정 즉시 자기 PUSH 억제
 
-## 6. 성능 원칙 / 현재 상태
+## 6. 성능 / CI
 
-- 모바일 고객목록 pageSize 30
+성능 원칙:
+- 고객목록 pageSize 30
 - 모바일 파이프라인: 단계별 count-only + 선택 단계 고객만 조회
-- `다음 행동 없음`: 담당 고객 최대 100명 + 관련 일정 최대 500건 제한
-- 견적목록 기존 pagination 재사용
-- 고객상세 데이터 병렬 조회
-- PUSH 판정을 위해 전체 고객을 Client로 내려받지 않음
-- PUSH worker는 idempotent + dedupe key 사용
-- 앱 알림함 최근 최대 50건 중심 조회
+- `다음 행동 없음`: 담당 고객 최대 100 + 관련 일정 최대 500
+- 견적 기존 pagination 재사용
+- 고객상세 병렬조회
+- 알림함 최근 최대 50건
+- PUSH worker idempotent
+- 전체 고객 Client 다운로드 금지
 
-최근 검증 기준:
+CRM 임무 회귀방지 CI:
+- `.github/workflows/erp-ci.yml`
+- 기존 Window workflow lifecycle guard
+- `scripts/test-crm-mobile-contract.mjs`
+  - PWA/신규고객/상담/상태/일정 등록
+  - 레거시 계약상태
+  - 신규배분/30분미연락/10분미배정/일정/1시간/+30분/3일/7일 PUSH
+  - 자동 시스템배분
+  - deep link / self-PUSH 억제 / 통합 Inbox
+
+최신 앱 코드 체크포인트:
+- commit `54989f066946d4caaf5b2f578053b26b7700e936`
+- ERP CI run #119 `31941786777`: SUCCESS
 - Window workflow lifecycle guard: PASS
+- CRM mobile contract guard: PASS
 - ESLint: PASS
 - Next.js Production Build: PASS
-- 최근 계측 참고: Compile 8.3s / TypeScript 12.9s / Static generation 42 pages 456ms
+- Compile: 7.6s
+- TypeScript: 12.7s
+- Static generation: 43 pages / 483ms
+- 정상 생성 CRM routes:
+  - `/crm`
+  - `/crm/customers`
+  - `/crm/customers/new`
+  - `/crm/customers/[id]`
+  - `/crm/customers/[id]/status`
+  - `/crm/customers/[id]/schedule/new`
+  - `/crm/install`
+  - `/crm/notifications`
+  - `/crm/quotes`, `/crm/quotes/[id]`
+  - `/crm/schedules`, `/crm/schedules/[id]`
 
-## 7. 현재 테스트/배포 상태
+## 7. 현재 배포/테스트 상태
 
 - Vercel 결제수단 등록 완료 확인: 2026-08-16
-- 팀 화면은 여전히 Hobby로 표시되어 작은 커밋마다 Preview build rate limit이 발생할 수 있음
-- 개발은 GitHub CI 중심으로 계속 진행
-- Vercel Preview는 체크포인트 커밋 위주로 사용
-- 직전 정상 Preview URL: `https://eightyerp-git-feat-crm-mobile-pwa-push-foundation-eighty-erp.vercel.app`
-- 실제 직원 로그인 상태의 모바일 360/390/430px QA는 아직 필요
-- Android Chrome PWA / iPhone Safari PWA 실기기 설치 확인 필요
+- 팀 UI는 여전히 Hobby로 보여 일부 커밋 Preview가 build rate limit에 걸림
+- 개발은 GitHub CI로 계속 가능
+- Vercel Preview는 체크포인트 위주 사용
+- 직전 정상 Preview: `https://eightyerp-git-feat-crm-mobile-pwa-push-foundation-eighty-erp.vercel.app`
+- 실제 로그인 직원 계정의 모바일 360/390/430px QA 필요
+- Android Chrome / iPhone Safari PWA 실기기 설치 확인 필요
 
-## 8. 남은 Release Gate
+## 8. Release Gate
 
-- [x] 기존 Lint / Production Build
+완료:
+- [x] 기존 ERP Lifecycle Guard
+- [x] CRM Mobile Contract Guard
+- [x] Lint / Production Build
 - [x] PUSH 운영 스키마 read-only preflight
-- [x] 멀티회사 company_id 보존 수정
-- [x] 배분 후 30분 미연락 migration 준비
-- [x] 미배정 신규문의 관리자 알림 migration 준비
-- [x] 통합 CRM 알림함 준비
-- [ ] 최신 head Lint / Production Build 재검증
-- [ ] 모바일 360px QA
+- [x] 멀티회사 company_id 보존
+- [x] 신규배분 / 30분 미연락 / 10분 미배정 / 일정 / 3일·7일 알림 코드 준비
+- [x] 통합 CRM Inbox
+- [x] PWA 내부 신규고객 등록
+- [x] 모바일 고객 상태 변경
+- [x] 모바일 고객 일정 등록
+
+남음:
+- [ ] 모바일 360px 실기기/Preview QA
 - [ ] 모바일 390px QA
 - [ ] 모바일 430px QA
 - [ ] Android Chrome PWA 설치/E2E
 - [ ] iPhone Safari PWA 설치/E2E
-- [ ] VAPID key/Secret 등록
-- [ ] Edge Function 배포 + scheduler 연결
+- [ ] VAPID public/private + Worker Secret 등록
+- [ ] 운영 migration 적용 승인
+- [ ] Edge Function 운영 배포 + scheduler 연결
 - [ ] 직원 1~2명 E2E
-- [ ] 신규배분/30분미연락/미배정/일정등록/1시간전/+30분/3일/7일 PUSH 중복방지 QA
-- [ ] 완료/취소/재예약/상담 발생 시 PUSH reset QA
+- [ ] PUSH 중복/해제조건 실전 QA
 - [ ] 대표 최종 승인
 - [ ] main 병합
 - [ ] Production 배포
 
-## 9. 다음 작업 — 반드시 이 순서 우선
+## 9. 다음 작업
 
 ### NOW
-1. 최신 head CI 재검증
-2. 모바일 상태변경/통합알림/상담 자동상태전환 회귀 점검
-3. Preview/실기기 CRM 모바일 QA
-4. PWA 설치 흐름 확인
-5. 고객 → 전화 → 상담 → 자동상태전환 → 다음 연락 → 일정 완료 → 견적 확인 E2E
+1. 모바일/PWA 실기기 QA
+2. `+ 고객 → 고객상세 → 전화 → 상담 → 자동상태전환 → 일정등록 → 일정완료/재예약 → 견적확인` E2E
+3. 발견된 모바일 가독성/터치/키보드/뒤로가기 문제 수정
 
-### NEXT
-6. VAPID/Worker Secret 준비
-7. 운영 migration 적용 전 최종 rollback/RLS 확인
-8. 승인 후 PUSH 실제 연결
-9. 직원 1~2명 테스트
+### NEXT — 운영 변경 승인 필요
+4. VAPID/Worker Secret 준비 및 등록
+5. 4개 PUSH migration 운영 적용
+6. `crm-push-delivery` Edge Function 배포
+7. scheduler 연결
+8. 테스트 직원 1~2명 PUSH E2E
 
 ### AFTER
-10. 견적 발송 후 후속 없음 알림 필요성 실사용 검증
-11. 계약/수금 모바일 읽기 UX 보완
-12. Window Lab / Window Check 연결 UX 마감
-13. 직원 피드백 기반 최소 수정
+9. 견적 후속 PUSH 필요성 실사용 검증
+10. 계약/수금 모바일 읽기 UX 보완
+11. Window Lab / Window Check 연결 UX 마감
+12. 직원 피드백 기반 최소 수정
 
 ## 10. 하지 말 것
 
 - 별도 CRM 고객 DB 생성 금지
-- ERP 기능 전체를 CRM에 복제 금지
+- ERP 전체 기능을 CRM에 복제 금지
 - 회계/지출결의/정산을 CRM 핵심 메뉴로 확장 금지
 - 승인 없이 운영 DB migration 금지
+- 승인 없이 VAPID/Secret/Edge Function 운영 활성화 금지
 - 승인 없이 main merge/Production 배포 금지
 - 유료 서비스 임의 결제 금지
-- Preview/PUSH 때문에 고객 개인정보를 캐시하지 말 것
 
-## 11. 채팅 관리 규칙
-
-앞으로 채팅은 의사결정과 지시용으로만 사용한다.
-
-상세 진행기록은 이 파일에 업데이트한다.
-
-매 중요 단계 완료 시 이 파일의 다음 내용을 갱신한다.
-- 현재 branch/PR/head
-- 완료 기능
-- QA 결과
-- 속도
-- 발견 문제
-- 다음 작업
-- 대표가 해야 할 일
-
-새 채팅 시작 문구는 아래 한 줄이면 된다.
+## 11. 새 채팅 시작문구
 
 `EIGHTY CRM 개발 계속. AGENTS.md, docs/CRM_APP_STATUS.md, docs/CRM_APP_MISSION_AND_PUSH_POLICY.md와 PR #70 최신 상태를 먼저 확인하고, 중복 구현 없이 NEXT 작업부터 계속 진행. 속도와 임무 항상 체크.`
 
