@@ -56,6 +56,7 @@ export default async function CrmHomePage() {
     getCrmMobileHomeBundle({ employeeId }),
     listCrmMobileCustomers({
       status: "신규",
+      employeeId: employeeId ?? undefined,
       page: 1,
       pageSize: 1,
     }),
