@@ -1080,9 +1080,23 @@ export default function QuoteWizardForm({
       }}
     >
       <input type="hidden" name="customer_id" value={customerId} />
-      <input type="hidden" name="project_id" value={initialProjectId ?? ""} />
-      <input type="hidden" name="source_consultation_id" value={initialConsultationId ?? ""} />
-      <input type="hidden" name="source_inspection_id" value={initialInspectionId ?? ""} />
+      <input
+        type="hidden"
+        name="project_id"
+        value={initialQuote?.project_id ?? initialProjectId ?? ""}
+      />
+      <input
+        type="hidden"
+        name="source_consultation_id"
+        value={
+          initialQuote?.source_consultation_id ?? initialConsultationId ?? ""
+        }
+      />
+      <input
+        type="hidden"
+        name="source_inspection_id"
+        value={initialQuote?.source_inspection_id ?? initialInspectionId ?? ""}
+      />
       <input type="hidden" name="quote_type" value={quoteType} />
       <input type="hidden" name="quote_mode" value={quoteMode} />
       <input type="hidden" name="title" value={title} />

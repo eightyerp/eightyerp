@@ -26,8 +26,10 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Window workflow lifecycle guard
-        run: node scripts/test-window-workflow-lifecycle.mjs
+      - name: Window workflow lifecycle and DB rollback guards
+        run: |
+          node scripts/test-window-workflow-lifecycle.mjs
+          node scripts/test-window-workflow-readiness.mjs
 
       - name: Lint
         run: npm run lint

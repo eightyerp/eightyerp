@@ -3,6 +3,20 @@ import { PGlite } from "@electric-sql/pglite";
 
 const migration = await readFile(new URL("../supabase/migrations/20260816012630_window_inspection_workflow_hub.sql", import.meta.url), "utf8");
 const rollback = await readFile(new URL("../supabase/rollback/20260816012630_window_inspection_workflow_hub_down.sql", import.meta.url), "utf8");
+const quoteIntegrityMigration = await readFile(
+  new URL(
+    "../supabase/migrations/20260816074308_quote_workflow_atomic_integrity.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const quoteIntegrityRollback = await readFile(
+  new URL(
+    "../supabase/rollback/20260816074308_quote_workflow_atomic_integrity_down.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const db = new PGlite();
 const ids = {
   companyA: "10000000-0000-4000-8000-000000000001",
@@ -21,6 +35,8 @@ const ids = {
 
 await db.exec(`
   create role authenticated;
+  create role anon;
+  create role service_role;
   create schema auth;
   create table auth.users(id uuid primary key);
   create function auth.uid() returns uuid language sql stable as $$
@@ -33,16 +49,106 @@ await db.exec(`
   create table public.customers(id uuid primary key, company_id uuid not null, deleted_at timestamptz, unique(id, company_id));
   create table public.projects(id uuid primary key, customer_id uuid not null, company_id uuid not null, deleted_at timestamptz, unique(id, customer_id, company_id));
   create table public.customer_consult_logs(id uuid primary key, customer_id uuid not null, company_id uuid, consult_content text not null default '');
-  create table public.quotes(id uuid primary key, customer_id uuid not null, project_id uuid, company_id uuid);
+  create table public.quotes(
+    id uuid primary key,
+    customer_id uuid not null,
+    project_id uuid,
+    company_id uuid,
+    request_id uuid unique,
+    created_by uuid,
+    updated_by uuid,
+    updated_at timestamptz not null default now(),
+    deleted_at timestamptz
+  );
+  create table public.quote_items(
+    id uuid primary key,
+    quote_id uuid not null references public.quotes(id)
+  );
   create function public.current_company_id() returns uuid language sql stable security definer set search_path=public as $$
     select p.active_company_id from profiles p join company_memberships m on m.user_id=p.id and m.company_id=p.active_company_id
     where p.id=auth.uid() and p.is_active and p.is_approved and p.approval_status='approved' and m.status='active' limit 1
   $$;
+  create function public.is_company_member(p_company_id uuid) returns boolean language sql stable as $$
+    select p_company_id = public.current_company_id()
+  $$;
+  create function public.is_admin() returns boolean language sql stable as $$
+    select false
+  $$;
+  create function public.can_access_customer(p_customer_id uuid) returns boolean language sql stable as $$
+    select exists (
+      select 1 from public.customers c
+      where c.id = p_customer_id
+        and c.company_id = public.current_company_id()
+        and c.deleted_at is null
+    )
+  $$;
+  create function public.create_quote_with_items(
+    p_header jsonb,
+    p_items jsonb default '[]'::jsonb
+  ) returns jsonb language plpgsql security definer set search_path=public as $$
+  declare
+    v_request_id uuid := (p_header->>'request_id')::uuid;
+    v_quote_id uuid;
+    v_outcome text;
+  begin
+    if jsonb_array_length(p_items) = 0 then
+      raise exception 'items required';
+    end if;
+
+    insert into public.quotes(
+      id,
+      request_id,
+      customer_id,
+      project_id,
+      company_id,
+      created_by,
+      updated_by
+    ) values (
+      v_request_id,
+      v_request_id,
+      (p_header->>'customer_id')::uuid,
+      nullif(p_header->>'project_id', '')::uuid,
+      public.current_company_id(),
+      auth.uid(),
+      auth.uid()
+    )
+    on conflict (request_id) do nothing
+    returning id into v_quote_id;
+
+    if v_quote_id is null then
+      select q.id into v_quote_id
+      from public.quotes q
+      where q.request_id = v_request_id;
+      v_outcome := 'replayed';
+    else
+      v_outcome := 'created';
+      insert into public.quote_items(id, quote_id)
+      values (v_quote_id, v_quote_id);
+    end if;
+
+    return jsonb_build_object(
+      'quote_id', v_quote_id,
+      'company_id', public.current_company_id(),
+      'customer_id', p_header->>'customer_id',
+      'outcome', v_outcome
+    );
+  end
+  $$;
   grant usage on schema public, auth to authenticated;
+  grant select, insert, update on public.customer_consult_logs, public.quotes, public.quote_items to authenticated;
+  grant execute on function
+    public.current_company_id(),
+    public.is_company_member(uuid),
+    public.is_admin(),
+    public.can_access_customer(uuid),
+    public.create_quote_with_items(jsonb, jsonb),
+    auth.uid()
+  to authenticated;
   grant select on public.profiles, public.company_memberships, public.customers, public.projects to authenticated;
   grant execute on function public.current_company_id(), auth.uid() to authenticated;
 `);
 await db.exec(migration);
+await db.exec(quoteIntegrityMigration);
 await db.exec(`
   insert into auth.users values ('${ids.userA}'),('${ids.userB}');
   insert into companies(id) values ('${ids.companyA}'),('${ids.companyB}');
@@ -86,8 +192,240 @@ await db.exec(`reset role; update profiles set active_company_id='${ids.companyA
 const forbiddenUpdate = await db.query(`update window_inspections set total_windows=9 where id='${ids.inspection}' returning id`);
 if (forbiddenUpdate.rows.length !== 0) throw new Error("other employee update: unexpectedly allowed");
 
-await db.exec(`reset role; insert into customer_consult_logs values ('80000000-0000-4000-8000-000000000001','${ids.customerA}','${ids.companyA}','ok','${ids.projectA}','${ids.inspection}'); insert into quotes values ('90000000-0000-4000-8000-000000000001','${ids.customerA}','${ids.projectA}','${ids.companyA}','80000000-0000-4000-8000-000000000001','${ids.inspection}');`);
-await rejects(`reset role; insert into quotes values ('90000000-0000-4000-8000-000000000002','${ids.customerA}','${ids.projectA}','${ids.companyA}',null,'60000000-0000-4000-8000-000000000099')`, "inspection FK");
+await db.exec(`reset role;
+  insert into customer_consult_logs(
+    id, customer_id, company_id, consult_content,
+    source_project_id, source_inspection_id
+  ) values (
+    '80000000-0000-4000-8000-000000000001',
+    '${ids.customerA}',
+    '${ids.companyA}',
+    'ok',
+    '${ids.projectA}',
+    '${ids.inspection}'
+  );
+  insert into quotes(
+    id, customer_id, project_id, company_id,
+    source_consultation_id, source_inspection_id
+  ) values (
+    '90000000-0000-4000-8000-000000000001',
+    '${ids.customerA}',
+    '${ids.projectA}',
+    '${ids.companyA}',
+    '80000000-0000-4000-8000-000000000001',
+    '${ids.inspection}'
+  );`);
+await rejects(`reset role; insert into quotes(
+  id, customer_id, project_id, company_id,
+  source_consultation_id, source_inspection_id
+) values (
+  '90000000-0000-4000-8000-000000000002',
+  '${ids.customerA}',
+  '${ids.projectA}',
+  '${ids.companyA}',
+  null,
+  '60000000-0000-4000-8000-000000000099'
+)`, "inspection FK");
+await db.exec(`
+  reset role;
+  begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub='${ids.userA}';
+
+  insert into window_inspections(
+    id, company_id, customer_id, project_id,
+    performed_by_user_id, performed_by_employee_id, client_request_id
+  ) values (
+    '60000000-0000-4000-8000-000000000007',
+    '${ids.companyA}',
+    '${ids.customerA}',
+    '${ids.projectA}',
+    '${ids.userA}',
+    '${ids.employeeA}',
+    '60000000-0000-4000-8000-000000000007'
+  );
+
+  insert into customer_consult_logs(
+    id, customer_id, company_id, consult_content,
+    source_project_id, source_inspection_id
+  ) values (
+    '80000000-0000-4000-8000-000000000002',
+    '${ids.customerA}',
+    '${ids.companyA}',
+    'alternate',
+    '${ids.projectA}',
+    '60000000-0000-4000-8000-000000000007'
+  );
+
+  do $smoke$
+  declare
+    v_result jsonb;
+    v_quote_id uuid;
+    v_count integer;
+  begin
+    -- Base RPC도 같은 회사의 다른 고객 project를 거부해야 한다.
+    begin
+      perform public.create_quote_with_items(
+        jsonb_build_object(
+          'request_id', 'a0000000-0000-4000-8000-000000000001',
+          'customer_id', '${ids.customerA}',
+          'project_id', '${ids.projectB}'
+        ),
+        jsonb_build_array(jsonb_build_object('amount', 1))
+      );
+      raise exception 'cross-customer project unexpectedly allowed';
+    exception when check_violation then
+      null;
+    end;
+
+    select count(*)::integer into v_count
+    from public.quotes
+    where request_id = 'a0000000-0000-4000-8000-000000000001';
+    if v_count <> 0 then
+      raise exception 'cross-customer quote residue=%', v_count;
+    end if;
+
+    -- 각 ID는 존재하지만 consultation/inspection pair가 다르면 전체 rollback.
+    begin
+      perform public.create_quote_with_workflow_context(
+        jsonb_build_object(
+          'request_id', 'a0000000-0000-4000-8000-000000000002',
+          'customer_id', '${ids.customerA}',
+          'project_id', '${ids.projectA}'
+        ),
+        jsonb_build_array(jsonb_build_object('amount', 1)),
+        '80000000-0000-4000-8000-000000000001',
+        '60000000-0000-4000-8000-000000000007'
+      );
+      raise exception 'mismatched workflow source unexpectedly allowed';
+    exception when check_violation then
+      null;
+    end;
+
+    select count(*)::integer into v_count
+    from public.quotes
+    where request_id = 'a0000000-0000-4000-8000-000000000002';
+    if v_count <> 0 then
+      raise exception 'invalid source quote residue=%', v_count;
+    end if;
+
+    v_result := public.create_quote_with_workflow_context(
+      jsonb_build_object(
+        'request_id', 'a0000000-0000-4000-8000-000000000003',
+        'customer_id', '${ids.customerA}',
+        'project_id', '${ids.projectA}'
+      ),
+      jsonb_build_array(jsonb_build_object('amount', 1)),
+      '80000000-0000-4000-8000-000000000001',
+      '${ids.inspection}'
+    );
+    if v_result->>'outcome' <> 'created' then
+      raise exception 'valid workflow create outcome=%', v_result;
+    end if;
+    v_quote_id := (v_result->>'quote_id')::uuid;
+
+    select count(*)::integer into v_count
+    from public.quotes q
+    join public.quote_items i on i.quote_id = q.id
+    where q.id = v_quote_id
+      and q.source_consultation_id =
+        '80000000-0000-4000-8000-000000000001'
+      and q.source_inspection_id = '${ids.inspection}';
+    if v_count <> 1 then
+      raise exception 'valid workflow chain/item count=%', v_count;
+    end if;
+
+    v_result := public.create_quote_with_workflow_context(
+      jsonb_build_object(
+        'request_id', 'a0000000-0000-4000-8000-000000000003',
+        'customer_id', '${ids.customerA}',
+        'project_id', '${ids.projectA}'
+      ),
+      jsonb_build_array(jsonb_build_object('amount', 1)),
+      '80000000-0000-4000-8000-000000000001',
+      '${ids.inspection}'
+    );
+    if v_result->>'outcome' <> 'replayed'
+       or (v_result->>'quote_id')::uuid is distinct from v_quote_id then
+      raise exception 'exact replay failed=%', v_result;
+    end if;
+
+    begin
+      perform public.create_quote_with_workflow_context(
+        jsonb_build_object(
+          'request_id', 'a0000000-0000-4000-8000-000000000003',
+          'customer_id', '${ids.customerA}',
+          'project_id', '${ids.projectA}'
+        ),
+        jsonb_build_array(jsonb_build_object('amount', 1)),
+        '80000000-0000-4000-8000-000000000002',
+        '60000000-0000-4000-8000-000000000007'
+      );
+      raise exception 'source replay mismatch unexpectedly allowed';
+    exception when check_violation then
+      null;
+    end;
+
+    select count(*)::integer into v_count
+    from public.quotes q
+    join public.quote_items i on i.quote_id = q.id
+    where q.id = v_quote_id
+      and q.source_consultation_id =
+        '80000000-0000-4000-8000-000000000001'
+      and q.source_inspection_id = '${ids.inspection}';
+    if v_count <> 1 then
+      raise exception 'replay changed source or duplicated item count=%', v_count;
+    end if;
+
+    begin
+      update public.quotes
+      set
+        source_consultation_id =
+          '80000000-0000-4000-8000-000000000002',
+        source_inspection_id =
+          '60000000-0000-4000-8000-000000000007'
+      where id = v_quote_id;
+      raise exception 'direct workflow relink unexpectedly allowed';
+    exception when check_violation then
+      null;
+    end;
+
+    begin
+      update public.quotes
+      set project_id = '${ids.projectB}'
+      where id = v_quote_id;
+      raise exception 'linked quote project change unexpectedly allowed';
+    exception when check_violation then
+      null;
+    end;
+
+    v_result := public.create_quote_with_items(
+      jsonb_build_object(
+        'request_id', 'a0000000-0000-4000-8000-000000000004',
+        'customer_id', '${ids.customerA}',
+        'project_id', null
+      ),
+      jsonb_build_array(jsonb_build_object('amount', 1))
+    );
+    if v_result->>'outcome' <> 'created' then
+      raise exception 'general quote regression=%', v_result;
+    end if;
+  end;
+  $smoke$;
+
+  rollback;
+`);
+
+const quoteResidue = await db.query(`
+  select count(*)::integer as count
+  from public.quotes
+  where request_id::text like 'a0000000-%'
+`);
+if (quoteResidue.rows[0].count !== 0) {
+  throw new Error("quote workflow rollback residue");
+}
+
+await db.exec(quoteIntegrityRollback);
 await db.exec(rollback);
 const legacy = await db.query(`select count(*)::int as count from quotes`);
 if (legacy.rows[0].count !== 1) throw new Error("legacy quote regression after rollback");

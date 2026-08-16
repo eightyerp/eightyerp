@@ -139,6 +139,32 @@ export type QuoteFormInput = {
   special_discount_memo?: string | null;
 };
 
+export type QuoteWorkflowSourceIds = Readonly<{
+  consultationId: string;
+  inspectionId: string;
+}>;
+
+export function parseQuoteWorkflowSourceIds(
+  formData: FormData,
+): QuoteWorkflowSourceIds | null {
+  const consultationId = emptyToNull(
+    String(formData.get("source_consultation_id") ?? ""),
+  );
+  const inspectionId = emptyToNull(
+    String(formData.get("source_inspection_id") ?? ""),
+  );
+
+  if (!consultationId && !inspectionId) return null;
+  if (!consultationId || !inspectionId) {
+    throw new Error("점검·상담 연결 정보는 함께 필요합니다.");
+  }
+  if (!UUID_RE.test(consultationId) || !UUID_RE.test(inspectionId)) {
+    throw new Error("점검·상담 연결 정보가 올바르지 않습니다.");
+  }
+
+  return { consultationId, inspectionId };
+}
+
 const QUOTE_ITEM_REMARK_MAX = 500;
 export const SPECIAL_DISCOUNT_MEMO_MAX = 40;
 
@@ -966,6 +992,8 @@ export async function createQuote(input: {
   files?: File[];
   /** 폼 마운트 시 1회 생성된 요청 ID (서버에서 재생성 금지) */
   requestId: string;
+  /** 점검→상담에서 넘어온 source pair. 둘은 항상 함께 전달한다. */
+  workflowSource?: QuoteWorkflowSourceIds | null;
 }): Promise<CreatedQuoteResult> {
   const access = await requireAuthenticatedAccess();
   const supabase = await createClient();
@@ -982,6 +1010,17 @@ export async function createQuote(input: {
     throw new Error("견적 항목은 1개 이상 필요합니다.");
   }
 
+  const workflowSource = input.workflowSource ?? null;
+  if (
+    workflowSource &&
+    (!input.form.project_id ||
+      !UUID_RE.test(input.form.project_id) ||
+      !UUID_RE.test(workflowSource.consultationId) ||
+      !UUID_RE.test(workflowSource.inspectionId))
+  ) {
+    throw new Error("점검·상담·현장 연결 정보가 올바르지 않습니다.");
+  }
+
   const amounts = resolveQuoteAmounts(input.form, items);
 
   const windowVat =
@@ -995,8 +1034,7 @@ export async function createQuote(input: {
 
   // 창호는 엑셀 최종금액이 VAT 포함 금액이므로 inclusive 스냅샷을 명시한다.
   // 다른 견적은 VAT 키를 생략해 기존처럼 회사 기본값을 상속한다.
-  const { data, error } = await supabase.rpc("create_quote_with_items", {
-    p_header: {
+  const header = {
       request_id: requestId,
       customer_id: input.form.customer_id,
       project_id: input.form.project_id,
@@ -1026,18 +1064,41 @@ export async function createQuote(input: {
             customer_total_amount: windowVat.customer_total_amount,
           }
         : {}),
-    },
+  };
+
+  const rpcName = workflowSource
+    ? "create_quote_with_workflow_context"
+    : "create_quote_with_items";
+  const rpcParams = {
+    p_header: header,
     p_items: buildQuoteItemsRpcPayload(items),
-  });
+    ...(workflowSource
+      ? {
+          p_source_consultation_id: workflowSource.consultationId,
+          p_source_inspection_id: workflowSource.inspectionId,
+        }
+      : {}),
+  };
+  const { data, error } = await supabase.rpc(rpcName, rpcParams);
 
   if (error) {
+    if (
+      workflowSource &&
+      /create_quote_with_workflow_context|could not find the function/i.test(
+        error.message ?? "",
+      )
+    ) {
+      throw new Error(
+        "점검·상담 연결 안전 저장 기능이 아직 적용되지 않았습니다. 최신 창호 업무 migration 적용 후 다시 시도해 주세요.",
+      );
+    }
     if (isMissingVatColumnError(error.message)) {
       throw new Error(
         "부가세 설정(migration 33)이 아직 적용되지 않았습니다. DB 마이그레이션 후 다시 시도해 주세요.",
       );
     }
     throwQuoteRpcError(
-      "create_quote_with_items",
+      rpcName,
       error,
       "견적 등록에 실패했습니다.",
     );
@@ -1118,6 +1179,16 @@ export async function updateQuote(input: {
   const existing = await getQuoteById(input.id);
   if (!existing) throw new Error("견적을 찾을 수 없습니다.");
 
+  const hasWorkflowSource = Boolean(
+    existing.source_consultation_id || existing.source_inspection_id,
+  );
+  const effectiveProjectId = hasWorkflowSource
+    ? existing.project_id
+    : input.form.project_id;
+  if (hasWorkflowSource && !effectiveProjectId) {
+    throw new Error("연결된 견적의 현장 정보를 확인할 수 없습니다.");
+  }
+
   const items = input.items ?? [];
   const amounts = resolveQuoteAmounts(input.form, items);
 
@@ -1168,7 +1239,7 @@ export async function updateQuote(input: {
   });
 
   const header: Record<string, unknown> = {
-    project_id: input.form.project_id,
+    project_id: effectiveProjectId,
     quote_type: input.form.quote_type,
     quote_mode: input.form.quote_mode,
     title: input.form.title,
@@ -1253,6 +1324,8 @@ export async function createQuoteVersion(input: {
     .insert({
       customer_id: source.customer_id,
       project_id: source.project_id,
+      source_consultation_id: source.source_consultation_id ?? null,
+      source_inspection_id: source.source_inspection_id ?? null,
       quote_group_id: source.quote_group_id,
       parent_quote_id: source.id,
       quote_type: source.quote_type,
