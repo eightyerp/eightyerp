@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 
@@ -11,6 +12,7 @@ type SignupFormProps = {
 export default function SignupForm({
   inviteToken = "",
 }: SignupFormProps) {
+  const router = useRouter();
   const isCompanyInvite = Boolean(inviteToken);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,9 +129,7 @@ export default function SignupForm({
 
       if (data.session) {
         // 이메일 확인이 필요 없는 환경
-        window.location.assign(
-          isCompanyInvite ? "/dashboard" : "/company/register",
-        );
+        router.replace(isCompanyInvite ? "/dashboard" : "/company/register");
         return;
       }
 
@@ -141,9 +141,7 @@ export default function SignupForm({
       }
 
       // 이메일 확인이 필요한 환경: 확인 후 로그인하면 회사 개설로 이동
-      window.location.assign(
-        "/pending-approval?registered=1&company=1",
-      );
+      router.replace("/pending-approval?registered=1&company=1");
     } catch (err) {
       setError(
         err instanceof Error

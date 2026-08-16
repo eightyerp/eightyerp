@@ -141,6 +141,7 @@ export default function ExpenseWorkspaceV2({
   const [analysis, setAnalysis] = useState<ExpenseDocumentAnalysis | null>(null);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
+  const [hasDocumentFile, setHasDocumentFile] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
 
@@ -179,17 +180,21 @@ export default function ExpenseWorkspaceV2({
 
   useEffect(() => {
     if (!state.success || !state.expenseId) return;
-    setVendorChoice("");
-    setNewVendorName("");
-    setTotalAmount(0);
-    setSupplyAmount(0);
-    setVatAmount(0);
-    setDescription("");
-    setAnalysis(null);
-    setAnalysisMessage(null);
-    setShowAdvanced(false);
-    if (fileRef.current) fileRef.current.value = "";
-    router.refresh();
+    const timer = window.setTimeout(() => {
+      setVendorChoice("");
+      setNewVendorName("");
+      setTotalAmount(0);
+      setSupplyAmount(0);
+      setVatAmount(0);
+      setDescription("");
+      setAnalysis(null);
+      setAnalysisMessage(null);
+      setHasDocumentFile(false);
+      setShowAdvanced(false);
+      if (fileRef.current) fileRef.current.value = "";
+      router.refresh();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [state.success, state.expenseId, router]);
 
   function applyVendorDefaults(vendor: VendorRecord | undefined) {
@@ -511,14 +516,17 @@ export default function ExpenseWorkspaceV2({
                     type="file"
                     accept="image/jpeg,image/png,image/webp,application/pdf"
                     capture="environment"
-                    onChange={() => void analyzeDocument()}
+                    onChange={() => {
+                      setHasDocumentFile(Boolean(fileRef.current?.files?.[0]));
+                      void analyzeDocument();
+                    }}
                     className="block min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={() => void analyzeDocument()}
-                  disabled={analysisBusy || !fileRef.current?.files?.[0]}
+                  disabled={analysisBusy || !hasDocumentFile}
                   className="min-h-12 rounded-xl bg-sky-700 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {analysisBusy ? "읽는 중..." : "다시 읽기"}
