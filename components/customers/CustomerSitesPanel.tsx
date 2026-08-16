@@ -116,35 +116,68 @@ export default function CustomerSitesPanel({
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
             />
           </label>
-          <label className="text-xs text-gray-600">
-            현장상태
-            <select
-              name="status"
-              defaultValue={editing.status}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-            >
-              {PROJECT_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-gray-600">
-            담당자
-            <select
-              name="assigned_employee_id"
-              defaultValue={editing.assigned_employee_id ?? ""}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-            >
-              <option value="">미지정</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {empLabel(employee)}
-                </option>
-              ))}
-            </select>
-          </label>
+
+          {isContract ? (
+            <label className="text-xs text-gray-600">
+              현장상태
+              <select
+                name="status"
+                defaultValue={editing.status}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                {PROJECT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="text-xs text-gray-600">
+              현장상태
+              <input type="hidden" name="status" value="준비" />
+              <p className="mt-1 rounded-lg border bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
+                준비 · 계약 전 점검/상담
+              </p>
+            </div>
+          )}
+
+          {isAdmin ? (
+            <label className="text-xs text-gray-600">
+              담당자
+              <select
+                name="assigned_employee_id"
+                defaultValue={editing.assigned_employee_id ?? ""}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="">미지정</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {empLabel(employee)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="text-xs text-gray-600">
+              담당자
+              <input
+                type="hidden"
+                name="assigned_employee_id"
+                value={currentEmployeeId ?? editing.assigned_employee_id ?? ""}
+              />
+              <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm text-navy-900">
+                {empLabel(
+                  employees.find(
+                    (employee) =>
+                      employee.id ===
+                      (currentEmployeeId ?? editing.assigned_employee_id),
+                  ),
+                )}
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
@@ -218,13 +251,15 @@ export default function CustomerSitesPanel({
               >
                 수정
               </button>
-              <button
-                type="button"
-                onClick={() => setDeleteOf(project)}
-                className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600"
-              >
-                삭제
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteOf(project)}
+                  className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600"
+                >
+                  삭제
+                </button>
+              )}
             </div>
           </article>
         ))}
@@ -235,11 +270,14 @@ export default function CustomerSitesPanel({
         )}
       </div>
 
-      {deleteOf && (
+      {isAdmin && deleteOf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <h3 className="font-semibold text-navy-900">현장 삭제</h3>
             <p className="mt-2 text-sm">{deleteOf.name}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              점검·상담·견적·계약에 연결된 현장은 삭제되지 않습니다. 업무가 중단된 현장은 삭제 대신 보류/취소 상태를 우선 사용하세요.
+            </p>
             <form
               action={async (formData) => {
                 const result = await deleteProjectAction(formData);
