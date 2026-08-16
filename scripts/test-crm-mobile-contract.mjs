@@ -25,15 +25,21 @@ assertIncludes(shell, 'href="/crm/customers/new"', "new customer registration st
 
 const mobileAction = read("app/actions/crm-mobile.ts");
 assertIncludes(mobileAction, "createCrmCustomerAction", "mobile quick customer registration action exists");
+assertIncludes(mobileAction, "createCrmScheduleAction", "mobile customer schedule registration action exists");
 assertIncludes(mobileAction, "saveCrmConsultationAction", "mobile consultation action exists");
 assertIncludes(mobileAction, "updateCrmCustomerStatusAction", "mobile status quick action exists");
 assertIncludes(mobileAction, 'customer.status === "신규"', "first consultation auto-advances new customer");
 assertIncludes(mobileAction, '"1차 연락완료"', "first-contact status transition is preserved");
 assertIncludes(mobileAction, '"계약"', "legacy contract customer status remains writable without regression");
-assertIncludes(mobileAction, "createCustomerSchedule", "next contact creates real schedule");
+assertIncludes(mobileAction, '"방문상담"', "mobile scheduling supports visit consultation");
+assertIncludes(mobileAction, '"실측"', "mobile scheduling supports site measurement");
+assertIncludes(mobileAction, "createCustomerSchedule", "next contact and mobile scheduling create real schedules");
 
 const newCustomerPage = read("app/crm/customers/new/page.tsx");
 assertIncludes(newCustomerPage, "CrmNewCustomerForm", "CRM has compact in-app customer registration screen");
+
+const newSchedulePage = read("app/crm/customers/[id]/schedule/new/page.tsx");
+assertIncludes(newSchedulePage, "createCrmScheduleAction", "CRM has in-app customer schedule registration screen");
 
 const statusPage = read("app/crm/customers/[id]/status/page.tsx");
 assertIncludes(statusPage, "계약 (기존)", "legacy contract state is visible instead of silently resetting");
@@ -87,6 +93,7 @@ assertIncludes(inbox, "customer_stale_7d", "inbox shows long-stale customers");
 assertIncludes(inbox, "self_schedule_change", "inbox hides self-generated schedule change noise");
 
 const customerCard = read("components/crm/CrmCustomerCard.tsx");
+assertIncludes(customerCard, "/schedule/new", "customer card exposes quick schedule registration");
 assertIncludes(customerCard, "/status", "customer card exposes quick status action");
 assertIncludes(customerCard, "D+", "customer card keeps received-age visibility");
 
