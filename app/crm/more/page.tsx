@@ -2,6 +2,11 @@ import Link from "next/link";
 
 const LINKS = [
   {
+    href: "/crm/install",
+    title: "EIGHTY CRM 설치",
+    description: "Android·iPhone 홈 화면에 CRM을 앱처럼 설치하는 방법을 확인합니다.",
+  },
+  {
     href: "/customers/pipeline",
     title: "PC 영업 파이프라인",
     description: "6단계 Kanban 전체 현황을 PC 화면으로 봅니다.",
@@ -29,7 +34,7 @@ export default function CrmMorePage() {
       <section>
         <p className="text-xs font-semibold text-slate-500">필요할 때만</p>
         <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">더보기</h1>
-        <p className="mt-1 text-sm text-slate-500">자주 쓰지 않는 상세 업무는 CRM 홈에서 분리했습니다.</p>
+        <p className="mt-1 text-sm text-slate-500">설치 안내와 자주 쓰지 않는 상세 업무를 CRM 홈에서 분리했습니다.</p>
       </section>
 
       <section className="space-y-3">
