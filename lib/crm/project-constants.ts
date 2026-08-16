@@ -12,10 +12,12 @@ export function defaultProjectName(
   customerName: string,
   customerAddress?: string | null,
 ): string {
-  const name = customerName.trim();
-  if (name) return name;
+  // project_id는 고객이 아니라 실제 현장을 식별하는 키다.
+  // 같은 고객이 여러 현장을 가질 수 있으므로 주소/아파트 정보를 우선한다.
   const address = (customerAddress ?? "").trim();
-  return address || "현장";
+  if (address) return address;
+  const name = customerName.trim();
+  return name ? `${name} 현장` : "현장";
 }
 
 /**
