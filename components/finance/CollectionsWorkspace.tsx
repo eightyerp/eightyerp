@@ -43,10 +43,12 @@ export default function CollectionsWorkspace({
   contracts,
   receipts,
   isFinanceAdmin,
+  initialContractId,
 }: {
   contracts: CollectionContract[];
   receipts: CollectionReceipt[];
   isFinanceAdmin: boolean;
+  initialContractId?: string;
 }) {
   const router = useRouter();
   const [state, action, registerPending] = useActionState(
@@ -55,7 +57,11 @@ export default function CollectionsWorkspace({
   );
   const [pending, startTransition] = useTransition();
   const [localMessage, setLocalMessage] = useState<string | null>(null);
-  const [selectedContractId, setSelectedContractId] = useState(contracts[0]?.id ?? "");
+  const [selectedContractId, setSelectedContractId] = useState(() =>
+    initialContractId && contracts.some((contract) => contract.id === initialContractId)
+      ? initialContractId
+      : contracts[0]?.id ?? "",
+  );
 
   const selectedContract = contracts.find((row) => row.id === selectedContractId) ?? null;
   const pendingReceipts = receipts.filter((row) => row.status === "pending");

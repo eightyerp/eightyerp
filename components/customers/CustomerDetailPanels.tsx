@@ -41,6 +41,17 @@ import type {
 } from "@/types/database";
 import { isCustomerScheduleOverdue } from "@/lib/crm/schedule-utils";
 import { SCHEDULE_STATUS_BADGE } from "@/lib/crm/schedule-constants";
+import {
+  COLLECTION_PAYMENT_LABELS,
+  COLLECTION_STATUS_LABELS,
+  COLLECTION_TYPE_LABELS,
+  type CustomerCollectionReceiptSummary,
+} from "@/lib/crm/collection-shared";
+import {
+  contractRevisionLabel,
+  contractStatusLabel,
+} from "@/lib/crm/contract-constants";
+import type { CustomerContractSummary } from "@/lib/crm/contracts";
 
 type TabKey =
   | "consult"
@@ -60,6 +71,8 @@ type CustomerDetailPanelsProps = {
   schedules?: CustomerSchedule[];
   employees: Employee[];
   projects: Project[];
+  contracts?: CustomerContractSummary[];
+  collectionReceipts?: CustomerCollectionReceiptSummary[];
   /** 담당자변경 활동만, 최신순 */
   assigneeChangeHistory?: CustomerActivity[];
   canDelete: boolean;
@@ -98,6 +111,8 @@ export default function CustomerDetailPanels({
   schedules = [],
   employees,
   projects,
+  contracts = [],
+  collectionReceipts = [],
   assigneeChangeHistory = [],
   canDelete,
   isAdmin,
@@ -371,7 +386,13 @@ export default function CustomerDetailPanels({
             >
               견적서
             </button>
-            <ActionPlaceholder label="계약등록" onNotify={setLocalToast} />
+            <button
+              type="button"
+              onClick={() => setTab("contract")}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100"
+            >
+              계약관리
+            </button>
             {canDelete ? (
               <SoftDeleteCustomerButton
                 customerId={customer.id}
@@ -575,6 +596,12 @@ export default function CustomerDetailPanels({
               (erpQuotes.length > 0 || quotes.length > 0)
                 ? ` (${erpQuotes.length || quotes.length})`
                 : ""}
+              {item.key === "contract" && contracts.length > 0
+                ? ` (${contracts.length})`
+                : ""}
+              {item.key === "payment" && collectionReceipts.length > 0
+                ? ` (${collectionReceipts.length})`
+                : ""}
             </button>
           ))}
         </div>
@@ -772,13 +799,10 @@ export default function CustomerDetailPanels({
             </div>
           )}
           {tab === "contract" && (
-            <PlaceholderTab
-              title="계약"
-              description="계약 등록·계약금 확인 내역이 이 탭에 표시됩니다."
-              actionLabel="계약등록"
-              onAction={() =>
-                setLocalToast("계약 모듈은 준비 중입니다. 곧 연결됩니다.")
-              }
+            <CustomerContractsTab
+              customerId={customer.id}
+              contracts={contracts}
+              erpQuotes={erpQuotes}
             />
           )}
           {tab === "site" && (
@@ -795,13 +819,10 @@ export default function CustomerDetailPanels({
             />
           )}
           {tab === "payment" && (
-            <PlaceholderTab
-              title="수금"
-              description="수금·미수금 내역이 이 탭에 표시됩니다."
-              actionLabel="수금등록"
-              onAction={() =>
-                setLocalToast("수금 모듈은 준비 중입니다. 곧 연결됩니다.")
-              }
+            <CustomerCollectionsTab
+              customerId={customer.id}
+              contracts={contracts}
+              receipts={collectionReceipts}
             />
           )}
           {tab === "as" && (
@@ -980,6 +1001,300 @@ function ConsultTab({
   );
 }
 
+const INACTIVE_COLLECTION_CONTRACT_STATUSES = new Set([
+  "draft",
+  "cancelled",
+  "terminated",
+]);
+
+function money(value: number | null | undefined): string {
+  return `${Number(value ?? 0).toLocaleString("ko-KR")}원`;
+}
+
+function contractBasisAmount(contract: CustomerContractSummary): number {
+  return Number(
+    contract.cumulative_contract_amount ?? contract.contract_amount ?? 0,
+  );
+}
+
+function contractOutstandingAmount(contract: CustomerContractSummary): number {
+  return Math.max(
+    0,
+    contractBasisAmount(contract) - Number(contract.received_amount ?? 0),
+  );
+}
+
+function CustomerContractsTab({
+  customerId,
+  contracts,
+  erpQuotes,
+}: {
+  customerId: string;
+  contracts: CustomerContractSummary[];
+  erpQuotes: ErpQuote[];
+}) {
+  const originalContracts = contracts.filter(
+    (contract) => contract.contract_kind === "original",
+  );
+  const activeOriginals = originalContracts.filter(
+    (contract) => !INACTIVE_COLLECTION_CONTRACT_STATUSES.has(contract.status),
+  );
+  const contractTotal = activeOriginals.reduce(
+    (sum, contract) => sum + contractBasisAmount(contract),
+    0,
+  );
+  const receivedTotal = activeOriginals.reduce(
+    (sum, contract) => sum + Number(contract.received_amount ?? 0),
+    0,
+  );
+  const outstandingTotal = activeOriginals.reduce(
+    (sum, contract) => sum + contractOutstandingAmount(contract),
+    0,
+  );
+  const latestQuote = erpQuotes[0] ?? null;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold-300 bg-gold-50 px-4 py-4">
+        <div>
+          <h3 className="text-sm font-semibold text-navy-900">계약 관리</h3>
+          <p className="mt-0.5 text-xs text-navy-700/80">
+            견적 고객전송 후 계약으로 전환하고 변경·추가·해지 이력을 관리합니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/contracts"
+            className="rounded-lg border border-navy-800 bg-white px-3 py-2 text-xs font-medium text-navy-900 hover:bg-navy-800/5"
+          >
+            전체 계약 보기
+          </Link>
+          <Link
+            href={
+              latestQuote
+                ? `/quotes/${latestQuote.id}`
+                : `/quotes/new?customerId=${customerId}`
+            }
+            className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white hover:bg-navy-700"
+          >
+            {latestQuote ? "견적에서 계약 전환" : "계약용 견적 만들기"}
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <MiniStat
+          label="계약 기준금액"
+          value={money(contractTotal)}
+          accent="blue"
+        />
+        <MiniStat
+          label="확정 수금"
+          value={money(receivedTotal)}
+          accent="gold"
+        />
+        <MiniStat
+          label="미수금"
+          value={money(outstandingTotal)}
+          accent={outstandingTotal > 0 ? "red" : "gray"}
+        />
+      </div>
+
+      {contracts.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-9 text-center">
+          <p className="text-sm font-medium text-slate-800">
+            등록된 계약이 없습니다.
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            견적을 고객에게 전송한 뒤 견적 상세에서 계약으로 전환해 주세요.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {contracts.map((contract) => {
+            const revision = contractRevisionLabel(
+              contract.contract_kind,
+              contract.revision_seq,
+            );
+            const displayedAmount =
+              contract.contract_kind === "original"
+                ? contractBasisAmount(contract)
+                : Number(contract.delta_amount ?? contract.contract_amount ?? 0);
+            return (
+              <Link
+                key={contract.id}
+                href={`/contracts/${contract.id}`}
+                className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition hover:border-navy-800/25 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-navy-900">
+                      {contract.contract_number}
+                    </p>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                      {revision ?? "원계약"}
+                    </span>
+                    <span className="rounded-full bg-navy-800/5 px-2 py-0.5 text-[11px] font-semibold text-navy-900">
+                      {contractStatusLabel(contract.status)}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-slate-600">
+                    {contract.title || contract.projects?.name || "계약"}
+                    {contract.contract_date
+                      ? ` · 계약일 ${formatDate(contract.contract_date)}`
+                      : ""}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-bold text-slate-950">
+                  {money(displayedAmount)}
+                </p>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomerCollectionsTab({
+  customerId,
+  contracts,
+  receipts,
+}: {
+  customerId: string;
+  contracts: CustomerContractSummary[];
+  receipts: CustomerCollectionReceiptSummary[];
+}) {
+  const collectionContracts = contracts.filter(
+    (contract) =>
+      contract.contract_kind === "original" &&
+      !INACTIVE_COLLECTION_CONTRACT_STATUSES.has(contract.status),
+  );
+  const contractTotal = collectionContracts.reduce(
+    (sum, contract) => sum + contractBasisAmount(contract),
+    0,
+  );
+  const receivedTotal = collectionContracts.reduce(
+    (sum, contract) => sum + Number(contract.received_amount ?? 0),
+    0,
+  );
+  const outstandingTotal = collectionContracts.reduce(
+    (sum, contract) => sum + contractOutstandingAmount(contract),
+    0,
+  );
+  const pendingTotal = receipts
+    .filter((receipt) => receipt.status === "pending")
+    .reduce((sum, receipt) => sum + Number(receipt.amount ?? 0), 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+        <div>
+          <h3 className="text-sm font-semibold text-emerald-950">수금 현황</h3>
+          <p className="mt-0.5 text-xs text-emerald-800/80">
+            계약 기준금액과 확정·확인대기·취소 수금 이력을 함께 확인합니다.
+          </p>
+        </div>
+        <Link
+          href={`/finance/collections?customerId=${customerId}`}
+          className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-900"
+        >
+          이 고객 수금 등록
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MiniStat
+          label="계약 기준금액"
+          value={money(contractTotal)}
+          accent="blue"
+        />
+        <MiniStat
+          label="확정 수금"
+          value={money(receivedTotal)}
+          accent="gold"
+        />
+        <MiniStat
+          label="미수금"
+          value={money(outstandingTotal)}
+          accent={outstandingTotal > 0 ? "red" : "gray"}
+        />
+        <MiniStat
+          label="확인대기"
+          value={money(pendingTotal)}
+          accent={pendingTotal > 0 ? "red" : "gray"}
+        />
+      </div>
+
+      {collectionContracts.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-slate-600">
+          수금을 등록할 확정 계약이 없습니다. 먼저 견적을 계약으로 전환해 주세요.
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-xl border border-gray-200">
+        <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
+          <h4 className="text-sm font-bold text-slate-900">수금 이력</h4>
+        </div>
+        {receipts.length === 0 ? (
+          <p className="px-4 py-9 text-center text-sm text-slate-600">
+            등록된 수금 이력이 없습니다.
+          </p>
+        ) : (
+          <ul className="divide-y divide-gray-100 bg-white">
+            {receipts.map((receipt) => {
+              const statusClass =
+                receipt.status === "confirmed"
+                  ? "bg-emerald-100 text-emerald-900"
+                  : receipt.status === "pending"
+                    ? "bg-amber-100 text-amber-900"
+                    : "bg-slate-100 text-slate-700";
+              return (
+                <li
+                  key={receipt.id}
+                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-950">
+                        {COLLECTION_TYPE_LABELS[receipt.collection_type]} ·{" "}
+                        {money(receipt.amount)}
+                      </p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${statusClass}`}
+                      >
+                        {COLLECTION_STATUS_LABELS[receipt.status]}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {COLLECTION_PAYMENT_LABELS[receipt.payment_method]} · 수금일{" "}
+                      {formatDate(receipt.received_at)}
+                      {receipt.reported_employee
+                        ? ` · 등록 ${receipt.reported_employee.name}`
+                        : ""}
+                    </p>
+                    {receipt.memo || receipt.cancel_reason ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {receipt.cancel_reason
+                          ? `취소 사유: ${receipt.cancel_reason}`
+                          : receipt.memo}
+                      </p>
+                    ) : null}
+                  </div>
+                  <p className="shrink-0 text-xs font-medium text-slate-500">
+                    {receipt.contracts?.contract_number ?? "계약"}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PlaceholderTab({
   title,
   description,
@@ -1028,24 +1343,6 @@ function MiniStat({
       <p className="text-xs opacity-80">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
-  );
-}
-
-function ActionPlaceholder({
-  label,
-  onNotify,
-}: {
-  label: string;
-  onNotify: (message: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onNotify(`${label} 기능은 준비 중입니다.`)}
-      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-900 hover:bg-slate-100"
-    >
-      {label}
-    </button>
   );
 }
 

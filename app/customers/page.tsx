@@ -131,6 +131,12 @@ export default async function CustomersPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              href="/customers/pipeline"
+              className="rounded-lg border border-navy-800 bg-white px-4 py-2.5 text-sm font-medium text-navy-900 hover:bg-navy-800/5"
+            >
+              영업 파이프라인
+            </Link>
             {access.isAdmin && (
               <Link
                 href="/customers/trash"

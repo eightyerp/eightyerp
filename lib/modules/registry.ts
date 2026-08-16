@@ -14,7 +14,7 @@ export type ErpModuleDefinition = {
 
 export const ERP_MODULES: readonly ErpModuleDefinition[] = [
   { id: "core", label: "핵심", description: "인증·회사·권한·공통 UI", publicInterfaces: ["getCurrentUserAccess", "DashboardLayout"] },
-  { id: "crm", label: "고객·영업", description: "고객·상담·유입경로", publicInterfaces: ["Customer", "getCustomers"] },
+  { id: "crm", label: "고객·영업", description: "고객·상담·유입경로", publicInterfaces: ["Customer", "getCustomers", "listCustomerPipeline"] },
   { id: "quotes", label: "견적", description: "창호·인테리어·Excel 견적", publicInterfaces: ["ErpQuote", "createQuote"] },
   { id: "contracts", label: "계약", description: "계약 생명주기", publicInterfaces: ["Contract", "transition_quote_to_contract"] },
   { id: "projects", label: "현장", description: "현장·자재 배정", publicInterfaces: ["Project"] },

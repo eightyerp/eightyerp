@@ -1,5 +1,28 @@
 import { createClient } from "@/lib/supabase-server";
-import type { Contract, ContractEvent } from "@/types/database";
+import type { Contract, ContractEvent, Project } from "@/types/database";
+
+export type CustomerContractSummary = Pick<
+  Contract,
+  | "id"
+  | "customer_id"
+  | "quote_id"
+  | "project_id"
+  | "contract_number"
+  | "contract_date"
+  | "status"
+  | "contract_kind"
+  | "revision_seq"
+  | "title"
+  | "work_start_date"
+  | "work_end_date"
+  | "contract_amount"
+  | "delta_amount"
+  | "cumulative_contract_amount"
+  | "received_amount"
+  | "created_at"
+> & {
+  projects: Pick<Project, "id" | "name" | "address"> | null;
+};
 
 export type ContractDraftPayload = {
   title?: string;
@@ -73,6 +96,28 @@ export async function listContracts(): Promise<Contract[]> {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Contract[];
+}
+
+export async function listCustomerContractSummaries(
+  customerId: string,
+): Promise<CustomerContractSummary[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("contracts")
+    .select(
+      `
+      id, customer_id, quote_id, project_id, contract_number, contract_date,
+      status, contract_kind, revision_seq, title, work_start_date, work_end_date,
+      contract_amount, delta_amount, cumulative_contract_amount,
+      received_amount, created_at,
+      projects:projects!contracts_project_id_fkey ( id, name, address )
+    `,
+    )
+    .eq("customer_id", customerId)
+    .order("contract_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as CustomerContractSummary[];
 }
 
 export async function getContractById(id: string): Promise<Contract | null> {

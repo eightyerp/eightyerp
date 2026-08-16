@@ -34,6 +34,7 @@ export const NAVIGATION_REGISTRY: readonly NavigationGroup[] = [
   { id: "dashboard", label: "대시보드", items: [{ id: "dashboard", label: "대시보드", route: "/dashboard", icon: "▦", moduleId: "core", match: "exact" }] },
   { id: "sales", label: "고객·영업", items: [
     { id: "customers", label: "고객관리", route: "/customers", icon: "◉", moduleId: "crm", match: "prefix" },
+    { id: "customer-pipeline", label: "영업 파이프라인", route: "/customers/pipeline", icon: "▥", moduleId: "crm", match: "prefix" },
     { id: "lead-sources", label: "광고·유입경로", route: null, icon: "◈", moduleId: "crm", status: "coming_soon" },
     { id: "vendors", label: "거래처관리", route: null, icon: "◇", moduleId: "crm", status: "coming_soon" },
   ] },
