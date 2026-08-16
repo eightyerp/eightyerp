@@ -38,10 +38,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android verification tools
         run: |
-          yes | sdkmanager --licenses >/dev/null
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "build-tools;35.0.0"
 
       - name: Prepare signing key
@@ -92,6 +94,10 @@ jobs:
           const run = Number(process.env.GITHUB_RUN_NUMBER || '1');
           manifest.appVersionCode = 200000 + run;
           manifest.appVersion = `0.1.0-test.${run}`;
+          manifest.signingKey = {
+            path: './android.keystore',
+            alias: process.env.CRM_KEY_ALIAS || 'eightycrmtest',
+          };
           fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
           console.log(`APK version ${manifest.appVersion} (${manifest.appVersionCode})`);
           NODE
@@ -99,16 +105,25 @@ jobs:
       - name: Install Bubblewrap
         run: npm install --global @bubblewrap/cli
 
-      - name: Configure Bubblewrap
+      - name: Configure Bubblewrap non-interactively
         run: |
-          bubblewrap updateConfig \
-            --jdkPath="$JAVA_HOME" \
-            --androidSdkPath="$ANDROID_HOME"
+          set -euo pipefail
+          mkdir -p "$HOME/.bubblewrap"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const file = path.join(process.env.HOME, '.bubblewrap', 'config.json');
+          fs.writeFileSync(file, `${JSON.stringify({
+            jdkPath: process.env.JAVA_HOME,
+            androidSdkPath: process.env.ANDROID_HOME,
+          }, null, 2)}\n`);
+          console.log(`Bubblewrap config written to ${file}`);
+          NODE
           bubblewrap doctor
 
       - name: Generate Android TWA project
         working-directory: mobile/crm-android-twa
-        run: bubblewrap update --skipVersionUpgrade --manifest="$PWD"
+        run: bubblewrap update --skipVersionUpgrade
 
       - name: Build signed APK
         working-directory: mobile/crm-android-twa
@@ -118,7 +133,6 @@ jobs:
         run: |
           bubblewrap build \
             --skipPwaValidation \
-            --manifest="$PWD" \
             --signingKeyPath="$PWD/android.keystore" \
             --signingKeyAlias="$CRM_KEY_ALIAS"
 
