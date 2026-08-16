@@ -108,6 +108,21 @@ export async function saveCrmConsultationAction(formData: FormData) {
     next_contact_date: nextContactDate,
   });
 
+  // 직원이 첫 상담기록을 남겼는데 고객 상태가 계속 신규/미연락으로 남지 않게 자동 전진한다.
+  // 이미 더 뒤 단계라면 상태를 되돌리지 않는다.
+  if (customer.status === "신규" || customer.status === "미연락") {
+    const nextStatus: CustomerStatus =
+      consultTypeRaw === "방문" ? "상담중" : "1차 연락완료";
+    try {
+      await updateCustomerQuickFields({
+        customer_id: customerId,
+        status: nextStatus,
+      });
+    } catch {
+      // 상담기록 자체는 성공했으므로 상태 자동전환 실패가 중복 입력을 유발하지 않게 한다.
+    }
+  }
+
   if (nextContactIso && customer.assigned_employee_id) {
     await createCustomerSchedule({
       customer_id: customerId,
