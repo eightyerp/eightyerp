@@ -202,6 +202,8 @@ await expectCheckViolation(
   "link replay without a project",
 );
 
+await db.exec("reset role;");
+
 const integrityRows = (
   await db.query(
     "select project_id::text as project_id " +
@@ -214,7 +216,6 @@ assert(
   "rejected replay leaves one unchanged project chain",
 );
 
-await db.exec("reset role;");
 const installed = (
   await db.query(
     "select pg_get_functiondef(" +
