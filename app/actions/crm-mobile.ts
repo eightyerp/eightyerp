@@ -34,6 +34,7 @@ const CRM_STATUS_OPTIONS: CustomerStatus[] = [
   "견적제출",
   "계약협의",
   "계약완료",
+  "계약",
   "시공예정",
   "시공중",
   "완료",
