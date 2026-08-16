@@ -125,6 +125,14 @@ export async function listMyCrmAlerts(limit = 40): Promise<CrmAlertItem[]> {
 
   if (!scheduleResult.error) {
     for (const row of scheduleResult.data ?? []) {
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      if (
+        row.event_type === "schedule_changed" &&
+        payload.skip_reason === "self_schedule_change"
+      ) {
+        continue;
+      }
+
       const copy = scheduleAlertCopy(row.event_type);
       const customerRaw = row.customers as
         | { id: string; name: string; phone: string; address: string | null; status: string }
