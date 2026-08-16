@@ -16,7 +16,7 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
     return <path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5Z" />;
   }
   if (name === "users") {
-    return <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-2-11.96a4 4 0 0 1 0 7.75" />;
+    return <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-2-11.96a4 4 0 0 1 0 7.75" />;
   }
   if (name === "calendar") {
     return <path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />;
@@ -40,7 +40,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
           <Link href="/crm" className="flex items-center gap-2" aria-label="EIGHTY CRM 홈">
-            <span className="text-2xl font-black tracking-[-0.08em] text-navy-950">80</span>
+            <span className="text-2xl font-black tracking-[-0.08em] text-navy-900">80</span>
             <span>
               <span className="block text-[11px] font-bold tracking-[0.16em] text-slate-900">EIGHTY CRM</span>
               <span className="block text-[10px] text-slate-500">직원 영업앱</span>
@@ -66,7 +66,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={`flex min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
-                  active ? "text-navy-950" : "text-slate-500"
+                  active ? "text-navy-900" : "text-slate-500"
                 }`}
               >
                 <svg
