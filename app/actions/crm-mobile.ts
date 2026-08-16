@@ -8,11 +8,16 @@ import {
   getCustomerSchedule,
 } from "@/lib/crm/customer-schedules";
 import {
+  createCustomer,
   createCustomerConsultLog,
   getCustomerById,
   updateCustomerQuickFields,
 } from "@/lib/crm/customers";
-import type { ConsultType, CustomerStatus } from "@/types/database";
+import type {
+  ConsultationType,
+  ConsultType,
+  CustomerStatus,
+} from "@/types/database";
 
 const CONSULT_TYPES: ConsultType[] = [
   "전화",
@@ -20,6 +25,18 @@ const CONSULT_TYPES: ConsultType[] = [
   "카카오톡",
   "문자",
   "이메일",
+  "기타",
+];
+
+const CRM_CONSULTATION_TYPES: ConsultationType[] = [
+  "창호",
+  "종합인테리어",
+  "부분인테리어",
+  "주방",
+  "욕실",
+  "도배",
+  "바닥재",
+  "도어/중문",
   "기타",
 ];
 
@@ -43,10 +60,20 @@ const CRM_STATUS_OPTIONS: CustomerStatus[] = [
   "취소",
 ];
 
+export type CrmCreateCustomerState = {
+  success: boolean;
+  error?: string;
+};
+
 function requiredText(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   if (!value) throw new Error(`${key} 값이 필요합니다.`);
   return value;
+}
+
+function optionalText(formData: FormData, key: string) {
+  const value = String(formData.get(key) ?? "").trim();
+  return value || null;
 }
 
 function parseKoreaLocalDateTime(value: string): string {
@@ -78,6 +105,54 @@ function revalidateCrmCustomer(customerId: string) {
   revalidatePath("/crm/schedules");
   revalidatePath(`/crm/customers/${customerId}`);
   revalidatePath("/dashboard");
+}
+
+export async function createCrmCustomerAction(
+  _prev: CrmCreateCustomerState,
+  formData: FormData,
+): Promise<CrmCreateCustomerState> {
+  try {
+    const name = requiredText(formData, "name");
+    const phone = requiredText(formData, "phone");
+    const consultationTypeRaw = String(
+      formData.get("consultation_type") ?? "기타",
+    ).trim();
+
+    if (!CRM_CONSULTATION_TYPES.includes(consultationTypeRaw as ConsultationType)) {
+      return { success: false, error: "상담유형을 다시 확인해 주세요." };
+    }
+
+    const customer = await createCustomer({
+      name,
+      phone,
+      address: optionalText(formData, "address"),
+      consultation_type: consultationTypeRaw as ConsultationType,
+      status: "신규",
+      lead_source_id: optionalText(formData, "lead_source_id"),
+      assigned_employee_id: optionalText(formData, "assigned_employee_id"),
+      consultation_notes: optionalText(formData, "consultation_notes"),
+      next_contact_at: null,
+      interest_items: [],
+    });
+
+    revalidatePath("/crm");
+    revalidatePath("/crm/customers");
+    revalidatePath("/customers");
+    revalidatePath("/dashboard");
+    redirect(`/crm/customers/${customer.id}?created=1`);
+  } catch (error) {
+    // redirect()는 성공 시 throw 형태로 동작하므로 NEXT_REDIRECT는 그대로 전달한다.
+    if (
+      error instanceof Error &&
+      (error.message === "NEXT_REDIRECT" || error.message.includes("NEXT_REDIRECT"))
+    ) {
+      throw error;
+    }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "고객 등록에 실패했습니다.",
+    };
+  }
 }
 
 export async function saveCrmConsultationAction(formData: FormData) {
