@@ -94,24 +94,30 @@ export default function CrmCustomerCard({ customer }: { customer: CrmCustomerCar
         </div>
       )}
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-4 gap-2">
         <a
           href={`tel:${customer.phone}`}
-          className="rounded-xl border border-slate-200 py-2 text-center text-xs font-bold text-slate-700"
+          className="rounded-xl border border-slate-200 py-2.5 text-center text-[11px] font-bold text-slate-700"
         >
           전화
         </a>
         <a
           href={`sms:${customer.phone}`}
-          className="rounded-xl border border-slate-200 py-2 text-center text-xs font-bold text-slate-700"
+          className="rounded-xl border border-slate-200 py-2.5 text-center text-[11px] font-bold text-slate-700"
         >
           문자
         </a>
         <Link
           href={`/crm/customers/${customer.id}#consult`}
-          className="rounded-xl bg-navy-900 py-2 text-center text-xs font-bold text-white"
+          className="rounded-xl bg-navy-900 py-2.5 text-center text-[11px] font-bold text-white"
         >
           상담기록
+        </Link>
+        <Link
+          href={`/crm/customers/${customer.id}/status`}
+          className="rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-center text-[11px] font-bold text-sky-800"
+        >
+          상태
         </Link>
       </div>
     </article>
