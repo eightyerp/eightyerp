@@ -82,11 +82,8 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
 
   const consultLogs = consultResult.status === "fulfilled" ? consultResult.value.slice(0, 8) : [];
   const schedules = scheduleResult.status === "fulfilled" ? scheduleResult.value : [];
-  const now = Date.now();
   const upcoming = schedules
     .filter((schedule) => !["완료", "취소"].includes(schedule.status))
-    .filter((schedule) => new Date(schedule.start_at).getTime() >= now - 30 * 60 * 1000)
-    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
     .slice(0, 3);
 
   const assignee = customer.employees
