@@ -7,6 +7,7 @@ export type TodayFocus =
   | "contract"
   | "overdue"
   | "contact"
+  | "next_action"
   | "expiring"
   | "task"
   | "quote"
@@ -80,6 +81,7 @@ export type TodayWorkSummary = {
   todayContract: number;
   overdue: number;
   todayContact: number;
+  noNextAction: number;
   expiringQuotes: number;
 };
 
@@ -122,6 +124,8 @@ export function filterTodayItems(
       return rows.filter((i) => i.isOverdue || i.kind === "overdue");
     case "contact":
       return rows.filter((i) => i.kind === "contact");
+    case "next_action":
+      return rows.filter((i) => i.kind === "no_next_action");
     case "expiring":
       return rows.filter((i) => i.kind === "expiring");
     case "task":
