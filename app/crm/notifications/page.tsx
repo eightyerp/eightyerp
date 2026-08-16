@@ -27,6 +27,7 @@ function eventLabel(eventType: string) {
   if (eventType === "consult_remind_1h") return "1시간 전";
   if (eventType === "consult_unhandled") return "미처리";
   if (eventType === "customer_assignment_uncontacted_30m") return "30분 미연락";
+  if (eventType === "customer_unassigned_10m") return "미배정";
   if (eventType === "customer_stale_3d") return "3일 방치";
   if (eventType === "customer_stale_7d") return "7일 방치";
   return "알림";
