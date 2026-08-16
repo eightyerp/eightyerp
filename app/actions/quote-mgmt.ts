@@ -14,12 +14,15 @@ import {
   markQuoteSent,
   parseQuoteForm,
   parseQuoteItemsJson,
-  setContractQuote,
   softDeleteQuote,
   softDeleteQuoteFile,
   toQuoteSafeError,
   updateQuote,
 } from "@/lib/crm/quote-mgmt";
+import {
+  getQuoteContractTransitionOptions,
+  transitionQuoteToContract,
+} from "@/lib/crm/quote-contract-transition";
 import { buildQuoteGuideMessage } from "@/lib/crm/quote-constants";
 import { createClient } from "@/lib/supabase-server";
 import { requireAuthenticatedAccess } from "@/lib/crm/access";
@@ -56,34 +59,62 @@ function revalidateQuotes(customerId?: string | null, quoteId?: string | null) {
   }
 }
 
-async function linkWorkflowContext(formData: FormData, quoteId: string, customerId: string) {
+async function linkWorkflowContext(
+  formData: FormData,
+  quoteId: string,
+  customerId: string,
+) {
   const projectId = String(formData.get("project_id") ?? "").trim() || null;
-  const consultationId = String(formData.get("source_consultation_id") ?? "").trim() || null;
-  const inspectionId = String(formData.get("source_inspection_id") ?? "").trim() || null;
+  const consultationId =
+    String(formData.get("source_consultation_id") ?? "").trim() || null;
+  const inspectionId =
+    String(formData.get("source_inspection_id") ?? "").trim() || null;
   if (!consultationId && !inspectionId) return;
-  if (!projectId || !consultationId || !inspectionId) throw new Error("점검·상담·현장 연결 정보가 필요합니다.");
+  if (!projectId || !consultationId || !inspectionId) {
+    throw new Error("점검·상담·현장 연결 정보가 필요합니다.");
+  }
   const access = await requireAuthenticatedAccess();
   const companyId = access.profile?.active_company_id;
   if (!companyId) throw new Error("회사 권한을 확인할 수 없습니다.");
   const supabase = await createClient();
   if (consultationId) {
-    const { data } = await supabase.from("customer_consult_logs").select("id")
-      .eq("id", consultationId).eq("customer_id", customerId).eq("company_id", companyId)
-      .eq("source_project_id", projectId).eq("source_inspection_id", inspectionId).maybeSingle();
+    const { data } = await supabase
+      .from("customer_consult_logs")
+      .select("id")
+      .eq("id", consultationId)
+      .eq("customer_id", customerId)
+      .eq("company_id", companyId)
+      .eq("source_project_id", projectId)
+      .eq("source_inspection_id", inspectionId)
+      .maybeSingle();
     if (!data) throw new Error("상담 연결 정보가 올바르지 않습니다.");
   }
   if (inspectionId) {
-    const { data } = await supabase.from("window_inspections").select("id")
-      .eq("id", inspectionId).eq("customer_id", customerId).eq("company_id", companyId)
-      .eq("project_id", projectId).maybeSingle();
+    const { data } = await supabase
+      .from("window_inspections")
+      .select("id")
+      .eq("id", inspectionId)
+      .eq("customer_id", customerId)
+      .eq("company_id", companyId)
+      .eq("project_id", projectId)
+      .maybeSingle();
     if (!data) throw new Error("점검 연결 정보가 올바르지 않습니다.");
   }
-  const { data: linkedQuote, error } = await supabase.from("quotes").update({
-    source_consultation_id: consultationId,
-    source_inspection_id: inspectionId,
-  }).eq("id", quoteId).eq("customer_id", customerId).eq("company_id", companyId)
-    .eq("project_id", projectId).select("id").maybeSingle();
-  if (error || !linkedQuote) throw new Error("견적 업무 연결을 저장하지 못했습니다.");
+  const { data: linkedQuote, error } = await supabase
+    .from("quotes")
+    .update({
+      source_consultation_id: consultationId,
+      source_inspection_id: inspectionId,
+    })
+    .eq("id", quoteId)
+    .eq("customer_id", customerId)
+    .eq("company_id", companyId)
+    .eq("project_id", projectId)
+    .select("id")
+    .maybeSingle();
+  if (error || !linkedQuote) {
+    throw new Error("견적 업무 연결을 저장하지 못했습니다.");
+  }
 }
 
 function parseRemovedItemIds(formData: FormData): string[] {
@@ -381,22 +412,65 @@ export async function deleteQuoteFileAction(
   }
 }
 
+/**
+ * 기존 UI 이름은 유지하지만 실제 동작은 더 이상 quote 플래그만 바꾸지 않는다.
+ * 운영 `transition_quote_to_contract` RPC를 호출해 계약·현장·실행예산을
+ * 한 트랜잭션으로 전환한다.
+ */
 export async function setContractQuoteAction(
   formData: FormData,
 ): Promise<QuoteActionResult> {
   try {
     const id = String(formData.get("quote_id") ?? "").trim();
-    const quote = await setContractQuote(id);
+    if (!id) return { success: false, error: "견적 ID가 없습니다." };
+
+    const options = await getQuoteContractTransitionOptions(id);
+    let projectMode: "link" | "create";
+    let projectId: string | null = null;
+
+    if (
+      options.quoteProjectId &&
+      options.projects.some((project) => project.id === options.quoteProjectId)
+    ) {
+      projectMode = "link";
+      projectId = options.quoteProjectId;
+    } else if (options.projects.length === 1) {
+      projectMode = "link";
+      projectId = options.projects[0].id;
+    } else if (options.projects.length === 0) {
+      projectMode = "create";
+    } else {
+      return {
+        success: false,
+        error:
+          "이 고객에 현장이 여러 개 있습니다. 견적에 사용할 현장을 먼저 연결한 뒤 계약 전환해 주세요.",
+      };
+    }
+
+    const result = await transitionQuoteToContract({
+      quoteId: id,
+      projectMode,
+      projectId,
+    });
+    const quote = await getQuoteById(id);
+    if (!quote) throw new Error("전환된 견적 정보를 확인하지 못했습니다.");
+
     revalidateQuotes(quote.customer_id, quote.id);
+    revalidatePath("/contracts");
+    revalidatePath(`/contracts/${result.contractId}`);
+    revalidatePath(`/projects/${result.projectId}/schedule`);
+
     return {
       success: true,
-      message: "계약 견적으로 지정되었습니다.",
+      message: result.idempotent
+        ? "이미 전환된 계약 정보를 확인했습니다."
+        : "계약 전환이 완료되었습니다. 계약·현장·실행예산이 연결되었습니다.",
       quoteId: quote.id,
     };
   } catch (error) {
     return {
       success: false,
-      error: toQuoteSafeError(error, "계약 견적 지정에 실패했습니다."),
+      error: toQuoteSafeError(error, "계약 전환에 실패했습니다."),
     };
   }
 }
