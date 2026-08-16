@@ -94,7 +94,7 @@ export default function CrmCustomerCard({ customer }: { customer: CrmCustomerCar
         </div>
       )}
 
-      <div className="mt-3 grid grid-cols-4 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2">
         <a
           href={`tel:${customer.phone}`}
           className="rounded-xl border border-slate-200 py-2.5 text-center text-[11px] font-bold text-slate-700"
@@ -113,11 +113,20 @@ export default function CrmCustomerCard({ customer }: { customer: CrmCustomerCar
         >
           상담기록
         </Link>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Link
+          href={`/crm/customers/${customer.id}/schedule/new`}
+          className="rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-center text-[11px] font-black text-amber-900"
+        >
+          일정 잡기
+        </Link>
         <Link
           href={`/crm/customers/${customer.id}/status`}
           className="rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-center text-[11px] font-bold text-sky-800"
         >
-          상태
+          상태 변경
         </Link>
       </div>
     </article>
