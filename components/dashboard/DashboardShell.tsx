@@ -27,7 +27,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<TopBarUserDisplay>(fallbackUser);
 
-  // 첫 화면은 사용자 정보 로딩을 기다리지 않는다. TopBar/Sidebar는 같은 1회 조회 결과를 공유한다.
+  // 사용자/회사 조회를 첫 화면 critical path 밖으로 이동하고 TopBar/Sidebar가 결과를 공유한다.
   useEffect(() => {
     let cancelled = false;
     getTopBarUserAction()
