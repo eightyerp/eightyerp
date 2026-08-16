@@ -14,7 +14,6 @@ import {
   saveQuoteWizardAction,
   type QuoteActionResult,
 } from "@/app/actions/quote-mgmt";
-import type { ErpQuoteItem } from "@/types/database";
 import { formatEmployeeAssigneeOption, formatEmployeeLabel } from "@/lib/crm/constants";
 import { resolveLiveEmployeeAssigneeContact } from "@/lib/crm/quote-assignee-contact";
 import { getEmployeeCardSignedUrlAction } from "@/app/actions/employee-contacts";
@@ -285,15 +284,15 @@ export default function QuoteWizardForm({
 
   const [step, setStep] = useState(mode === "edit" ? 4 : 1);
   const [stepError, setStepError] = useState<string | null>(null);
-  const [persistedQuoteId, setPersistedQuoteId] = useState<string | null>(
+  const [persistedQuoteId] = useState<string | null>(
     initialQuote?.id ?? null,
   );
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() =>
+  const [lastSavedAt] = useState<Date | null>(() =>
     initialSaveNotice || initialQuote?.updated_at
       ? new Date(initialQuote?.updated_at ?? Date.now())
       : null,
   );
-  const [saveBanner, setSaveBanner] = useState<string | null>(
+  const [saveBanner] = useState<string | null>(
     initialSaveNotice ? "저장되었습니다" : null,
   );
   const [isDirty, setIsDirty] = useState(false);
@@ -377,7 +376,7 @@ export default function QuoteWizardForm({
     string[]
   >([]);
   /** 활성 item ID (저장 후 서버 스냅샷으로 갱신) */
-  const [originalExistingItemIds, setOriginalExistingItemIds] = useState<
+  const [originalExistingItemIds] = useState<
     string[]
   >(() =>
     mapQuoteItemsToRows(

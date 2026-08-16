@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 
 type CompanyRegistrationFormProps = {
@@ -14,6 +15,7 @@ export default function CompanyRegistrationForm({
   initialBusinessNumber = "",
   initialRepresentativeName = "",
 }: CompanyRegistrationFormProps) {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,7 +80,7 @@ export default function CompanyRegistrationForm({
       }
 
       // 새 회사와 owner 멤버십이 모두 생성된 후 ERP로 이동
-      window.location.assign("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       setError(
         err instanceof Error
