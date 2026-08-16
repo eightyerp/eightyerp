@@ -40,6 +40,18 @@ const CRM_CONSULTATION_TYPES: ConsultationType[] = [
   "기타",
 ];
 
+const CRM_SCHEDULE_TYPES = [
+  "전화상담",
+  "방문상담",
+  "실측",
+  "견적작성",
+  "견적발송",
+  "계약상담",
+  "재연락",
+  "해피콜",
+  "기타",
+] as const;
+
 const CRM_STATUS_OPTIONS: CustomerStatus[] = [
   "신규",
   "미연락",
@@ -79,11 +91,11 @@ function optionalText(formData: FormData, key: string) {
 function parseKoreaLocalDateTime(value: string): string {
   const normalized = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)) {
-    throw new Error("다음 연락 시간을 다시 확인해 주세요.");
+    throw new Error("일정 시간을 다시 확인해 주세요.");
   }
   const parsed = new Date(`${normalized}:00+09:00`);
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error("다음 연락 시간을 다시 확인해 주세요.");
+    throw new Error("일정 시간을 다시 확인해 주세요.");
   }
   return parsed.toISOString();
 }
@@ -153,6 +165,61 @@ export async function createCrmCustomerAction(
       error: error instanceof Error ? error.message : "고객 등록에 실패했습니다.",
     };
   }
+}
+
+export async function createCrmScheduleAction(formData: FormData) {
+  const customerId = requiredText(formData, "customer_id");
+  const scheduleType = requiredText(formData, "schedule_type");
+  const startRaw = requiredText(formData, "start_at");
+
+  if (!CRM_SCHEDULE_TYPES.includes(scheduleType as (typeof CRM_SCHEDULE_TYPES)[number])) {
+    throw new Error("일정 유형을 다시 확인해 주세요.");
+  }
+
+  const customer = await getCustomerById(customerId);
+  if (!customer || customer.deleted_at) {
+    throw new Error("고객을 찾을 수 없습니다.");
+  }
+  if (!customer.assigned_employee_id) {
+    throw new Error("담당자를 먼저 지정한 뒤 일정을 등록해 주세요.");
+  }
+
+  const startAt = parseKoreaLocalDateTime(startRaw);
+  const description = optionalText(formData, "description");
+  const location = optionalText(formData, "location") || customer.address || null;
+  const schedule = await createCustomerSchedule({
+    customer_id: customerId,
+    assigned_employee_id: customer.assigned_employee_id,
+    schedule_type: scheduleType,
+    title: `${customer.name} 고객 ${scheduleType}`,
+    description,
+    start_at: startAt,
+    end_at: null,
+    all_day: false,
+    status: "예정",
+    priority: "보통",
+    location,
+    result_note: null,
+    customer_reaction: null,
+    next_action: scheduleType === "재연락" ? "고객 재연락" : scheduleType,
+    next_contact_at: null,
+  });
+
+  // 연락 성격 일정은 날짜 요약도 함께 맞춰 두되, 정확한 시간의 Source of Truth는 customer_schedules다.
+  if (["전화상담", "재연락", "해피콜"].includes(scheduleType)) {
+    try {
+      await updateCustomerQuickFields({
+        customer_id: customerId,
+        next_contact_at: koreaDateFromIso(startAt),
+      });
+    } catch {
+      // 정확한 일정 생성 성공을 날짜 요약 동기화 실패가 막지 않는다.
+    }
+  }
+
+  revalidateCrmCustomer(customerId);
+  revalidatePath(`/crm/schedules/${schedule.id}`);
+  redirect(`/crm/schedules/${schedule.id}?created=1`);
 }
 
 export async function saveCrmConsultationAction(formData: FormData) {
