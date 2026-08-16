@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import ContractTransitionPanel from "@/components/quotes/ContractTransitionPanel";
 import QuoteDetailView from "@/components/quotes/QuoteDetailView";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getEmployees } from "@/lib/crm/customers";
@@ -11,6 +12,8 @@ import {
 import { isMissingRelationError } from "@/lib/crm/errors";
 import { getCurrentCompanyQuoteBrand } from "@/lib/crm/quote-brand";
 import type { QuoteBrandProfile } from "@/lib/crm/quote-brand-shared";
+import { getQuoteContractTransitionOptions } from "@/lib/crm/quote-contract-transition";
+import type { QuoteContractTransitionOptions } from "@/lib/crm/quote-contract-transition";
 import {
   createSignedUrlsForQuoteFiles,
   getQuoteById,
@@ -53,6 +56,7 @@ export default async function QuoteDetailPage({
   let signedUrls: Record<string, string> = {};
   let employees: Employee[] = [];
   let brand: QuoteBrandProfile | null = null;
+  let transitionOptions: QuoteContractTransitionOptions | null = null;
   let assigneeCardImageUrl: string | null = null;
   let loadError: string | null = null;
   let tablesMissing = false;
@@ -60,19 +64,29 @@ export default async function QuoteDetailPage({
   try {
     quote = await getQuoteById(id);
     if (quote) {
-      const [versionList, logList, urls, employeeList, companyBrand] =
-        await Promise.all([
-          listQuoteVersions(quote.quote_group_id),
-          listQuoteSendLogs(quote.id),
-          createSignedUrlsForQuoteFiles(quote.quote_files ?? []),
-          getEmployees().catch(() => [] as Employee[]),
-          getCurrentCompanyQuoteBrand(),
-        ]);
+      const [
+        versionList,
+        logList,
+        urls,
+        employeeList,
+        companyBrand,
+        contractOptions,
+      ] = await Promise.all([
+        listQuoteVersions(quote.quote_group_id),
+        listQuoteSendLogs(quote.id),
+        createSignedUrlsForQuoteFiles(quote.quote_files ?? []),
+        getEmployees().catch(() => [] as Employee[]),
+        getCurrentCompanyQuoteBrand(),
+        quote.is_contract_quote
+          ? Promise.resolve(null)
+          : getQuoteContractTransitionOptions(quote.id).catch(() => null),
+      ]);
       versions = versionList;
       sendLogs = logList;
       signedUrls = urls;
       employees = employeeList;
       brand = companyBrand;
+      transitionOptions = contractOptions;
 
       const contact = resolveQuoteAssigneeContact(quote);
       if (contact.showBusinessCard && contact.cardPath) {
@@ -134,6 +148,18 @@ export default async function QuoteDetailPage({
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {loadError}
           </div>
+        )}
+
+        {quote && !quote.is_contract_quote && transitionOptions && (
+          <ContractTransitionPanel
+            quoteId={quote.id}
+            customerId={quote.customer_id}
+            quoteStatus={quote.status}
+            customerName={quote.customers?.name ?? "고객"}
+            customerAddress={quote.customers?.address ?? null}
+            quoteProjectId={transitionOptions.quoteProjectId}
+            projects={transitionOptions.projects}
+          />
         )}
 
         {quote && (
