@@ -9,7 +9,7 @@
 --
 -- 주의
 --   - 이 migration 파일 생성만으로 운영 DB에는 변화가 없다.
---   - pg_cron 활성화/실제 cron job/Edge Function Secret은 별도 승인 후 적용한다.
+--   - pg_cron/pg_net 활성화, cron job, Edge Function Secret은 별도 승인 후 적용한다.
 --   - 고객 데이터 삭제/초기화 없음.
 -- =============================================================================
 
@@ -19,7 +19,7 @@
 create table if not exists public.crm_push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
-  employee_id uuid references public.employees (id) on delete cascade,
+  employee_id uuid not null references public.employees (id) on delete cascade,
   endpoint text not null,
   p256dh text not null,
   auth_key text not null,
@@ -42,28 +42,123 @@ create index if not exists crm_push_subscriptions_user_idx
 
 alter table public.crm_push_subscriptions enable row level security;
 
+-- 직접 쓰기는 막고 아래 검증 RPC로만 등록/갱신한다.
 drop policy if exists "crm_push_subscriptions_select_own" on public.crm_push_subscriptions;
 create policy "crm_push_subscriptions_select_own"
   on public.crm_push_subscriptions for select to authenticated
   using (user_id = auth.uid());
-
-drop policy if exists "crm_push_subscriptions_insert_own" on public.crm_push_subscriptions;
-create policy "crm_push_subscriptions_insert_own"
-  on public.crm_push_subscriptions for insert to authenticated
-  with check (user_id = auth.uid());
-
-drop policy if exists "crm_push_subscriptions_update_own" on public.crm_push_subscriptions;
-create policy "crm_push_subscriptions_update_own"
-  on public.crm_push_subscriptions for update to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
 
 drop policy if exists "crm_push_subscriptions_delete_own" on public.crm_push_subscriptions;
 create policy "crm_push_subscriptions_delete_own"
   on public.crm_push_subscriptions for delete to authenticated
   using (user_id = auth.uid());
 
-grant select, insert, update, delete on public.crm_push_subscriptions to authenticated;
+revoke insert, update on public.crm_push_subscriptions from authenticated;
+grant select, delete on public.crm_push_subscriptions to authenticated;
+
+create or replace function public.register_my_crm_push_subscription(
+  p_endpoint text,
+  p_p256dh text,
+  p_auth_key text,
+  p_user_agent text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_employee_id uuid := public.current_employee_id();
+  v_id uuid;
+begin
+  if v_user_id is null or not public.is_erp_user() then
+    raise exception 'ERP 로그인 권한이 필요합니다.';
+  end if;
+
+  if v_employee_id is null then
+    raise exception '연결된 직원 정보가 없습니다.';
+  end if;
+
+  if coalesce(length(trim(p_endpoint)), 0) < 20
+     or coalesce(length(trim(p_endpoint)), 0) > 5000
+     or coalesce(length(trim(p_p256dh)), 0) < 10
+     or coalesce(length(trim(p_auth_key)), 0) < 5
+  then
+    raise exception '푸시 구독 정보가 올바르지 않습니다.';
+  end if;
+
+  insert into public.crm_push_subscriptions (
+    user_id,
+    employee_id,
+    endpoint,
+    p256dh,
+    auth_key,
+    user_agent,
+    is_active,
+    last_error,
+    last_error_at,
+    updated_at
+  )
+  values (
+    v_user_id,
+    v_employee_id,
+    trim(p_endpoint),
+    trim(p_p256dh),
+    trim(p_auth_key),
+    nullif(trim(coalesce(p_user_agent, '')), ''),
+    true,
+    null,
+    null,
+    now()
+  )
+  on conflict (endpoint) do update
+    set user_id = excluded.user_id,
+        employee_id = excluded.employee_id,
+        p256dh = excluded.p256dh,
+        auth_key = excluded.auth_key,
+        user_agent = excluded.user_agent,
+        is_active = true,
+        last_error = null,
+        last_error_at = null,
+        updated_at = now()
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.disable_my_crm_push_subscription(
+  p_endpoint text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer := 0;
+begin
+  if auth.uid() is null or not public.is_erp_user() then
+    return false;
+  end if;
+
+  update public.crm_push_subscriptions
+  set is_active = false,
+      updated_at = now()
+  where user_id = auth.uid()
+    and endpoint = trim(p_endpoint)
+    and is_active = true;
+
+  get diagnostics v_count = row_count;
+  return v_count > 0;
+end;
+$$;
+
+revoke all on function public.register_my_crm_push_subscription(text, text, text, text) from public;
+revoke all on function public.disable_my_crm_push_subscription(text) from public;
+grant execute on function public.register_my_crm_push_subscription(text, text, text, text) to authenticated;
+grant execute on function public.disable_my_crm_push_subscription(text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 2) 회사/관리자 고객 배분 이벤트 자동 생성
@@ -194,7 +289,7 @@ begin
     and s.schedule_type in ('전화상담', '방문상담', '실측', '계약상담', '재연락', '해피콜')
     and s.start_at > p_now
     and s.start_at <= p_now + interval '1 hour'
-  on conflict (dedupe_key) do nothing;
+  on conflict (dedupe_key) where dedupe_key is not null do nothing;
 
   get diagnostics v_remind = row_count;
 
@@ -240,7 +335,7 @@ begin
         and later.status not in ('완료', '취소')
         and later.start_at > s.start_at
     )
-  on conflict (dedupe_key) do nothing;
+  on conflict (dedupe_key) where dedupe_key is not null do nothing;
 
   get diagnostics v_unhandled = row_count;
 
