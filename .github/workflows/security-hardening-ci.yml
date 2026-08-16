@@ -1,0 +1,27 @@
+name: Security Hardening CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20260816070000_security_advisor_acl_search_path_p0.sql"
+      - "supabase/verifications/20260816070000_security_advisor_acl_search_path_p0_verify.sql"
+      - ".github/workflows/security-hardening-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  migration-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Migration structural safety
+        run: node scripts/validate-migration-sql.mjs supabase/migrations/20260816070000_security_advisor_acl_search_path_p0.sql
+
+      - name: Verify public entrypoint sentinels exist in SQL
+        run: |
+          grep -q "get_company_employee_invitation" supabase/verifications/20260816070000_security_advisor_acl_search_path_p0_verify.sql
+          grep -q "get_quote_share_by_token" supabase/verifications/20260816070000_security_advisor_acl_search_path_p0_verify.sql
+          grep -q "employee_card_path_is_shared" supabase/verifications/20260816070000_security_advisor_acl_search_path_p0_verify.sql
