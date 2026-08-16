@@ -8,6 +8,7 @@ on:
       - "app/qa-window-flow/page.tsx"
       - "components/customers/CreateSiteButton.tsx"
       - "components/quotes/ContractTransitionPanel.tsx"
+      - "lib/crm/project-constants.ts"
       - "proxy.ts"
       - ".github/workflows/erp-window-flow-visual-qa.yml"
 
