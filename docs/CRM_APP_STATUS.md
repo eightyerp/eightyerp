@@ -163,7 +163,7 @@ CI:
 
 동일 PR 새 커밋 시 이전 CI는 concurrency로 자동 취소한다.
 
-최신 기능 코드 체크포인트:
+최신 **기능 코드** 체크포인트:
 - commit `b685c97a490f174d7063d2e3cb64a12b6544326e`
 - ERP CI run #157 `31944374363`: SUCCESS
 - Window Lifecycle Guard: PASS
@@ -175,6 +175,8 @@ CI:
 - Compile **9.3s**
 - TypeScript **16.0s**
 - Static generation **43 pages / 562ms**
+
+이 문서 이후 생성되는 `docs:` 커밋은 기능 변경이 아니다. 기능 검증 기준은 위 기능 코드 체크포인트를 사용한다.
 
 정상 CRM routes:
 `/crm`, `/crm/customers`, `/crm/customers/new`, `/crm/customers/[id]`, `/crm/customers/[id]/assignee`, `/crm/customers/[id]/status`, `/crm/customers/[id]/schedule/new`, `/crm/install`, `/crm/notifications`, `/crm/quotes`, `/crm/quotes/[id]`, `/crm/schedules`, `/crm/schedules/[id]`.
