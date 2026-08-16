@@ -5,6 +5,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isPendingRoute, isPublicRoute } from "@/lib/auth";
 import { getSupabaseEnv } from "@/lib/supabase-env";
 
+const DAL_AUDITED_GET_ROUTES = new Set([
+  "/dashboard",
+  "/quotes",
+  "/schedules/customers",
+]);
+
+function canUseDalOnlyApprovalGate(request: NextRequest, pathname: string) {
+  return (
+    (request.method === "GET" || request.method === "HEAD") &&
+    DAL_AUDITED_GET_ROUTES.has(pathname)
+  );
+}
+
 function isMissingSessionError(error: {
   name?: string;
   message?: string;
@@ -49,8 +62,7 @@ function copyAllCookies(from: NextResponse, to: NextResponse): NextResponse {
 /**
  * Refresh auth session cookies and gate protected routes.
  * getClaims() verifies the JWT signature and is the recommended server-side
- * identity check for protected pages. With asymmetric signing keys it avoids
- * the per-request Auth user lookup required by getUser().
+ * identity check for protected pages. Secure authorization remains in the DAL.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -120,6 +132,17 @@ export async function updateSession(request: NextRequest) {
     redirectUrl.search = "";
     const redirectResponse = NextResponse.redirect(redirectUrl);
     return copyAllCookies(supabaseResponse, redirectResponse);
+  }
+
+  // 고빈도 읽기 화면은 Proxy에서 JWT 검증까지만 수행하고, 페이지/DAL이
+  // getCurrentUserAccess()로 승인·활성·회사 권한을 fail-closed 검증한다.
+  // Server Action/POST와 감사되지 않은 경로는 아래 기존 profile gate를 유지한다.
+  if (
+    isAuthenticated &&
+    userId &&
+    canUseDalOnlyApprovalGate(request, pathname)
+  ) {
+    return supabaseResponse;
   }
 
   // Approval / active gate for authenticated users
