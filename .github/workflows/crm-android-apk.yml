@@ -105,6 +105,27 @@ jobs:
       - name: Install Bubblewrap
         run: npm install --global @bubblewrap/cli
 
+      - name: Prepare Bubblewrap Android CLI root
+        run: |
+          set -euo pipefail
+          SDKMANAGER_PATH="$(readlink -f "$(command -v sdkmanager)")"
+          export BUBBLEWRAP_ANDROID_SDK="$(dirname "$(dirname "$SDKMANAGER_PATH")")"
+          echo "BUBBLEWRAP_ANDROID_SDK=$BUBBLEWRAP_ANDROID_SDK" >> "$GITHUB_ENV"
+
+          # Bubblewrap expects the decompressed command-line-tools root (bin/), not ANDROID_HOME.
+          test -x "$BUBBLEWRAP_ANDROID_SDK/bin/sdkmanager"
+          mkdir -p "$BUBBLEWRAP_ANDROID_SDK/licenses"
+          if [ -d "$ANDROID_HOME/licenses" ]; then
+            cp -a "$ANDROID_HOME/licenses/." "$BUBBLEWRAP_ANDROID_SDK/licenses/"
+          fi
+
+          "$BUBBLEWRAP_ANDROID_SDK/bin/sdkmanager" \
+            --sdk_root="$BUBBLEWRAP_ANDROID_SDK" \
+            "platform-tools" \
+            "build-tools;36.1.0" \
+            "platforms;android-35" \
+            "platforms;android-36"
+
       - name: Configure Bubblewrap non-interactively
         run: |
           set -euo pipefail
@@ -115,7 +136,7 @@ jobs:
           const file = path.join(process.env.HOME, '.bubblewrap', 'config.json');
           fs.writeFileSync(file, `${JSON.stringify({
             jdkPath: process.env.JAVA_HOME,
-            androidSdkPath: process.env.ANDROID_HOME,
+            androidSdkPath: process.env.BUBBLEWRAP_ANDROID_SDK,
           }, null, 2)}\n`);
           console.log(`Bubblewrap config written to ${file}`);
           NODE
