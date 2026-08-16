@@ -62,7 +62,7 @@ export default async function CrmQuotesPage({ searchParams }: Props) {
 
       <section className="space-y-3">
         {result.quotes.map((quote) => (
-          <Link key={quote.id} href={`/quotes/${quote.id}`} className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <Link key={quote.id} href={`/crm/quotes/${quote.id}`} className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -76,7 +76,7 @@ export default async function CrmQuotesPage({ searchParams }: Props) {
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
               <span>{quote.quote_type}</span>
-              <span className="font-semibold text-slate-700">상세 보기 ›</span>
+              <span className="font-semibold text-slate-700">CRM 요약 보기 ›</span>
             </div>
           </Link>
         ))}
