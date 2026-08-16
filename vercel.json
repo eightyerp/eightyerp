@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "agent/finance-v2-gate3-preview": false
+      "agent/finance-v2-gate3-preview": true
     }
   }
 }
