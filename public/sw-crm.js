@@ -1,11 +1,8 @@
 const CRM_SCOPE = "/crm";
-const ALLOWED_PUSH_PATH_PREFIXES = ["/crm", "/customers/"];
 
 function safePushUrl(value) {
   if (typeof value !== "string") return CRM_SCOPE;
-  return ALLOWED_PUSH_PATH_PREFIXES.some((prefix) => value.startsWith(prefix))
-    ? value
-    : CRM_SCOPE;
+  return value.startsWith(CRM_SCOPE) ? value : CRM_SCOPE;
 }
 
 self.addEventListener("install", () => {
