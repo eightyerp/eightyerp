@@ -202,14 +202,15 @@ await expectCheckViolation(
   "link replay without a project",
 );
 
-const integrity = (
+const integrityRows = (
   await db.query(
-    "select count(*)::integer as count, min(project_id)::text as project_id " +
+    "select project_id::text as project_id " +
       "from public.contracts where quote_id = '" + ids.quote + "'::uuid",
   )
-).rows[0];
+).rows;
 assert(
-  integrity.count === 1 && integrity.project_id === ids.projectA,
+  integrityRows.length === 1 &&
+    integrityRows[0].project_id === ids.projectA,
   "rejected replay leaves one unchanged project chain",
 );
 
