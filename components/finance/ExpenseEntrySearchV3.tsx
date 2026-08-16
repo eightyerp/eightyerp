@@ -115,16 +115,20 @@ export default function ExpenseEntrySearchV3({
 
   useEffect(() => {
     if (!state.success || !state.expenseId) return;
-    // 연속 입력이 많은 현장업무를 고려해 현장/공종/비용유형은 유지합니다.
-    setVendorChoice("");
-    setNewVendorName("");
-    setTotalAmount(0);
-    setSupplyAmount(0);
-    setVatAmount(0);
-    setDescription("");
-    setAnalysis(null);
-    setAnalysisMessage(null);
-    if (fileRef.current) fileRef.current.value = "";
+    // 액션 결과와 로컬 입력 상태의 동기화를 다음 tick으로 넘겨
+    // effect 본문의 연쇄 렌더를 피한다.
+    const timer = window.setTimeout(() => {
+      setVendorChoice("");
+      setNewVendorName("");
+      setTotalAmount(0);
+      setSupplyAmount(0);
+      setVatAmount(0);
+      setDescription("");
+      setAnalysis(null);
+      setAnalysisMessage(null);
+      if (fileRef.current) fileRef.current.value = "";
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [state.success, state.expenseId]);
 
   const isSelectedSettled =
