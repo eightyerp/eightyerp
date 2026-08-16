@@ -16,6 +16,7 @@
 --   - 실제 Push 발송/cron/Secret 활성화는 별도 승인 후 수행
 --   - service_role scheduler에서도 회사 범위가 보존되도록 event.company_id를 명시한다.
 --   - 미처리/연기 포함 열린 일정이 있는 고객은 장기방치 PUSH에서 제외해 일정 알림과 중복하지 않는다.
+--   - 완료된 고객 일정의 completed_at을 의미 있는 최근 활동으로 포함해 방치 타이머를 리셋한다.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -41,6 +42,10 @@ create index if not exists crm_customer_schedules_customer_start_active_idx
   on public.customer_schedules (customer_id, start_at)
   where deleted_at is null;
 
+create index if not exists crm_customer_schedules_customer_completed_idx
+  on public.customer_schedules (customer_id, completed_at desc)
+  where deleted_at is null and completed_at is not null;
+
 -- ---------------------------------------------------------------------------
 -- 3) 진행 중 고객 장기 방치 이벤트 생성
 --
@@ -49,8 +54,8 @@ create index if not exists crm_customer_schedules_customer_start_active_idx
 --   - 7일 이상: customer_stale_7d 1회
 --   - 미래 연락일 또는 열린 고객 일정이 있으면 방치로 보지 않음
 --   - 열린 일정이 과거 시각이면 consult_unhandled가 담당하므로 stale PUSH와 중복하지 않음
---   - 상담/전화/문자/카카오/실측/견적발송/계약협의 등 의미 있는 활동이
---     새로 생기면 last_activity_at이 바뀌어 이후 타이머가 자연스럽게 reset됨
+--   - 상담/전화/문자/카카오/실측/견적발송/계약협의 등 의미 있는 활동과
+--     완료된 고객 일정은 last_activity_at을 갱신해 이후 타이머를 reset함
 --   - 담당자변경/상태변경만으로는 방치 타이머를 reset하지 않음
 -- ---------------------------------------------------------------------------
 create or replace function public.enqueue_due_crm_stale_customer_alerts(
@@ -84,6 +89,17 @@ begin
             from public.customer_activities a
             where a.customer_id = c.id
               and coalesce(a.activity_type::text, '') not in ('담당자변경', '상태변경')
+          ),
+          c.created_at
+        ),
+        coalesce(
+          (
+            select max(s.completed_at)
+            from public.customer_schedules s
+            where s.customer_id = c.id
+              and s.deleted_at is null
+              and s.status = '완료'
+              and s.completed_at is not null
           ),
           c.created_at
         )
@@ -166,6 +182,17 @@ begin
             from public.customer_activities a
             where a.customer_id = c.id
               and coalesce(a.activity_type::text, '') not in ('담당자변경', '상태변경')
+          ),
+          c.created_at
+        ),
+        coalesce(
+          (
+            select max(s.completed_at)
+            from public.customer_schedules s
+            where s.customer_id = c.id
+              and s.deleted_at is null
+              and s.status = '완료'
+              and s.completed_at is not null
           ),
           c.created_at
         )
