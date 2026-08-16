@@ -12,7 +12,7 @@ import {
   getCustomerById,
   updateCustomerQuickFields,
 } from "@/lib/crm/customers";
-import type { ConsultType } from "@/types/database";
+import type { ConsultType, CustomerStatus } from "@/types/database";
 
 const CONSULT_TYPES: ConsultType[] = [
   "전화",
@@ -21,6 +21,25 @@ const CONSULT_TYPES: ConsultType[] = [
   "문자",
   "이메일",
   "기타",
+];
+
+const CRM_STATUS_OPTIONS: CustomerStatus[] = [
+  "신규",
+  "미연락",
+  "1차 연락완료",
+  "상담중",
+  "방문예약",
+  "실측예약",
+  "견적작성중",
+  "견적제출",
+  "계약협의",
+  "계약완료",
+  "시공예정",
+  "시공중",
+  "완료",
+  "보류",
+  "연락두절",
+  "취소",
 ];
 
 function requiredText(formData: FormData, key: string) {
@@ -111,6 +130,23 @@ export async function saveCrmConsultationAction(formData: FormData) {
 
   revalidateCrmCustomer(customerId);
   redirect(`/crm/customers/${customerId}?saved=consult`);
+}
+
+export async function updateCrmCustomerStatusAction(formData: FormData) {
+  const customerId = requiredText(formData, "customer_id");
+  const statusRaw = requiredText(formData, "status");
+
+  if (!CRM_STATUS_OPTIONS.includes(statusRaw as CustomerStatus)) {
+    throw new Error("고객 상태를 다시 확인해 주세요.");
+  }
+
+  await updateCustomerQuickFields({
+    customer_id: customerId,
+    status: statusRaw as CustomerStatus,
+  });
+
+  revalidateCrmCustomer(customerId);
+  redirect(`/crm/customers/${customerId}?saved=status`);
 }
 
 export async function completeCrmScheduleAction(formData: FormData) {
