@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import EightyLogo from "@/components/brand/EightyLogo";
 import {
@@ -35,6 +35,7 @@ export default function Sidebar({
   companyRole,
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -55,7 +56,21 @@ export default function Sidebar({
 
   const nav = filterNavigation(role, new Set(), companyRole);
 
+  function warmRoute(route: string | null) {
+    if (!route) return;
+    router.prefetch(route);
+  }
+
   function toggleGroup(id: string, expanded: boolean) {
+    // 사용자가 그룹을 직접 펼쳤을 때만 첫 번째 실제 화면을 미리 받아온다.
+    // viewport 자동 prefetch는 계속 막아 대시보드 초기 요청 폭증을 피한다.
+    if (!expanded) {
+      const firstRoute = nav
+        .find((group) => group.id === id)
+        ?.items.find((item) => item.route)?.route;
+      warmRoute(firstRoute ?? null);
+    }
+
     setOpenGroups((current) => {
       const next = { ...current, [id]: !expanded };
       window.localStorage.setItem(GROUP_CACHE_KEY, JSON.stringify(next));
@@ -103,6 +118,10 @@ export default function Sidebar({
                           <Link
                             href={item.route}
                             prefetch={false}
+                            onMouseEnter={() => warmRoute(item.route)}
+                            onFocus={() => warmRoute(item.route)}
+                            onTouchStart={() => warmRoute(item.route)}
+                            onPointerDown={() => warmRoute(item.route)}
                             onClick={onClose}
                             className={`block rounded-md px-3 py-2 text-sm transition-colors ${
                               childActive
