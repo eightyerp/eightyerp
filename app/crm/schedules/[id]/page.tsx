@@ -28,10 +28,12 @@ function statusClass(status: string) {
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ completed?: string; followup?: string }>;
 };
 
-export default async function CrmScheduleDetailPage({ params }: Props) {
+export default async function CrmScheduleDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const query = await searchParams;
   const schedule = await getCustomerSchedule(id);
   if (!schedule || schedule.deleted_at) notFound();
 
@@ -56,6 +58,19 @@ export default async function CrmScheduleDetailPage({ params }: Props) {
           </span>
         </div>
       </section>
+
+      {query.completed === "1" && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          일정 완료 처리가 끝났습니다.
+          {query.followup === "created" && " 다음 연락 일정도 함께 등록했습니다."}
+        </div>
+      )}
+
+      {query.followup === "failed" && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          일정은 완료됐지만 다음 연락 일정 자동 등록은 실패했습니다. 고객 상세에서 다음 연락만 다시 등록해 주세요.
+        </div>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
@@ -90,13 +105,18 @@ export default async function CrmScheduleDetailPage({ params }: Props) {
 
       {isClosed ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-sm font-black text-emerald-900">이미 처리된 일정입니다.</p>
+          <p className="text-sm font-black text-emerald-900">처리된 일정입니다.</p>
           {schedule.result_note && (
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-emerald-800">{schedule.result_note}</p>
           )}
-          <Link href={`/crm/customers/${customer.id}`} className="mt-4 inline-flex rounded-xl bg-emerald-900 px-4 py-2.5 text-xs font-black text-white">
-            고객으로 이동
-          </Link>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Link href={`/crm/customers/${customer.id}`} className="rounded-xl bg-emerald-900 px-3 py-2.5 text-center text-xs font-black text-white">
+              고객으로 이동
+            </Link>
+            <Link href="/crm/schedules" className="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-center text-xs font-bold text-emerald-800">
+              다음 일정
+            </Link>
+          </div>
         </section>
       ) : (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
