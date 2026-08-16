@@ -20,6 +20,8 @@ const ACTIVE_STATUSES = [
   "시공중",
 ] as const;
 
+const OPEN_SCHEDULE_STATUSES = ["예정", "진행중", "연기", "미처리"] as const;
+
 type CandidateCustomer = {
   id: string;
   name: string;
@@ -60,6 +62,8 @@ export async function listCrmCustomersWithoutNextAction(input: {
     )
     .is("deleted_at", null)
     .in("status", [...ACTIVE_STATUSES])
+    // 진행 고객 중 오늘 이후의 다음 연락일이 이미 잡힌 고객은 DB에서 제외한다.
+    .or(`next_contact_at.is.null,next_contact_at.lt.${todayKey}`)
     .order("created_at", { ascending: true })
     .limit(100);
 
@@ -72,19 +76,17 @@ export async function listCrmCustomersWithoutNextAction(input: {
   const { data, error } = await customerQuery;
   if (error) throw new Error("다음 행동이 없는 고객을 확인하지 못했습니다.");
 
-  const candidates = ((data ?? []) as unknown as CandidateCustomer[]).filter(
-    (customer) =>
-      !customer.next_contact_at || customer.next_contact_at < todayKey,
-  );
+  const candidates = (data ?? []) as unknown as CandidateCustomer[];
   if (candidates.length === 0) return [];
 
   const candidateIds = candidates.map((customer) => customer.id);
   const { data: scheduleRows, error: scheduleError } = await supabase
     .from("customer_schedules")
-    .select("customer_id, start_at, status")
+    .select("customer_id")
     .in("customer_id", candidateIds)
     .is("deleted_at", null)
-    .limit(500);
+    .in("status", [...OPEN_SCHEDULE_STATUSES])
+    .limit(300);
 
   if (scheduleError) {
     throw new Error("고객의 예정 일정을 확인하지 못했습니다.");
@@ -93,9 +95,7 @@ export async function listCrmCustomersWithoutNextAction(input: {
   // 과거 일정이라도 아직 미처리/진행중이면 그 일정 자체가 다음 행동이다.
   // 이 경우 별도 '다음 행동 없음' 경고를 중복 표시하지 않는다.
   const customersWithOpenSchedule = new Set(
-    (scheduleRows ?? [])
-      .filter((row) => !["완료", "취소"].includes(String(row.status)))
-      .map((row) => String(row.customer_id)),
+    (scheduleRows ?? []).map((row) => String(row.customer_id)),
   );
 
   return candidates
