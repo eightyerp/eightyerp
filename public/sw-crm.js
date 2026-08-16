@@ -1,4 +1,12 @@
 const CRM_SCOPE = "/crm";
+const ALLOWED_PUSH_PATH_PREFIXES = ["/crm", "/customers/"];
+
+function safePushUrl(value) {
+  if (typeof value !== "string") return CRM_SCOPE;
+  return ALLOWED_PUSH_PATH_PREFIXES.some((prefix) => value.startsWith(prefix))
+    ? value
+    : CRM_SCOPE;
+}
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -24,10 +32,7 @@ self.addEventListener("push", (event) => {
     tag: payload.tag || undefined,
     renotify: Boolean(payload.renotify),
     data: {
-      url:
-        typeof payload.url === "string" && payload.url.startsWith("/crm")
-          ? payload.url
-          : CRM_SCOPE,
+      url: safePushUrl(payload.url),
     },
   };
 
@@ -36,7 +41,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || CRM_SCOPE;
+  const targetUrl = safePushUrl(event.notification.data?.url);
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
