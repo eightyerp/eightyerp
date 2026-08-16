@@ -58,6 +58,17 @@ function pushPayload(event: QueueEvent) {
       tag: `crm-assigned-${event.id}`,
     };
   }
+
+  if (event.eventType === "schedule_changed") {
+    const action = event.payload.action === "create" ? "등록" : "변경";
+    return {
+      title: `고객 일정이 ${action}되었습니다`,
+      body: "상담·실측·재연락 일정을 CRM에서 확인해 주세요.",
+      url,
+      tag: `crm-schedule-changed-${event.id}`,
+    };
+  }
+
   if (event.eventType === "consult_remind_1h") {
     return {
       title: "1시간 후 고객 일정",
@@ -66,12 +77,38 @@ function pushPayload(event: QueueEvent) {
       tag: `crm-remind-${event.id}`,
     };
   }
+
+  if (event.eventType === "customer_stale_3d") {
+    return {
+      title: "3일 이상 후속 없는 고객",
+      body: "최근 활동과 다음 일정이 없습니다. 고객 진행상태를 확인해 주세요.",
+      url,
+      tag: `crm-stale-3d-${event.id}`,
+    };
+  }
+
+  if (event.eventType === "customer_stale_7d") {
+    return {
+      title: "7일 이상 장기 방치 고객",
+      body: "장기간 후속 행동이 없습니다. 연락·재예약·보류 여부를 확인해 주세요.",
+      url,
+      tag: `crm-stale-7d-${event.id}`,
+    };
+  }
+
   return {
     title: "미처리 고객 확인",
     body: "예정 시간이 30분 이상 지났습니다. 처리 또는 재예약해 주세요.",
     url,
     tag: `crm-unhandled-${event.id}`,
   };
+}
+
+function ttlFor(eventType: string) {
+  if (eventType === "customer_assigned") return 86400;
+  if (eventType === "customer_stale_3d" || eventType === "customer_stale_7d") return 43200;
+  if (eventType === "schedule_changed") return 21600;
+  return 3600;
 }
 
 Deno.serve(async (req: Request) => {
@@ -95,8 +132,14 @@ Deno.serve(async (req: Request) => {
       env("CRM_WEB_PUSH_VAPID_PRIVATE_KEY"),
     );
 
-    // 동일 worker가 시간 이벤트 생성과 delivery를 함께 처리해 scheduler를 하나로 유지한다.
-    await supabase.rpc("enqueue_due_crm_schedule_alerts");
+    // 동일 worker가 시간 이벤트와 장기방치 이벤트 생성을 함께 처리한다.
+    // 운영 scheduler는 하나만 유지해 알림 판정 로직의 중복을 막는다.
+    const [scheduleEnqueueResult, staleEnqueueResult] = await Promise.all([
+      supabase.rpc("enqueue_due_crm_schedule_alerts"),
+      supabase.rpc("enqueue_due_crm_stale_customer_alerts"),
+    ]);
+    if (scheduleEnqueueResult.error) throw scheduleEnqueueResult.error;
+    if (staleEnqueueResult.error) throw staleEnqueueResult.error;
 
     const [assignmentResult, scheduleResult] = await Promise.all([
       supabase
@@ -110,9 +153,15 @@ Deno.serve(async (req: Request) => {
         .from("schedule_alert_events")
         .select("id, event_type, customer_id, assigned_employee_id, payload")
         .eq("status", "pending")
-        .in("event_type", ["consult_remind_1h", "consult_unhandled"])
+        .in("event_type", [
+          "schedule_changed",
+          "consult_remind_1h",
+          "consult_unhandled",
+          "customer_stale_3d",
+          "customer_stale_7d",
+        ])
         .order("created_at", { ascending: true })
-        .limit(100),
+        .limit(150),
     ]);
 
     if (assignmentResult.error) throw assignmentResult.error;
@@ -185,7 +234,7 @@ Deno.serve(async (req: Request) => {
               },
             },
             JSON.stringify(pushPayload(event)),
-            { TTL: event.eventType === "customer_assigned" ? 86400 : 3600 },
+            { TTL: ttlFor(event.eventType) },
           );
           eventSent += 1;
           await supabase
