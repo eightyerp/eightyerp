@@ -37,7 +37,7 @@ export default async function CrmCustomerAssigneePage({
         </p>
       </section>
 
-      {!access.canChangeAssignee ? (
+      {!access.isAdmin ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-black text-amber-900">담당자 변경 권한이 없습니다.</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
