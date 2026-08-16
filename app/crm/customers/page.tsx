@@ -3,8 +3,7 @@ import CrmCustomerCard from "@/components/crm/CrmCustomerCard";
 import { getCustomers } from "@/lib/crm/customers";
 import {
   CUSTOMER_PIPELINE_STAGES,
-  groupCustomerPipeline,
-  listCustomerPipeline,
+  getMobileCustomerPipelineView,
   type CustomerPipelineStageKey,
 } from "@/lib/crm/customer-pipeline";
 import type { CustomerStatus } from "@/types/database";
@@ -86,14 +85,14 @@ export default async function CrmCustomersPage({ searchParams }: Props) {
   const dateTo = parseDate(params.dateTo);
 
   if (pipelineMode) {
-    const result = await listCustomerPipeline({
+    const stageKey = parseStage(params.stage);
+    const result = await getMobileCustomerPipelineView({
+      stageKey,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     });
-    const grouped = groupCustomerPipeline(result.customers);
-    const stageKey = parseStage(params.stage);
     const currentStage = CUSTOMER_PIPELINE_STAGES.find((stage) => stage.key === stageKey)!;
-    const rows = grouped[stageKey];
+    const rows = result.rows;
 
     return (
       <div className="space-y-4">
@@ -164,7 +163,7 @@ export default async function CrmCustomersPage({ searchParams }: Props) {
                       : "border border-slate-200 bg-white text-slate-600"
                   }`}
                 >
-                  {stage.label} {grouped[stage.key].length}
+                  {stage.label} {result.counts[stage.key]}
                 </Link>
               );
             })}
@@ -192,6 +191,11 @@ export default async function CrmCustomersPage({ searchParams }: Props) {
           {rows.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm text-slate-500">
               이 단계와 기간에 해당하는 고객이 없습니다.
+            </div>
+          )}
+          {result.counts[stageKey] > rows.length && (
+            <div className="rounded-2xl bg-slate-100 px-4 py-3 text-center text-xs font-semibold text-slate-500">
+              빠른 조회를 위해 최근 {rows.length}명만 표시합니다. 접수기간을 좁히면 필요한 고객을 더 빠르게 찾을 수 있습니다.
             </div>
           )}
         </section>
