@@ -17,10 +17,12 @@ const SCHEDULE_TYPES = [
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ conflict?: string }>;
 };
 
-export default async function CrmNewSchedulePage({ params }: Props) {
+export default async function CrmNewSchedulePage({ params, searchParams }: Props) {
   const { id } = await params;
+  const query = await searchParams;
   const customer = await getCustomerById(id);
   if (!customer || customer.deleted_at) notFound();
 
@@ -42,6 +44,15 @@ export default async function CrmNewSchedulePage({ params }: Props) {
           {customer.name} · 담당 {assignee}
         </p>
       </section>
+
+      {query.conflict === "1" && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-black text-red-900">담당자 일정이 겹칩니다.</p>
+          <p className="mt-1 text-xs leading-5 text-red-800">
+            같은 시간대에 이미 등록된 일정이 있습니다. 다른 시간을 선택해 주세요.
+          </p>
+        </div>
+      )}
 
       {!customer.assigned_employee_id ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
