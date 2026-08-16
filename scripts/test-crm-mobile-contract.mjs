@@ -21,15 +21,19 @@ assertIncludes(manifest, '"scope": "/crm"', "CRM PWA scope stays isolated");
 assertIncludes(manifest, '"display": "standalone"', "CRM remains installable app shell");
 
 const shell = read("components/crm/CrmShell.tsx");
-assertIncludes(shell, 'href="/customers/new"', "CRM exposes quick new customer registration");
+assertIncludes(shell, 'href="/crm/customers/new"', "new customer registration stays inside CRM PWA scope");
 
 const mobileAction = read("app/actions/crm-mobile.ts");
+assertIncludes(mobileAction, "createCrmCustomerAction", "mobile quick customer registration action exists");
 assertIncludes(mobileAction, "saveCrmConsultationAction", "mobile consultation action exists");
 assertIncludes(mobileAction, "updateCrmCustomerStatusAction", "mobile status quick action exists");
 assertIncludes(mobileAction, 'customer.status === "신규"', "first consultation auto-advances new customer");
 assertIncludes(mobileAction, '"1차 연락완료"', "first-contact status transition is preserved");
 assertIncludes(mobileAction, '"계약"', "legacy contract customer status remains writable without regression");
 assertIncludes(mobileAction, "createCustomerSchedule", "next contact creates real schedule");
+
+const newCustomerPage = read("app/crm/customers/new/page.tsx");
+assertIncludes(newCustomerPage, "CrmNewCustomerForm", "CRM has compact in-app customer registration screen");
 
 const statusPage = read("app/crm/customers/[id]/status/page.tsx");
 assertIncludes(statusPage, "계약 (기존)", "legacy contract state is visible instead of silently resetting");
