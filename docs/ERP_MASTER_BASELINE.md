@@ -1,6 +1,6 @@
 # Eighty ERP Master Baseline
 
-기준 스냅샷: 2026-08-16 21:06 KST  
+기준 스냅샷: 2026-08-16 21:13 KST  
 운영 기준: `main` / Supabase `eighty-erp` (`zhihbyarqpkudqyomcxv`)
 
 ## 1. 이 문서의 목적
@@ -99,7 +99,7 @@ ERP와는 `company_id → customer_id → project_id → inspection_id → consu
 | 구매/발주 | 신규예정 | 자재/협력업체/납기/현장 연동 |
 | 문서센터 | 신규예정 | 견적/계약/도면/사진/세금문서 통합 |
 | 통합검색 | 신규예정 | 고객/전화/견적/계약/현장/문서 검색 |
-| ERP 상태센터 | 신규예정 | 배포/DB/오류/PR/성능/마이그레이션 한 화면 |
+| ERP 상태센터 | 신규예정 | Issue #74, 배포/DB/오류/PR/성능/마이그레이션 한 화면 |
 
 ## 5. 2026-08-16 운영 DB 스냅샷
 
@@ -112,47 +112,73 @@ ERP와는 `company_id → customer_id → project_id → inspection_id → consu
 - `public.interior_quote_imports`: 없음
 - 인테리어 견적 최신 저장 경로는 전용 import 테이블이 아니라 공통 견적 생성 경로를 사용
 
+PR #69 read-only preflight 추가 확인:
+
+- `quote_workflow_atomic_integrity` migration ledger 기록 없음
+- `quote_contract_retry_project_guard` migration ledger 기록 없음
+- 활성 quote↔project company/customer/deleted mismatch: 0건
+- 활성 quote workflow inspection/consultation source mismatch: 0건
+- `create_quote_with_workflow_context(...)`: 운영 DB에 아직 없음
+- project identity/source lock 신규 trigger: 운영 DB에 아직 없음
+- 현재 `transition_quote_to_contract(...)` replay project mismatch guard marker: 0
+
 따라서 과거 문서나 migration 파일의 존재만으로 운영 DB 상태를 추정하지 않는다.
 
-## 6. 열린 PR 분류
+## 6. 열린 PR / Issue 분류
+
+### 기준선 안정화
+
+- **PR #71 ERP Master Baseline 및 알림 성능 1차 안정화**
+  - 분류: `PR대기 / P0`
+  - 상태: ERP baseline guard / lifecycle / ESLint / Production build PASS, Ready for review
+  - 운영 DB/migration 변경 없음
 
 ### 우선 검토
 
-- **#69 Window Lab 견적 handoff 원자성 및 project 무결성**
+- **PR #69 Window Lab 견적 handoff 원자성 및 project 무결성**
   - 분류: `PR대기 / P0`
-  - 방침: 운영 migration 검증 → staff rollback verifier → 앱 병합 순서 유지
+  - read-only Production preflight: mismatch 0, migration 미적용 확인
+  - 방침: project ref 재확인 → 운영 migration 승인 → staff rollback verifier → 앱 병합 순서 유지
 
-### 아이디어 선별 재적용
+### 최신 main에서 재구성
 
-- **#62 core ERP navigation round trip 제거**
+- **PR #62 core ERP navigation round trip 제거**
   - 분류: `PR대기 / 성능 참고`
-  - 방침: 오래된 브랜치를 통째로 병합하지 않고 최신 main에서 필요한 개선만 재구성
+  - 현재 main 기준 오래된 merge-base에서 29 commits behind 확인
+  - 방침: 통째 병합 금지, **Issue #73**에서 필요한 개선만 최신 main에 재구성
 
-- **#50 Finance V2 Gate 3**
+- **PR #50 Finance V2 Gate 3**
   - 분류: `PR대기 / 기능 참고`
   - 방침: 현재 main에 이미 들어온 재무 기능과 중복 비교 후 필요한 기능만 이식
 
 ### 단계 분리 필수
 
-- **#70 직원용 CRM 모바일 PWA**
+- **PR #70 직원용 CRM 모바일 PWA**
   - 분류: `PR대기 / 대형 기능`
   - 방침: PWA shell → 모바일 업무 → PUSH 스키마/worker 순으로 작은 Gate로 나누며 통째 병합 금지
 
 ### 보관/폐기후보
 
-- **#44, #49 ERP 저장소 내부 Android Window Check**
+- **PR #44, #49 ERP 저장소 내부 Android Window Check**
   - 분류: `보관/폐기후보`
   - 방침: 현재 별도 Window Check 저장소가 기준이므로 ERP 본체에 Android 앱 소스를 다시 합치지 않는다.
 
+### P0/P1 독립 backlog
+
+- **Issue #72**: Supabase Security Advisor 권한 hardening
+- **Issue #73**: 최신 main 기준 ERP 핵심동선 성능 V2
+- **Issue #74**: ERP 시스템 상태센터
+
+기존 **Issue #65** 계약 전 현장→점검→상담→견적→계약 생명주기와 **Issue #54** ERP 연계도구 역할 경계는 유지한다.
+
 ## 7. P0 안정화 우선순위
 
-1. Master Baseline / 개발 규칙 고정
-2. 상단 알림·권한·대시보드의 중복 네트워크 왕복 제거
-3. 고객목록 → 견적목록 → 견적상세 → 저장 → 일정 핵심 동선 속도 계측
-4. Supabase Security Advisor 경고 분류 및 권한 hardening
-5. PR #69 원자성 Gate 검증
-6. 직원 UAT 오류를 기능별 backlog로 분리
-7. CRM/Window Lab/Window Check와 ERP의 ID 계약 고정
+1. PR #71 Master Baseline / 개발 규칙 고정
+2. Issue #73 상단 알림·권한·대시보드 중복 네트워크 왕복 제거 및 핵심 동선 계측
+3. Issue #72 Supabase Security Advisor 경고 분류 및 권한 hardening
+4. PR #69 원자성 Gate 검증 및 적용 순서 확정
+5. 직원 UAT 오류를 기능별 backlog로 분리
+6. CRM/Window Lab/Window Check와 ERP의 ID 계약 고정
 
 P0가 안정되기 전에는 AS/발주/문서센터 같은 대형 신규 모듈을 동시에 시작하지 않는다.
 
@@ -181,6 +207,6 @@ P0가 안정되기 전에는 AS/발주/문서센터 같은 대형 신규 모듈�
 
 ## 10. 다음 개발 순서
 
-`P0 안정화 → PR 정리 → 속도 개선 → 보안 hardening → 견적/계약 원자성 → 현장 허브 → 회계 UX 통합 → CRM 단계병합 → 신규모듈`
+`P0 기준선 → 핵심속도 #73 → 보안 #72 → 견적/계약 원자성 #69 → 현장 허브 → 회계 UX 통합 → CRM 단계병합 → 상태센터 #74 → 신규모듈`
 
 이 순서를 변경할 때는 변경 이유와 선행조건을 이 문서에 먼저 기록한다.
