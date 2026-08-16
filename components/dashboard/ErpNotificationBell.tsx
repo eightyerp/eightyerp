@@ -46,7 +46,7 @@ export default function ErpNotificationBell() {
 
   useEffect(() => {
     let cancelled = false;
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let interval: number | null = null;
 
     async function load() {
       const { customers, collections, expenses } =
@@ -86,7 +86,7 @@ export default function ErpNotificationBell() {
     return () => {
       cancelled = true;
       window.clearTimeout(initial);
-      if (interval) window.clearInterval(interval);
+      if (interval !== null) window.clearInterval(interval);
     };
   }, []);
 
