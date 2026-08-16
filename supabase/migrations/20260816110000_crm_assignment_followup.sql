@@ -12,6 +12,7 @@
 --   - 고객/상담/일정 데이터 삭제 없음
 --   - 기존 customer_assigned 이벤트는 follow-up 비대상으로 표시해 최초 활성화 폭주 방지
 --   - 일반 직원이 본인 고객을 직접 등록한 경우에는 자동 배분 PUSH를 생성하지 않음
+--   - 배분 후 일정이 실제로 등록되었다면 일정 시간이 이미 지났더라도 30분 배분 재촉은 중복 발송하지 않음
 --   - 실제 PUSH 발송/cron/Secret 활성화는 별도 승인 후 수행
 -- =============================================================================
 
@@ -88,7 +89,7 @@ end;
 $$;
 
 -- 배분 후 30분 첫 연락 없음 이벤트.
--- 실제 연락/상담 활동 또는 예약이 잡히면 재촉하지 않는다.
+-- 실제 연락/상담 활동 또는 배분 이후 일정이 잡히면 재촉하지 않는다.
 create or replace function public.enqueue_due_crm_assignment_followups(
   p_now timestamptz default now()
 )
@@ -132,13 +133,15 @@ begin
         c.next_contact_at is null
         or c.next_contact_at < (p_now at time zone 'Asia/Seoul')::date
       )
+      -- 배분 이후 정상 일정이 하나라도 등록됐다면 이미 다음 행동을 잡은 것으로 본다.
+      -- 시간이 지나 미처리 상태가 되면 consult_unhandled가 담당하므로 배분 재촉을 중복하지 않는다.
       and not exists (
         select 1
         from public.customer_schedules s
         where s.customer_id = c.id
           and s.deleted_at is null
-          and s.status not in ('완료', '취소')
-          and s.start_at >= p_now
+          and s.status <> '취소'
+          and s.created_at > a.assigned_at
       )
       and not exists (
         select 1
