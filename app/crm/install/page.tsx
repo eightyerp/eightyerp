@@ -7,7 +7,8 @@ const STEPS = [
       "EIGHTY CRM을 Chrome에서 엽니다.",
       "오른쪽 위 ⋮ 메뉴를 누릅니다.",
       "앱 설치 또는 홈 화면에 추가를 선택합니다.",
-      "홈 화면의 EIGHTY CRM 아이콘으로 실행합니다.",
+      "홈 화면의 EIGHTY CRM 아이콘으로 다시 실행합니다.",
+      "CRM 알림 화면에서 업무 알림을 켭니다.",
     ],
   },
   {
@@ -16,7 +17,8 @@ const STEPS = [
       "EIGHTY CRM을 Safari에서 엽니다.",
       "하단 공유 버튼을 누릅니다.",
       "홈 화면에 추가를 선택합니다.",
-      "추가 후 홈 화면의 EIGHTY CRM 아이콘으로 실행합니다.",
+      "추가 후 Safari 탭이 아니라 홈 화면의 EIGHTY CRM 아이콘으로 다시 실행합니다.",
+      "설치된 CRM의 알림 화면에서 업무 알림을 켭니다.",
     ],
   },
 ] as const;
@@ -39,6 +41,13 @@ export default function CrmInstallPage() {
         <p className="text-sm font-black text-emerald-900">설치 후 확인</p>
         <p className="mt-1 text-xs leading-5 text-emerald-800">
           홈 · 고객 · 일정 · 견적 · 더보기 하단 메뉴가 보이고, 다시 로그인하지 않아도 CRM이 정상 실행되는지 확인합니다.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+        <p className="text-sm font-black text-sky-950">업무 PUSH를 받을 때</p>
+        <p className="mt-1 text-xs leading-5 text-sky-800">
+          먼저 홈 화면에 CRM을 설치한 뒤 설치된 아이콘으로 앱을 열고, `알림` 화면에서 `업무 알림 켜기`를 누릅니다. 브라우저가 알림 권한을 물으면 허용합니다.
         </p>
       </div>
 
@@ -69,6 +78,8 @@ export default function CrmInstallPage() {
           <div className="rounded-xl bg-slate-50 px-3 py-3">다음 연락</div>
           <div className="rounded-xl bg-slate-50 px-3 py-3">일정 확인</div>
           <div className="rounded-xl bg-slate-50 px-3 py-3">견적 조회</div>
+          <div className="rounded-xl bg-slate-50 px-3 py-3">앱 재실행</div>
+          <div className="rounded-xl bg-slate-50 px-3 py-3">알림 권한</div>
         </div>
       </section>
     </div>
