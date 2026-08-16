@@ -223,14 +223,6 @@ function sortItems(a: TodayWorkItem, b: TodayWorkItem) {
   return at - bt;
 }
 
-function uniqueRows<T extends { id: string }>(groups: T[][]): T[] {
-  const map = new Map<string, T>();
-  for (const group of groups) {
-    for (const row of group) map.set(row.id, row);
-  }
-  return [...map.values()];
-}
-
 export async function getCrmMobileHomeBundle(input: {
   employeeId?: string | null;
 } = {}): Promise<CrmMobileHomeBundle> {
