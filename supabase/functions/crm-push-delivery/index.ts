@@ -8,6 +8,7 @@ type QueueEvent = {
   eventType: string;
   employeeId: string;
   customerId: string | null;
+  scheduleId: string | null;
   payload: Record<string, unknown>;
 };
 
@@ -43,12 +44,19 @@ function assignmentEmployeeId(payload: Record<string, unknown>): string | null {
 }
 
 function pushPayload(event: QueueEvent) {
-  const url =
+  const scheduleDeepLink =
+    event.scheduleId &&
+    ["schedule_changed", "consult_remind_1h", "consult_unhandled"].includes(event.eventType)
+      ? `/crm/schedules/${event.scheduleId}`
+      : null;
+  const payloadUrl =
     typeof event.payload.url === "string" && event.payload.url.startsWith("/crm")
       ? event.payload.url
-      : event.customerId
-        ? `/crm/customers/${event.customerId}`
-        : "/crm";
+      : null;
+  const url =
+    scheduleDeepLink ||
+    payloadUrl ||
+    (event.customerId ? `/crm/customers/${event.customerId}` : "/crm");
 
   if (event.eventType === "customer_assigned") {
     return {
@@ -56,6 +64,15 @@ function pushPayload(event: QueueEvent) {
       body: "내 담당 고객이 추가되었습니다. CRM에서 확인해 주세요.",
       url,
       tag: `crm-assigned-${event.id}`,
+    };
+  }
+
+  if (event.eventType === "customer_assignment_uncontacted_30m") {
+    return {
+      title: "배분 후 30분 미연락 고객",
+      body: "신규 배분 고객의 첫 연락이 아직 확인되지 않았습니다.",
+      url,
+      tag: `crm-assigned-uncontacted-${event.id}`,
     };
   }
 
@@ -106,6 +123,7 @@ function pushPayload(event: QueueEvent) {
 
 function ttlFor(eventType: string) {
   if (eventType === "customer_assigned") return 86400;
+  if (eventType === "customer_assignment_uncontacted_30m") return 14400;
   if (eventType === "customer_stale_3d" || eventType === "customer_stale_7d") return 43200;
   if (eventType === "schedule_changed") return 21600;
   return 3600;
@@ -132,14 +150,17 @@ Deno.serve(async (req: Request) => {
       env("CRM_WEB_PUSH_VAPID_PRIVATE_KEY"),
     );
 
-    // 동일 worker가 시간 이벤트와 장기방치 이벤트 생성을 함께 처리한다.
+    // 동일 worker가 예약/미처리, 장기방치, 신규배분 첫 연락 누락을 함께 판정한다.
     // 운영 scheduler는 하나만 유지해 알림 판정 로직의 중복을 막는다.
-    const [scheduleEnqueueResult, staleEnqueueResult] = await Promise.all([
-      supabase.rpc("enqueue_due_crm_schedule_alerts"),
-      supabase.rpc("enqueue_due_crm_stale_customer_alerts"),
-    ]);
+    const [scheduleEnqueueResult, staleEnqueueResult, assignmentFollowupResult] =
+      await Promise.all([
+        supabase.rpc("enqueue_due_crm_schedule_alerts"),
+        supabase.rpc("enqueue_due_crm_stale_customer_alerts"),
+        supabase.rpc("enqueue_due_crm_assignment_followups"),
+      ]);
     if (scheduleEnqueueResult.error) throw scheduleEnqueueResult.error;
     if (staleEnqueueResult.error) throw staleEnqueueResult.error;
+    if (assignmentFollowupResult.error) throw assignmentFollowupResult.error;
 
     const [assignmentResult, scheduleResult] = await Promise.all([
       supabase
@@ -151,17 +172,18 @@ Deno.serve(async (req: Request) => {
         .limit(50),
       supabase
         .from("schedule_alert_events")
-        .select("id, event_type, customer_id, assigned_employee_id, payload")
+        .select("id, event_type, schedule_id, customer_id, assigned_employee_id, payload")
         .eq("status", "pending")
         .in("event_type", [
           "schedule_changed",
           "consult_remind_1h",
           "consult_unhandled",
+          "customer_assignment_uncontacted_30m",
           "customer_stale_3d",
           "customer_stale_7d",
         ])
         .order("created_at", { ascending: true })
-        .limit(150),
+        .limit(180),
     ]);
 
     if (assignmentResult.error) throw assignmentResult.error;
@@ -178,6 +200,7 @@ Deno.serve(async (req: Request) => {
         eventType: row.event_type,
         employeeId,
         customerId: row.customer_id,
+        scheduleId: null,
         payload,
       });
     }
@@ -189,6 +212,7 @@ Deno.serve(async (req: Request) => {
         eventType: row.event_type,
         employeeId: row.assigned_employee_id,
         customerId: row.customer_id,
+        scheduleId: row.schedule_id,
         payload: (row.payload ?? {}) as Record<string, unknown>,
       });
     }
