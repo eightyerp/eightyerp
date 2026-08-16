@@ -28,6 +28,8 @@ export type CrmMobileCustomerListFilters = {
   contact?: "" | "today" | "overdue";
   dateFrom?: string;
   dateTo?: string;
+  /** admin이 CRM 홈 등에서 본인 담당 고객만 명시적으로 볼 때 사용 */
+  employeeId?: string;
   page?: number;
   pageSize?: number;
 };
@@ -99,6 +101,8 @@ export async function listCrmMobileCustomers(
       return { customers: [], total: 0, page, pageSize, totalPages: 1 };
     }
     query = query.eq("assigned_employee_id", access.employeeId);
+  } else if (filters.employeeId) {
+    query = query.eq("assigned_employee_id", filters.employeeId);
   }
 
   if (searchTerm) {
