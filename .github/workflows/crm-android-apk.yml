@@ -152,6 +152,10 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ env.CRM_KEYSTORE_PASSWORD }}
           BUBBLEWRAP_KEY_PASSWORD: ${{ env.CRM_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          # Bubblewrap injects ANDROID_HOME from its config. Gradle rejects a second,
+          # different ANDROID_SDK_ROOT, so use one SDK source during the actual build.
+          unset ANDROID_SDK_ROOT
           bubblewrap build \
             --skipPwaValidation \
             --signingKeyPath="$PWD/android.keystore" \
