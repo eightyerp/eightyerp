@@ -16,6 +16,7 @@ function assert(condition, message) {
 const projectConstants = read("lib/crm/project-constants.ts");
 const projects = read("lib/crm/projects.ts");
 const quoteActions = read("app/actions/quote-mgmt.ts");
+const contractActions = read("app/actions/quote-contract-transition.ts");
 const transition = read("lib/crm/quote-contract-transition.ts");
 const quoteDetail = read("components/quotes/QuoteDetailView.tsx");
 const contractPanel = read("components/quotes/ContractTransitionPanel.tsx");
@@ -48,25 +49,34 @@ assert(
   "현장 삭제는 관리자 전용으로 유지한다",
 );
 assert(
-  !/setContractQuote\s*\(/.test(quoteActions),
-  "견적 액션이 레거시 플래그 전환 함수를 호출하지 않는다",
+  !quoteActions.includes("setContractQuoteAction") &&
+    !quoteActions.includes("getQuoteContractTransitionOptions"),
+  "일반 견적 액션에 레거시 계약전환 서버 진입점이 남지 않는다",
 );
 assert(
-  /transitionQuoteToContract\s*\(/.test(quoteActions),
-  "견적 액션이 실제 계약전환 서비스를 호출한다",
+  /export async function transitionQuoteToContractAction/.test(contractActions) &&
+    /transitionQuoteToContract\s*\(/.test(contractActions),
+  "명시적 계약전환 액션만 실제 전환 서비스를 호출한다",
 );
 assert(
   /supabase\.rpc\(["']transition_quote_to_contract["']/.test(transition),
   "실제 계약전환은 운영 원자적 RPC를 사용한다",
 );
 assert(
-  /options\.projects\.length === 1/.test(quoteActions) &&
-    /options\.projects\.length === 0/.test(quoteActions),
-  "현장 1개는 재사용하고 0개일 때만 생성한다",
+  /if \(input\.projectMode === ["']link["']\)/.test(transition) &&
+    /현재 고객에게 연결할 수 있는 현장이 아닙니다/.test(transition),
+  "기존 현장 연결은 같은 고객/회사 현장인지 서버에서 검증한다",
 );
 assert(
-  /현장이 여러 개/.test(quoteActions),
-  "여러 현장은 자동 추정하지 않고 차단한다",
+  /if \(\(count \?\? 0\) > 0\)/.test(transition) &&
+    /기존 현장이 있습니다\. 새로 만들지 말고 기존 현장을 연결해 주세요/.test(transition),
+  "기존 현장이 있으면 create 모드로 중복 현장을 만들지 않는다",
+);
+assert(
+  /projects\.length === 1/.test(contractPanel) &&
+    /projects\.length > 1/.test(contractPanel) &&
+    /현장을 선택해 주세요/.test(contractPanel),
+  "현장 1개는 기본 선택하고 여러 현장은 직원이 명시적으로 선택한다",
 );
 assert(
   !quoteDetail.includes("계약 견적으로 지정") &&
