@@ -1,9 +1,9 @@
 import Link from "next/link";
 import CrmTodayWorkList from "@/components/crm/CrmTodayWorkList";
 import { getCurrentUserAccess } from "@/lib/crm/access";
-import { getCustomers } from "@/lib/crm/customers";
+import { listCrmMobileCustomers } from "@/lib/crm/crm-mobile-customer-list";
+import { getCrmMobileHomeBundle } from "@/lib/crm/crm-mobile-home";
 import { listCrmCustomersWithoutNextAction } from "@/lib/crm/next-action";
-import { getTodayWorkBundle } from "@/lib/crm/today-work";
 import type { TodayWorkItem } from "@/lib/crm/today-work-shared";
 
 function SummaryCard({
@@ -53,10 +53,9 @@ export default async function CrmHomePage() {
   const employeeId = access.profile?.employee_id ?? null;
 
   const [bundleResult, newCustomerResult, nextActionResult] = await Promise.allSettled([
-    getTodayWorkBundle({ employeeId }),
-    getCustomers({
+    getCrmMobileHomeBundle({ employeeId }),
+    listCrmMobileCustomers({
       status: "신규",
-      employeeId: employeeId ?? undefined,
       page: 1,
       pageSize: 1,
     }),
@@ -76,7 +75,12 @@ export default async function CrmHomePage() {
         : "오늘 할 일을 불러오지 못했습니다."
       : null;
 
-  const userName = bundle?.access.userName?.split(" ")[0] || "직원";
+  const profileEmployeeName = access.profile?.employees?.name?.trim();
+  const profileName = access.profile?.full_name?.trim();
+  const userName =
+    profileEmployeeName ||
+    (profileName ? profileName.split(/\s+/)[0] : null) ||
+    "직원";
   const todayScheduleCount = bundle
     ? bundle.summary.todayConsult +
       bundle.summary.todaySurvey +
@@ -90,7 +94,7 @@ export default async function CrmHomePage() {
       <section>
         <p className="text-xs font-semibold text-slate-500">오늘의 영업</p>
         <div className="mt-1 flex items-end justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-black tracking-tight text-slate-950">
               {userName}님, 오늘 할 일입니다.
             </h1>
