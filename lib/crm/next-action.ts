@@ -84,21 +84,22 @@ export async function listCrmCustomersWithoutNextAction(input: {
     .select("customer_id, start_at, status")
     .in("customer_id", candidateIds)
     .is("deleted_at", null)
-    .gte("start_at", new Date().toISOString())
     .limit(500);
 
   if (scheduleError) {
     throw new Error("고객의 예정 일정을 확인하지 못했습니다.");
   }
 
-  const customersWithFutureSchedule = new Set(
+  // 과거 일정이라도 아직 미처리/진행중이면 그 일정 자체가 다음 행동이다.
+  // 이 경우 별도 '다음 행동 없음' 경고를 중복 표시하지 않는다.
+  const customersWithOpenSchedule = new Set(
     (scheduleRows ?? [])
       .filter((row) => !["완료", "취소"].includes(String(row.status)))
       .map((row) => String(row.customer_id)),
   );
 
   return candidates
-    .filter((customer) => !customersWithFutureSchedule.has(customer.id))
+    .filter((customer) => !customersWithOpenSchedule.has(customer.id))
     .slice(0, limit)
     .map((customer) => {
       const ageDays = getCustomerAgeDays(customer.created_at);
