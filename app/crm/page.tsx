@@ -2,29 +2,36 @@ import Link from "next/link";
 import CrmTodayWorkList from "@/components/crm/CrmTodayWorkList";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getCustomers } from "@/lib/crm/customers";
+import { listCrmCustomersWithoutNextAction } from "@/lib/crm/next-action";
 import { getTodayWorkBundle } from "@/lib/crm/today-work";
+import type { TodayWorkItem } from "@/lib/crm/today-work-shared";
 
 function SummaryCard({
   label,
   value,
   href,
   alert = false,
+  wide = false,
 }: {
   label: string;
   value: number;
   href: string;
   alert?: boolean;
+  wide?: boolean;
 }) {
   return (
     <Link
       href={href}
       className={`rounded-2xl border bg-white p-4 shadow-sm ${
         alert && value > 0 ? "border-red-200" : "border-slate-200"
-      }`}
+      } ${wide ? "col-span-2" : ""}`}
     >
-      <p className={`text-xs font-semibold ${alert && value > 0 ? "text-red-600" : "text-slate-500"}`}>
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-xs font-semibold ${alert && value > 0 ? "text-red-600" : "text-slate-500"}`}>
+          {label}
+        </p>
+        {wide && value > 0 && <span className="text-xs font-bold text-slate-400">확인 ›</span>}
+      </div>
       <p className={`mt-2 text-2xl font-black tracking-tight ${alert && value > 0 ? "text-red-700" : "text-slate-950"}`}>
         {value}
       </p>
@@ -32,11 +39,20 @@ function SummaryCard({
   );
 }
 
+function mergePriorityItems(
+  bundleItems: TodayWorkItem[],
+  nextActionItems: TodayWorkItem[],
+): TodayWorkItem[] {
+  const overdue = bundleItems.filter((item) => item.isOverdue);
+  const normal = bundleItems.filter((item) => !item.isOverdue);
+  return [...overdue, ...nextActionItems, ...normal];
+}
+
 export default async function CrmHomePage() {
   const access = await getCurrentUserAccess();
   const employeeId = access.profile?.employee_id ?? null;
 
-  const [bundleResult, newCustomerResult] = await Promise.allSettled([
+  const [bundleResult, newCustomerResult, nextActionResult] = await Promise.allSettled([
     getTodayWorkBundle({ employeeId }),
     getCustomers({
       status: "신규",
@@ -44,11 +60,15 @@ export default async function CrmHomePage() {
       page: 1,
       pageSize: 1,
     }),
+    listCrmCustomersWithoutNextAction({ employeeId, limit: 50 }),
   ]);
 
   const bundle = bundleResult.status === "fulfilled" ? bundleResult.value : null;
   const newCustomerCount =
     newCustomerResult.status === "fulfilled" ? newCustomerResult.value.total : 0;
+  const nextActionItems =
+    nextActionResult.status === "fulfilled" ? nextActionResult.value : [];
+  const priorityItems = mergePriorityItems(bundle?.items ?? [], nextActionItems);
   const loadError =
     bundleResult.status === "rejected"
       ? bundleResult.reason instanceof Error
@@ -101,19 +121,26 @@ export default async function CrmHomePage() {
           href="/crm/schedules?focus=overdue"
           alert
         />
+        <SummaryCard
+          label="다음 행동 없음"
+          value={nextActionItems.length}
+          href="/crm/schedules?focus=next_action"
+          alert
+          wide
+        />
       </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-base font-black text-slate-950">우선 처리</h2>
-            <p className="mt-0.5 text-xs text-slate-500">미처리·긴급·예정시간 순으로 정렬됩니다.</p>
+            <p className="mt-0.5 text-xs text-slate-500">미처리 → 다음 행동 없음 → 긴급·예정시간 순으로 확인합니다.</p>
           </div>
           <Link href="/crm/schedules" className="text-xs font-bold text-navy-900">
             전체 보기
           </Link>
         </div>
-        <CrmTodayWorkList items={bundle?.items ?? []} />
+        <CrmTodayWorkList items={priorityItems} />
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
