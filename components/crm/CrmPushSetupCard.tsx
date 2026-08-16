@@ -30,33 +30,38 @@ function urlBase64ToUint8Array(value: string) {
 }
 
 export default function CrmPushSetupCard() {
-  const [state, setState] = useState<PushState>("loading");
+  const [state, setState] = useState<PushState>(() =>
+    VAPID_PUBLIC_KEY ? "loading" : "server_not_ready",
+  );
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-      setState("unsupported");
-      return;
-    }
-    if (!VAPID_PUBLIC_KEY) {
-      setState("server_not_ready");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      setState("denied");
-      return;
-    }
+    if (!VAPID_PUBLIC_KEY) return;
 
     let cancelled = false;
-    void navigator.serviceWorker.ready
-      .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => {
-        if (cancelled) return;
-        setState(subscription ? "on" : "off");
-      })
-      .catch(() => {
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      if (
+        !("serviceWorker" in navigator) ||
+        !("PushManager" in window) ||
+        !("Notification" in window)
+      ) {
+        setState("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setState("denied");
+        return;
+      }
+
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (!cancelled) setState(subscription ? "on" : "off");
+      } catch {
         if (!cancelled) setState("off");
-      });
+      }
+    });
 
     return () => {
       cancelled = true;
