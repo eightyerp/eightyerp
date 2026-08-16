@@ -16,7 +16,9 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
     return <path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5Z" />;
   }
   if (name === "users") {
-    return <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-2-11.96a4 4 0 0 1 0 7.75" />;
+    return (
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    );
   }
   if (name === "calendar") {
     return <path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />;
@@ -74,6 +76,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-label={item.label}
                 className={`flex min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
                   active ? "text-navy-900" : "text-slate-500"
                 }`}
