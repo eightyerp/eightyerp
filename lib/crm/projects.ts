@@ -69,18 +69,15 @@ async function assertCanCreateProjectForCustomer(customerId: string) {
   }
 
   if (isAdminRole(access.role)) {
-    return { access, customer };
+    return { access, customer, isAdmin: true };
   }
 
   const employeeId = access.profile?.employee_id ?? null;
   if (!employeeId || employeeId !== customer.assigned_employee_id) {
     throw new Error("본인 담당 고객만 현장을 생성할 수 있습니다.");
   }
-  if (!isContractCustomerStatus(customer.status)) {
-    throw new Error("계약 완료된 고객만 현장을 생성할 수 있습니다.");
-  }
 
-  return { access, customer };
+  return { access, customer, isAdmin: false };
 }
 
 const SELECT =
@@ -132,16 +129,30 @@ export async function getProjectById(id: string): Promise<Project | null> {
 export async function createProject(
   form: ProjectFormInput,
 ): Promise<Project> {
-  const { access } = await assertCanCreateProjectForCustomer(form.customer_id);
+  const { access, customer, isAdmin } =
+    await assertCanCreateProjectForCustomer(form.customer_id);
   const supabase = await createClient();
+
+  // 계약 전 workflow 현장은 항상 `준비`로 시작한다.
+  // 계약 이후에만 진행중/완료 등 공사상태를 사용한다.
+  const status: ProjectStatus = isContractCustomerStatus(customer.status)
+    ? form.status
+    : "준비";
+
+  // 일반 직원은 자신의 담당 고객 현장을 다른 직원에게 넘겨 생성할 수 없다.
+  // 관리자는 기존 운영 방식대로 담당자를 선택할 수 있다.
+  const assignedEmployeeId = isAdmin
+    ? form.assigned_employee_id ?? customer.assigned_employee_id ?? null
+    : access.profile?.employee_id ?? null;
+
   const { data, error } = await supabase
     .from("projects")
     .insert({
       customer_id: form.customer_id,
       name: form.name,
       address: form.address,
-      status: form.status,
-      assigned_employee_id: form.assigned_employee_id,
+      status,
+      assigned_employee_id: assignedEmployeeId,
       created_by: access.userId,
       updated_by: access.userId,
     })
@@ -153,7 +164,13 @@ export async function createProject(
     entity_type: "project",
     entity_id: data.id,
     action: "create",
-    payload: { name: data.name, customer_id: data.customer_id },
+    payload: {
+      name: data.name,
+      customer_id: data.customer_id,
+      lifecycle: isContractCustomerStatus(customer.status)
+        ? "contract"
+        : "pre_contract",
+    },
   });
 
   return data as Project;
@@ -228,7 +245,11 @@ export async function softDeleteProject(input: {
 /** 고객에 현장이 없으면 기본 현장 1건 생성 */
 export async function ensureDefaultProject(
   customerId: string,
-  defaults?: { name?: string; address?: string | null; assignedEmployeeId?: string | null },
+  defaults?: {
+    name?: string;
+    address?: string | null;
+    assignedEmployeeId?: string | null;
+  },
 ): Promise<Project> {
   const existing = await listCustomerProjects(customerId);
   if (existing[0]) return existing[0];
