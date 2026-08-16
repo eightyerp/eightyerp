@@ -142,6 +142,7 @@ export default function TopBar({ onMenuToggle, user }: TopBarProps) {
           <div className="hidden items-center gap-2 sm:flex">
             <Link
               href="/me"
+              prefetch={false}
               className="flex items-center gap-3 rounded-lg px-1.5 py-1 hover:bg-gray-50"
               aria-label="내 정보 열기"
             >
@@ -172,6 +173,7 @@ export default function TopBar({ onMenuToggle, user }: TopBarProps) {
               <div className="space-y-1 pt-2">
                 <Link
                   href="/me"
+                  prefetch={false}
                   onClick={() => setProfileOpen(false)}
                   className="flex min-h-11 w-full items-center rounded-lg px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
