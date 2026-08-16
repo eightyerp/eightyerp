@@ -37,7 +37,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh bg-slate-50 text-slate-950">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
           <Link href="/crm" className="flex min-w-0 items-center gap-2" aria-label="EIGHTY CRM 홈">
             <span className="text-2xl font-black tracking-[-0.08em] text-navy-900">80</span>
