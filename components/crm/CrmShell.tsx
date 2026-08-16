@@ -39,19 +39,28 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh bg-slate-50 text-slate-950">
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <Link href="/crm" className="flex items-center gap-2" aria-label="EIGHTY CRM 홈">
+          <Link href="/crm" className="flex min-w-0 items-center gap-2" aria-label="EIGHTY CRM 홈">
             <span className="text-2xl font-black tracking-[-0.08em] text-navy-900">80</span>
-            <span>
+            <span className="min-w-0">
               <span className="block text-[11px] font-bold tracking-[0.16em] text-slate-900">EIGHTY CRM</span>
               <span className="block text-[10px] text-slate-500">직원 영업앱</span>
             </span>
           </Link>
-          <Link
-            href="/crm/notifications"
-            className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm"
-          >
-            알림
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/customers/new"
+              className="inline-flex h-9 items-center rounded-full bg-navy-900 px-3 text-xs font-black text-white shadow-sm"
+              aria-label="신규 고객 등록"
+            >
+              + 고객
+            </Link>
+            <Link
+              href="/crm/notifications"
+              className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm"
+            >
+              알림
+            </Link>
+          </div>
         </div>
       </header>
 
