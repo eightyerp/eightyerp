@@ -9,8 +9,6 @@ import {
   deleteQuoteAction,
   deleteQuoteFileAction,
   getQuoteFileSignedUrlAction,
-  setContractQuoteAction,
-  type QuoteActionResult,
 } from "@/app/actions/quote-mgmt";
 import { formatEmployeeLabel } from "@/lib/crm/constants";
 import {
@@ -97,9 +95,6 @@ export default function QuoteDetailView({
 
   const [sendModal, setSendModal] = useState(false);
   const [includeCover, setIncludeCover] = useState(true);
-
-  const [contractPending, startContractTransition] = useTransition();
-  const [showContractConfirm, setShowContractConfirm] = useState(false);
 
   const [deleteModal, setDeleteModal] = useState(false);
   const [deletePending, startDeleteTransition] = useTransition();
@@ -240,21 +235,6 @@ export default function QuoteDetailView({
       if (result && !result.success) {
         setVersionError(result.error || "새 버전 생성에 실패했습니다.");
       }
-    });
-  }
-
-  function handleSetContract() {
-    startContractTransition(async () => {
-      const formData = new FormData();
-      formData.set("quote_id", quote.id);
-      const result: QuoteActionResult = await setContractQuoteAction(formData);
-      setShowContractConfirm(false);
-      if (!result.success) {
-        setToast(result.error || "계약 견적 지정에 실패했습니다.");
-        return;
-      }
-      setToast(result.message || "계약 견적으로 지정되었습니다.");
-      router.refresh();
     });
   }
 
@@ -419,15 +399,6 @@ export default function QuoteDetailView({
             >
               고객전송 링크
             </button>
-            {!quote.is_contract_quote && (
-              <button
-                type="button"
-                onClick={() => setShowContractConfirm(true)}
-                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-              >
-                계약 견적으로 지정
-              </button>
-            )}
             <button
               type="button"
               onClick={() => {
@@ -924,38 +895,6 @@ export default function QuoteDetailView({
         onToast={setToast}
         onChanged={() => router.refresh()}
       />
-
-      {/* Contract confirm */}
-      {showContractConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-            <h4 className="text-base font-semibold text-slate-900">
-              계약 견적으로 지정
-            </h4>
-            <p className="mt-2 text-sm text-gray-600">
-              이 견적을 계약 견적으로 지정합니다. 같은 고객의 다른 계약견적
-              지정은 자동으로 해제됩니다.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowContractConfirm(false)}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-slate-100"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                disabled={contractPending}
-                onClick={handleSetContract}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-75"
-              >
-                {contractPending ? "처리 중..." : "계약 견적으로 지정"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete modal */}
       {deleteModal && (

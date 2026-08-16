@@ -14,7 +14,6 @@ import {
   markQuoteSent,
   parseQuoteForm,
   parseQuoteItemsJson,
-  setContractQuote,
   softDeleteQuote,
   softDeleteQuoteFile,
   toQuoteSafeError,
@@ -56,34 +55,62 @@ function revalidateQuotes(customerId?: string | null, quoteId?: string | null) {
   }
 }
 
-async function linkWorkflowContext(formData: FormData, quoteId: string, customerId: string) {
+async function linkWorkflowContext(
+  formData: FormData,
+  quoteId: string,
+  customerId: string,
+) {
   const projectId = String(formData.get("project_id") ?? "").trim() || null;
-  const consultationId = String(formData.get("source_consultation_id") ?? "").trim() || null;
-  const inspectionId = String(formData.get("source_inspection_id") ?? "").trim() || null;
+  const consultationId =
+    String(formData.get("source_consultation_id") ?? "").trim() || null;
+  const inspectionId =
+    String(formData.get("source_inspection_id") ?? "").trim() || null;
   if (!consultationId && !inspectionId) return;
-  if (!projectId || !consultationId || !inspectionId) throw new Error("점검·상담·현장 연결 정보가 필요합니다.");
+  if (!projectId || !consultationId || !inspectionId) {
+    throw new Error("점검·상담·현장 연결 정보가 필요합니다.");
+  }
   const access = await requireAuthenticatedAccess();
   const companyId = access.profile?.active_company_id;
   if (!companyId) throw new Error("회사 권한을 확인할 수 없습니다.");
   const supabase = await createClient();
   if (consultationId) {
-    const { data } = await supabase.from("customer_consult_logs").select("id")
-      .eq("id", consultationId).eq("customer_id", customerId).eq("company_id", companyId)
-      .eq("source_project_id", projectId).eq("source_inspection_id", inspectionId).maybeSingle();
+    const { data } = await supabase
+      .from("customer_consult_logs")
+      .select("id")
+      .eq("id", consultationId)
+      .eq("customer_id", customerId)
+      .eq("company_id", companyId)
+      .eq("source_project_id", projectId)
+      .eq("source_inspection_id", inspectionId)
+      .maybeSingle();
     if (!data) throw new Error("상담 연결 정보가 올바르지 않습니다.");
   }
   if (inspectionId) {
-    const { data } = await supabase.from("window_inspections").select("id")
-      .eq("id", inspectionId).eq("customer_id", customerId).eq("company_id", companyId)
-      .eq("project_id", projectId).maybeSingle();
+    const { data } = await supabase
+      .from("window_inspections")
+      .select("id")
+      .eq("id", inspectionId)
+      .eq("customer_id", customerId)
+      .eq("company_id", companyId)
+      .eq("project_id", projectId)
+      .maybeSingle();
     if (!data) throw new Error("점검 연결 정보가 올바르지 않습니다.");
   }
-  const { data: linkedQuote, error } = await supabase.from("quotes").update({
-    source_consultation_id: consultationId,
-    source_inspection_id: inspectionId,
-  }).eq("id", quoteId).eq("customer_id", customerId).eq("company_id", companyId)
-    .eq("project_id", projectId).select("id").maybeSingle();
-  if (error || !linkedQuote) throw new Error("견적 업무 연결을 저장하지 못했습니다.");
+  const { data: linkedQuote, error } = await supabase
+    .from("quotes")
+    .update({
+      source_consultation_id: consultationId,
+      source_inspection_id: inspectionId,
+    })
+    .eq("id", quoteId)
+    .eq("customer_id", customerId)
+    .eq("company_id", companyId)
+    .eq("project_id", projectId)
+    .select("id")
+    .maybeSingle();
+  if (error || !linkedQuote) {
+    throw new Error("견적 업무 연결을 저장하지 못했습니다.");
+  }
 }
 
 function parseRemovedItemIds(formData: FormData): string[] {
@@ -377,26 +404,6 @@ export async function deleteQuoteFileAction(
     return {
       success: false,
       error: toQuoteSafeError(error, "파일 삭제에 실패했습니다."),
-    };
-  }
-}
-
-export async function setContractQuoteAction(
-  formData: FormData,
-): Promise<QuoteActionResult> {
-  try {
-    const id = String(formData.get("quote_id") ?? "").trim();
-    const quote = await setContractQuote(id);
-    revalidateQuotes(quote.customer_id, quote.id);
-    return {
-      success: true,
-      message: "계약 견적으로 지정되었습니다.",
-      quoteId: quote.id,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: toQuoteSafeError(error, "계약 견적 지정에 실패했습니다."),
     };
   }
 }
