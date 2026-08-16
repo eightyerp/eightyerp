@@ -78,12 +78,15 @@ const stalePolicy = read("supabase/migrations/20260816093000_crm_push_policy_com
 assertIncludes(stalePolicy, "customer_stale_3d", "3-day stale customer event exists");
 assertIncludes(stalePolicy, "customer_stale_7d", "7-day stale customer event exists");
 assertIncludes(stalePolicy, "company_id", "stale event preserves company scope");
+assertIncludes(stalePolicy, "completed_at desc", "completed schedules reset stale timer efficiently");
+assertIncludes(stalePolicy, "s.status not in ('완료', '취소')", "open schedules suppress duplicate stale push");
 
 const assignmentFollowup = read("supabase/migrations/20260816110000_crm_assignment_followup.sql");
 assertIncludes(assignmentFollowup, "customer_assignment_uncontacted_30m", "30-minute first-contact follow-up exists");
 assertIncludes(assignmentFollowup, "assignment_followup_eligible", "old assignment backlog cannot replay");
 assertIncludes(assignmentFollowup, "service_role", "server-assigned inbound leads create assignment alerts");
 assertIncludes(assignmentFollowup, "automatic_system_assignment", "system assignment source is preserved");
+assertIncludes(assignmentFollowup, "s.created_at > a.assigned_at", "assignment follow-up stops after a real reservation is made");
 
 const unassignedAlert = read("supabase/migrations/20260816111500_crm_unassigned_customer_alert.sql");
 assertIncludes(unassignedAlert, "customer_unassigned_10m", "unassigned lead admin alert exists");
@@ -105,6 +108,13 @@ for (const eventType of [
 }
 assertIncludes(worker, "/crm/schedules/", "schedule push deep-links to mobile schedule handler");
 assertIncludes(worker, "self_schedule_change", "self-created schedule change push is suppressed");
+assertIncludes(worker, 'status: "processing"', "push worker atomically claims pending events");
+assertIncludes(worker, "PROCESSING_RECOVERY_MINUTES", "stuck push claims are recoverable");
+assertIncludes(worker, "MAX_TRANSIENT_RETRIES", "transient push failures have bounded retry");
+assertIncludes(worker, "push_retry_count", "push retry state is persisted on the event");
+
+const serviceWorker = read("public/sw-crm.js");
+assertIncludes(serviceWorker, 'value.startsWith(CRM_SCOPE)', "service worker keeps push navigation inside CRM PWA scope");
 
 const inbox = read("lib/crm/crm-alert-inbox.ts");
 assertIncludes(inbox, "listMyCrmAlerts", "unified in-app alert inbox exists");
