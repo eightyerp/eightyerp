@@ -42,6 +42,7 @@ function collectionTypeLabel(value: string): string {
 export default function ErpNotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [recentCount, setRecentCount] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,7 +75,13 @@ export default function ErpNotificationBell() {
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         )
         .slice(0, 20);
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
       setItems(merged);
+      setRecentCount(
+        merged.filter(
+          (item) => new Date(item.createdAt).getTime() >= cutoff,
+        ).length,
+      );
     }
 
     // 첫 화면/오늘 할 일 로딩과 경쟁하지 않도록 알림은 후순위로 시작한다.
@@ -104,11 +111,6 @@ export default function ErpNotificationBell() {
       document.removeEventListener("touchstart", closeOnOutside);
     };
   }, []);
-
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const recentCount = items.filter(
-    (item) => new Date(item.createdAt).getTime() >= cutoff,
-  ).length;
 
   return (
     <div ref={wrapperRef} className="relative">
