@@ -114,7 +114,14 @@ export function groupCustomerPipeline(
   return grouped;
 }
 
-export async function listCustomerPipeline(): Promise<{
+export type CustomerPipelineFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export async function listCustomerPipeline(
+  filters: CustomerPipelineFilters = {},
+): Promise<{
   customers: CustomerPipelineItem[];
   scopeLabel: string;
 }> {
@@ -146,6 +153,12 @@ export async function listCustomerPipeline(): Promise<{
 
     if (!access.canViewAllCompanyCustomers) {
       query = query.eq("assigned_employee_id", employeeId);
+    }
+    if (filters.dateFrom) {
+      query = query.gte("created_at", `${filters.dateFrom}T00:00:00+09:00`);
+    }
+    if (filters.dateTo) {
+      query = query.lte("created_at", `${filters.dateTo}T23:59:59.999+09:00`);
     }
 
     const { data, error } = await query;
