@@ -2,10 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createCustomerSchedule } from "@/lib/crm/customer-schedules";
+import {
+  completeCustomerSchedule,
+  createCustomerSchedule,
+  getCustomerSchedule,
+} from "@/lib/crm/customer-schedules";
 import {
   createCustomerConsultLog,
   getCustomerById,
+  updateCustomerQuickFields,
 } from "@/lib/crm/customers";
 import type { ConsultType } from "@/types/database";
 
@@ -45,6 +50,14 @@ function koreaDateFromIso(iso: string) {
   }).formatToParts(new Date(iso));
   const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${map.year}-${map.month}-${map.day}`;
+}
+
+function revalidateCrmCustomer(customerId: string) {
+  revalidatePath("/crm");
+  revalidatePath("/crm/customers");
+  revalidatePath("/crm/schedules");
+  revalidatePath(`/crm/customers/${customerId}`);
+  revalidatePath("/dashboard");
 }
 
 export async function saveCrmConsultationAction(formData: FormData) {
@@ -96,8 +109,83 @@ export async function saveCrmConsultationAction(formData: FormData) {
     });
   }
 
-  revalidatePath("/crm");
-  revalidatePath("/crm/customers");
-  revalidatePath(`/crm/customers/${customerId}`);
+  revalidateCrmCustomer(customerId);
   redirect(`/crm/customers/${customerId}?saved=consult`);
+}
+
+export async function completeCrmScheduleAction(formData: FormData) {
+  const scheduleId = requiredText(formData, "schedule_id");
+  const customerId = requiredText(formData, "customer_id");
+  const resultNote = requiredText(formData, "result_note");
+  const nextContactRaw = String(formData.get("next_contact_at") ?? "").trim();
+
+  const schedule = await getCustomerSchedule(scheduleId);
+  if (!schedule || schedule.customer_id !== customerId) {
+    throw new Error("처리할 고객 일정을 찾을 수 없습니다.");
+  }
+
+  let nextContactIso: string | null = null;
+  let nextContactDate: string | null = null;
+  if (nextContactRaw) {
+    nextContactIso = parseKoreaLocalDateTime(nextContactRaw);
+    nextContactDate = koreaDateFromIso(nextContactIso);
+  }
+
+  await completeCustomerSchedule({
+    id: scheduleId,
+    resultNote,
+    customerReaction: null,
+    nextAction: nextContactIso ? "고객 재연락" : "일정 완료",
+    nextContactAt: null,
+    updateCustomerStatus: null,
+  });
+
+  let followUpCreated = true;
+  if (nextContactIso) {
+    try {
+      const customer = await getCustomerById(customerId);
+      const assigneeId = schedule.assigned_employee_id || customer?.assigned_employee_id;
+      if (!customer || !assigneeId) {
+        followUpCreated = false;
+      } else {
+        await createCustomerSchedule({
+          customer_id: customerId,
+          assigned_employee_id: assigneeId,
+          schedule_type: "재연락",
+          title: `${customer.name} 고객 재연락`,
+          description: resultNote,
+          start_at: nextContactIso,
+          end_at: null,
+          all_day: false,
+          status: "예정",
+          priority: "보통",
+          location: null,
+          result_note: null,
+          customer_reaction: null,
+          next_action: "고객 재연락",
+          next_contact_at: null,
+        });
+        if (nextContactDate) {
+          try {
+            await updateCustomerQuickFields({
+              customer_id: customerId,
+              next_contact_at: nextContactDate,
+            });
+          } catch {
+            // 정확한 재연락 일정이 생성됐으면 고객 날짜 미러링 실패가 업무를 막지 않는다.
+          }
+        }
+      }
+    } catch {
+      followUpCreated = false;
+    }
+  }
+
+  revalidateCrmCustomer(customerId);
+  revalidatePath(`/crm/schedules/${scheduleId}`);
+  redirect(
+    `/crm/customers/${customerId}?saved=schedule${
+      nextContactIso && !followUpCreated ? "&followup=failed" : ""
+    }`,
+  );
 }
