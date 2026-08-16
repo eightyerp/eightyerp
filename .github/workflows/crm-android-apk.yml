@@ -41,10 +41,32 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Install Android verification tools
+      - name: Prepare one Android SDK root
+        shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "build-tools;35.0.0"
+          sdkmanager \
+            --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "build-tools;35.0.0" \
+            "build-tools;36.1.0" \
+            "platforms;android-35" \
+            "platforms;android-36"
+
+          SDKMANAGER_PATH="$(readlink -f "$(command -v sdkmanager)")"
+          CMDLINE_BIN="$(dirname "$SDKMANAGER_PATH")"
+
+          # Current Bubblewrap validates a direct <sdk>/bin/sdkmanager path.
+          # Gradle needs the normal full SDK root with platforms/build-tools.
+          # A bin symlink lets both tools share one stable SDK root.
+          ln -sfn "$CMDLINE_BIN" "$ANDROID_HOME/bin"
+          test -x "$ANDROID_HOME/bin/sdkmanager"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.1.0/apksigner"
+
+          echo "BUBBLEWRAP_ANDROID_SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
 
       - name: Prepare signing key
         working-directory: mobile/crm-android-twa
@@ -105,27 +127,6 @@ jobs:
       - name: Install Bubblewrap
         run: npm install --global @bubblewrap/cli
 
-      - name: Prepare Bubblewrap Android CLI root
-        run: |
-          set -euo pipefail
-          SDKMANAGER_PATH="$(readlink -f "$(command -v sdkmanager)")"
-          export BUBBLEWRAP_ANDROID_SDK="$(dirname "$(dirname "$SDKMANAGER_PATH")")"
-          echo "BUBBLEWRAP_ANDROID_SDK=$BUBBLEWRAP_ANDROID_SDK" >> "$GITHUB_ENV"
-
-          # Bubblewrap expects the decompressed command-line-tools root (bin/), not ANDROID_HOME.
-          test -x "$BUBBLEWRAP_ANDROID_SDK/bin/sdkmanager"
-          mkdir -p "$BUBBLEWRAP_ANDROID_SDK/licenses"
-          if [ -d "$ANDROID_HOME/licenses" ]; then
-            cp -a "$ANDROID_HOME/licenses/." "$BUBBLEWRAP_ANDROID_SDK/licenses/"
-          fi
-
-          "$BUBBLEWRAP_ANDROID_SDK/bin/sdkmanager" \
-            --sdk_root="$BUBBLEWRAP_ANDROID_SDK" \
-            "platform-tools" \
-            "build-tools;36.1.0" \
-            "platforms;android-35" \
-            "platforms;android-36"
-
       - name: Configure Bubblewrap non-interactively
         run: |
           set -euo pipefail
@@ -136,7 +137,7 @@ jobs:
           const file = path.join(process.env.HOME, '.bubblewrap', 'config.json');
           fs.writeFileSync(file, `${JSON.stringify({
             jdkPath: process.env.JAVA_HOME,
-            androidSdkPath: process.env.BUBBLEWRAP_ANDROID_SDK,
+            androidSdkPath: process.env.ANDROID_HOME,
           }, null, 2)}\n`);
           console.log(`Bubblewrap config written to ${file}`);
           NODE
@@ -146,6 +147,13 @@ jobs:
         working-directory: mobile/crm-android-twa
         run: bubblewrap update --skipVersionUpgrade
 
+      - name: Pin Gradle to the shared Android SDK
+        working-directory: mobile/crm-android-twa
+        run: |
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          cat local.properties
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+
       - name: Build signed APK
         working-directory: mobile/crm-android-twa
         env:
@@ -153,9 +161,7 @@ jobs:
           BUBBLEWRAP_KEY_PASSWORD: ${{ env.CRM_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          # Bubblewrap injects ANDROID_HOME from its config. Gradle rejects a second,
-          # different ANDROID_SDK_ROOT, so use one SDK source during the actual build.
-          unset ANDROID_SDK_ROOT
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
           bubblewrap build \
             --skipPwaValidation \
             --signingKeyPath="$PWD/android.keystore" \
