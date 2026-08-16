@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import AdminDashboardHomeV2 from "@/components/dashboard/AdminDashboardHomeV2";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard";
@@ -27,9 +28,11 @@ export default async function DashboardPage({ searchParams }: Props) {
   let companyPnl = null;
   let salesEmployees: SettlementEmployeeOption[] = [];
 
-  // getCurrentUserAccess는 같은 서버 렌더에서 cache되므로 권한을 한 번 확인한 뒤
-  // 서로 독립적인 대시보드 데이터는 동시에 시작한다.
+  // Proxy는 이 고빈도 GET 화면에서 JWT만 검증하고, 실제 승인/회사 권한은
+  // 데이터와 가장 가까운 DAL에서 fail-closed로 확인한다.
   const access = await getCurrentUserAccess();
+  if (!access.isAuthenticated || !access.userId) redirect("/login");
+  if (!access.canAccessErp) redirect("/pending-approval");
   const isAdmin = access.isAdmin;
 
   const [settlementResult, bundleResult, targetResult, employeeResult, pnlResult] =

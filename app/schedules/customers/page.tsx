@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerSchedulesWorkspace from "@/components/schedules/CustomerSchedulesWorkspace";
 import { getCurrentUserAccess } from "@/lib/crm/access";
@@ -30,9 +31,36 @@ async function isScheduleSchemaMissing(): Promise<boolean> {
   }
 }
 
+async function listRecentQuoteRows(customerIds: string[]) {
+  if (customerIds.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("customer_id, final_amount, created_at")
+    .in("customer_id", customerIds)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function listRecentConsultRows(customerIds: string[]) {
+  if (customerIds.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("customer_consult_logs")
+    .select("customer_id, consult_content, created_at")
+    .in("customer_id", customerIds)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 export default async function CustomerSchedulesPage() {
-  const access = await getScheduleAccess();
   const userAccess = await getCurrentUserAccess();
+  if (!userAccess.isAuthenticated || !userAccess.userId) redirect("/login");
+  if (!userAccess.canAccessErp) redirect("/pending-approval");
+  const access = await getScheduleAccess();
 
   let schedules: CustomerSchedule[] = [];
   let employees: Employee[] = [];
@@ -48,68 +76,62 @@ export default async function CustomerSchedulesPage() {
   }[] = [];
   let loadError: string | null = null;
   let tablesMissing = false;
-  const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
+  const devHint = schemaMissingDevHint(MIGRATION_PATH, access.isAdmin);
 
-  try {
-    employees = await listEmployeesInScope(access);
-  } catch {
-    employees = [];
-  }
+  // 권한 확인 이후 서로 독립적인 핵심 조회는 동시에 시작한다.
+  // 고객별 견적/상담 보조정보는 접근 가능한 고객 ID가 확정된 뒤 최소 컬럼만 읽는다.
+  const [employeeResult, teamResult, customerResult, scheduleResult] =
+    await Promise.allSettled([
+      listEmployeesInScope(access),
+      listTeams(),
+      getCustomers({ pageSize: 100 }),
+      listCustomerSchedules({}, access),
+    ]);
 
-  try {
-    teams = await listTeams();
-  } catch {
-    teams = [];
-  }
+  if (employeeResult.status === "fulfilled") employees = employeeResult.value;
+  if (teamResult.status === "fulfilled") teams = teamResult.value;
 
-  try {
-    const customerList = await getCustomers({ pageSize: 100 });
+  if (customerResult.status === "fulfilled") {
+    const customerIds = customerResult.value.customers.map((customer) => customer.id);
+    const [quoteResult, consultResult] = await Promise.allSettled([
+      listRecentQuoteRows(customerIds),
+      listRecentConsultRows(customerIds),
+    ]);
+
     const quoteByCustomer = new Map<string, number>();
-    const consultByCustomer = new Map<string, string>();
-    try {
-      const { listQuotes } = await import("@/lib/crm/quote-mgmt");
-      const quotes = await listQuotes({});
-      for (const q of quotes) {
-        if (!quoteByCustomer.has(q.customer_id)) {
-          quoteByCustomer.set(q.customer_id, q.final_amount);
+    if (quoteResult.status === "fulfilled") {
+      for (const quote of quoteResult.value) {
+        const customerId = String(quote.customer_id ?? "");
+        if (customerId && !quoteByCustomer.has(customerId)) {
+          quoteByCustomer.set(customerId, Number(quote.final_amount ?? 0));
         }
       }
-    } catch {
-      // optional
-    }
-    try {
-      const supabase = await createClient();
-      const { data: logs } = await supabase
-        .from("customer_consult_logs")
-        .select("customer_id, consult_content, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      for (const log of logs ?? []) {
-        const cid = log.customer_id as string;
-        if (!consultByCustomer.has(cid)) {
-          consultByCustomer.set(cid, String(log.consult_content ?? ""));
-        }
-      }
-    } catch {
-      // optional
     }
 
-    customers = customerList.customers.map((c) => ({
-      id: c.id,
-      name: c.name,
-      phone: c.phone,
-      address: c.address,
-      status: c.status,
-      recentQuoteAmount: quoteByCustomer.get(c.id) ?? null,
-      recentConsult: consultByCustomer.get(c.id) ?? null,
+    const consultByCustomer = new Map<string, string>();
+    if (consultResult.status === "fulfilled") {
+      for (const log of consultResult.value) {
+        const customerId = String(log.customer_id ?? "");
+        if (customerId && !consultByCustomer.has(customerId)) {
+          consultByCustomer.set(customerId, String(log.consult_content ?? ""));
+        }
+      }
+    }
+
+    customers = customerResult.value.customers.map((customer) => ({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      address: customer.address,
+      status: customer.status,
+      recentQuoteAmount: quoteByCustomer.get(customer.id) ?? null,
+      recentConsult: consultByCustomer.get(customer.id) ?? null,
     }));
-  } catch {
-    customers = [];
   }
 
-  try {
-    schedules = await listCustomerSchedules({}, access);
-  } catch {
+  if (scheduleResult.status === "fulfilled") {
+    schedules = scheduleResult.value;
+  } else {
     tablesMissing = await isScheduleSchemaMissing();
     loadError = tablesMissing
       ? null
