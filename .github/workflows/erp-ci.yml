@@ -39,6 +39,9 @@ jobs:
       - name: CRM mobile layout guard
         run: node scripts/test-crm-mobile-layout.mjs
 
+      - name: CRM Android iPhone install guard
+        run: node scripts/test-crm-platform-install.mjs
+
       - name: CRM home performance guard
         run: node scripts/test-crm-home-performance.mjs
 
