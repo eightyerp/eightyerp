@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   cockpitApproveAndPayExpenseAction,
@@ -65,13 +65,12 @@ export function AdminExpenseWorkCockpit({
       !["cancelled", "rejected"].includes(row.status) && evidenceCount(row) === 0,
   );
 
-  const amounts = useMemo(
-    () => ({
-      pending: pending.reduce((sum, row) => sum + Number(row.total_amount), 0),
-      approved: approved.reduce((sum, row) => sum + Number(row.total_amount), 0),
-    }),
-    [pending, approved],
-  );
+  // 두 개의 reduce는 렌더 비용이 작고, 매 렌더 새 배열인 pending/approved를
+  // useMemo 의존성으로 잡는 것보다 React Compiler와 호환되는 단순 계산이 안전하다.
+  const amounts = {
+    pending: pending.reduce((sum, row) => sum + Number(row.total_amount), 0),
+    approved: approved.reduce((sum, row) => sum + Number(row.total_amount), 0),
+  };
 
   function run(action: () => Promise<{ success: boolean; message?: string; error?: string }>) {
     startTransition(async () => {
