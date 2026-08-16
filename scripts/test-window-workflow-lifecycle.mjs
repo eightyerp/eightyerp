@@ -26,6 +26,12 @@ assert(
   "현장 생성 UI가 계약완료 상태에만 묶이지 않는다",
 );
 assert(
+  /const address[\s\S]*if \(address\) return address;[\s\S]*const name/.test(
+    projectConstants,
+  ),
+  "기본 현장명은 고객명보다 주소/아파트 정보를 우선한다",
+);
+assert(
   /status:\s*ProjectStatus\s*=\s*isContractCustomerStatus\(customer\.status\)[\s\S]*?:\s*["']준비["']/.test(projects),
   "계약 전 현장 상태를 서버에서 준비로 고정한다",
 );
