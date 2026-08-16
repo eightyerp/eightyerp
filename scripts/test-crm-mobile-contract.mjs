@@ -20,12 +20,19 @@ assertIncludes(manifest, '"start_url": "/crm"', "CRM PWA starts at /crm");
 assertIncludes(manifest, '"scope": "/crm"', "CRM PWA scope stays isolated");
 assertIncludes(manifest, '"display": "standalone"', "CRM remains installable app shell");
 
+const shell = read("components/crm/CrmShell.tsx");
+assertIncludes(shell, 'href="/customers/new"', "CRM exposes quick new customer registration");
+
 const mobileAction = read("app/actions/crm-mobile.ts");
 assertIncludes(mobileAction, "saveCrmConsultationAction", "mobile consultation action exists");
 assertIncludes(mobileAction, "updateCrmCustomerStatusAction", "mobile status quick action exists");
 assertIncludes(mobileAction, 'customer.status === "신규"', "first consultation auto-advances new customer");
 assertIncludes(mobileAction, '"1차 연락완료"', "first-contact status transition is preserved");
+assertIncludes(mobileAction, '"계약"', "legacy contract customer status remains writable without regression");
 assertIncludes(mobileAction, "createCustomerSchedule", "next contact creates real schedule");
+
+const statusPage = read("app/crm/customers/[id]/status/page.tsx");
+assertIncludes(statusPage, "계약 (기존)", "legacy contract state is visible instead of silently resetting");
 
 const pushFoundation = read("supabase/migrations/20260816090000_crm_mobile_push_foundation.sql");
 assertIncludes(pushFoundation, "customer_assigned", "company assignment push event exists");
