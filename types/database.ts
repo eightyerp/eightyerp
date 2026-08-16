@@ -301,6 +301,8 @@ export type CustomerConsultLog = {
   next_contact_date: string | null;
   created_by: string | null;
   created_at: string;
+  source_project_id?: string | null;
+  source_inspection_id?: string | null;
   profiles?: {
     employees: Pick<Employee, "id" | "name" | "title"> | null;
   } | null;
@@ -474,6 +476,8 @@ export type ErpQuote = {
   company_id?: string;
   customer_id: string;
   project_id: string | null;
+  source_consultation_id?: string | null;
+  source_inspection_id?: string | null;
   quote_group_id: string;
   parent_quote_id: string | null;
   quote_type: ErpQuoteType | string;

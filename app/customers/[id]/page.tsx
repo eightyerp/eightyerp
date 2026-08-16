@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerDetailPanels from "@/components/customers/CustomerDetailPanels";
 import CustomerInfoPushButton from "@/components/customers/CustomerInfoPushButton";
+import WindowWorkflowHub, { type WindowInspectionSummary } from "@/components/customers/WindowWorkflowHub";
+import { createClient } from "@/lib/supabase-server";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
@@ -38,7 +40,7 @@ import type {
 
 type CustomerDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ updated?: string }>;
+  searchParams: Promise<{ updated?: string; workflowProjectId?: string }>;
 };
 
 function panelWarning(
@@ -93,6 +95,7 @@ export default async function CustomerDetailPage({
   let projectsWarning: string | null = null;
   let projectsDevHint: string | null = null;
   let assigneeChangeHistory: CustomerActivity[] = [];
+  let windowInspections: WindowInspectionSummary[] = [];
 
   try {
     const [found, empList] = await Promise.all([
@@ -177,6 +180,15 @@ export default async function CustomerDetailPage({
       } catch {
         schedules = [];
       }
+      try {
+        const supabase = await createClient();
+        const { data } = await supabase.from("window_inspections")
+          .select("id, project_id, inspection_status, completed_at, total_windows, status_counts, highest_status_level, report_status, report_reference")
+          .eq("customer_id", id).order("updated_at", { ascending: false }).limit(10);
+        windowInspections = (data ?? []) as WindowInspectionSummary[];
+      } catch {
+        windowInspections = [];
+      }
     }
   } catch (error) {
     loadError = toCrmErrorMessage(error);
@@ -259,6 +271,16 @@ export default async function CustomerDetailPage({
         )}
 
         {!loadError && (
+          <>
+          <WindowWorkflowHub
+            customerId={customer.id}
+            companyId={access.profile?.active_company_id ?? null}
+            projects={projects}
+            inspections={windowInspections}
+            consultLogs={consultLogs}
+            quotes={erpQuotes}
+            selectedProjectId={query.workflowProjectId ?? null}
+          />
           <CustomerDetailPanels
             customer={customer}
             consultLogs={consultLogs}
@@ -273,6 +295,7 @@ export default async function CustomerDetailPage({
             isAdmin={access.isAdmin}
             currentEmployeeId={access.profile?.employee_id ?? null}
           />
+          </>
         )}
       </div>
     </DashboardLayout>
