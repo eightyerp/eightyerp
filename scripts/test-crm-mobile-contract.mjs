@@ -41,6 +41,8 @@ assertIncludes(stalePolicy, "company_id", "stale event preserves company scope")
 const assignmentFollowup = read("supabase/migrations/20260816110000_crm_assignment_followup.sql");
 assertIncludes(assignmentFollowup, "customer_assignment_uncontacted_30m", "30-minute first-contact follow-up exists");
 assertIncludes(assignmentFollowup, "assignment_followup_eligible", "old assignment backlog cannot replay");
+assertIncludes(assignmentFollowup, "service_role", "server-assigned inbound leads create assignment alerts");
+assertIncludes(assignmentFollowup, "automatic_system_assignment", "system assignment source is preserved");
 
 const unassignedAlert = read("supabase/migrations/20260816111500_crm_unassigned_customer_alert.sql");
 assertIncludes(unassignedAlert, "customer_unassigned_10m", "unassigned lead admin alert exists");
@@ -60,12 +62,18 @@ for (const eventType of [
   assertIncludes(worker, eventType, `push worker handles ${eventType}`);
 }
 assertIncludes(worker, "/crm/schedules/", "schedule push deep-links to mobile schedule handler");
+assertIncludes(worker, 'value.startsWith("/customers/")', "admin push may deep-link to safe customer edit route");
+assertIncludes(worker, "self_schedule_change", "self-created schedule change push is suppressed");
+
+const serviceWorker = read("public/sw-crm.js");
+assertIncludes(serviceWorker, '"/customers/"', "service worker permits safe same-origin customer admin deep links");
 
 const inbox = read("lib/crm/crm-alert-inbox.ts");
 assertIncludes(inbox, "listMyCrmAlerts", "unified in-app alert inbox exists");
 assertIncludes(inbox, "customer_assignment_uncontacted_30m", "inbox shows first-contact misses");
 assertIncludes(inbox, "customer_unassigned_10m", "inbox shows unassigned leads");
 assertIncludes(inbox, "customer_stale_7d", "inbox shows long-stale customers");
+assertIncludes(inbox, "self_schedule_change", "inbox hides self-generated schedule change noise");
 
 const customerCard = read("components/crm/CrmCustomerCard.tsx");
 assertIncludes(customerCard, "/status", "customer card exposes quick status action");
