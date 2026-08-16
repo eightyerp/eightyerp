@@ -60,6 +60,8 @@ Window Check = 현장 점검
 - 모바일 파이프라인
 - 고객 상세
 - 전화 / 문자 / 상담기록 / 다음 연락 / 견적 / 일정 빠른 행동
+- 카드에서 `상태` 빠른 변경 진입
+- `/crm/customers/[id]/status` 모바일 상태 변경 화면
 - 진행 고객인데 다음 연락·열린 일정이 없으면 `다음 행동 없음` 경고
 - 계약금액·확정수금·미수금·확인대기 금액 읽기 전용 요약
 - Window Lab 창호 전문상담 연결
@@ -68,12 +70,17 @@ Window Check = 현장 점검
 - 상담기록 저장
 - 다음 연락시간 입력
 - 다음 연락시간 입력 시 `재연락` 일정 자동 생성
+- 신규/미연락 고객 첫 상담기록 시 자동 상태 전진
+  - 방문상담 → `상담중`
+  - 그 외 첫 상담 → `1차 연락완료`
+- 이미 더 뒤 단계인 고객 상태는 자동으로 되돌리지 않음
 
 ### 일정
 - 모바일 일정 집중 목록
 - `/crm/schedules/[id]` 일정 처리 화면
 - 전화 → 결과 한 줄 → 선택적 다음 연락시간 → 완료
 - 다음 연락시간 입력 시 새 재연락 일정 자동 생성
+- 일정 관련 PUSH 클릭 시 일정 처리 화면으로 deep link 준비
 
 ### 견적
 - 직원 범위 견적 목록
@@ -81,37 +88,71 @@ Window Check = 현장 점검
 - 금액/VAT/상태/발행·발송·유효기간 확인
 - 복잡한 편집만 ERP 상세화면으로 연결
 
+### 알림함
+- 기존 `배분 고객만` 표시하던 화면을 통합 CRM 알림함으로 변경
+- 신규 고객 배분
+- 일정 등록/변경
+- 예약 1시간 전
+- 일정 +30분 미처리
+- 배분 후 30분 첫 연락 없음
+- 3일/7일 장기방치
+- 관리자용 10분 이상 미배정 신규문의
+- OS PUSH를 꺼도 앱 안에서 알림 이력 확인 가능 구조
+
 ## 4. 필수 PUSH 정책
 
 PUSH는 CRM의 핵심 고객누락 방지 엔진이다.
 
 1. 회사 신규고객 배분
    - 담당자 배정/변경 즉시 담당 직원에게 1회
-2. 일정 등록/변경
+2. 신규 배분 후 첫 연락 누락
+   - 배분 후 30분 동안 실제 연락/상담/예약이 없으면 담당 직원에게 1회
+   - 상담 또는 일정이 생기면 재촉하지 않음
+3. 신규문의 담당자 미배정
+   - 10분 이상 미배정 상태면 같은 회사 admin/super_admin에게 1회
+4. 일정 등록/변경
    - 등록/변경 즉시 담당 직원에게 1회
-3. 일정 사전 알림
+5. 일정 사전 알림
    - 전화상담/방문상담/실측/계약상담/재연락/해피콜 등 예정 1시간 전 1회
-4. 일정 미처리
+6. 일정 미처리
    - 예정시간 +30분 후 완료·취소·재예약이 아니면 1회
-5. 장기 방치 고객
+7. 장기 방치 고객
    - 3일: 담당 직원 1차
    - 7일: 담당 직원 2차 + 관리자/팀장 표시
    - 14일: 반복 PUSH 대신 CRM Home/ERP 관리자 강한 경고
 
 추가 검토:
-- 신규 배분 후 30분 첫 연락 없음
-- 신규문의 담당자 미배정 관리자 알림
 - 견적 발송 후 후속 없음
 - 계약 확인/약속 입금일 경과 시 필요한 영업 행동 알림
+- 비긴급 야간 알림 21:00~08:00 유예 정책
 
 PUSH 피로 방지:
 - 동일 이벤트 dedupe 필수
 - 완료/취소/재예약 시 알림조건 해제
+- 첫 상담/후속 일정 생성 시 관련 미연락 조건 해제
 - 장기방치 매일 반복 금지
-- 비긴급 21:00~08:00 발송 유예 검토
 - 알림 클릭 시 해당 CRM 고객/일정 deep link
 
-## 5. 성능 원칙 / 현재 상태
+## 5. PUSH preflight 현황
+
+운영 DB에는 아직 적용하지 않았다.
+
+읽기 전용 운영 스키마 검증 결과:
+- `customers`, `employees`, `customer_schedules`, `customer_activities`: 존재
+- `notification_events`, `schedule_alert_events`: 존재
+- `current_employee_id`, `current_company_id`, `is_erp_user`, `is_admin`: 존재
+- 멀티회사 `company_id` RLS/기본값 존재
+- 상담기록은 `customer_activities`에도 mirror되어 장기방치 타이머가 정상 reset 가능
+- `notification_events.event_type`에 `customer_assigned` 허용
+- `schedule_alert_events`에는 event_type CHECK 제약 없음
+- `crm_push_subscriptions`, `dedupe_key`는 아직 운영 미적용 — migration 적용 대상
+
+preflight에서 발견 후 수정:
+- service_role scheduler에서 `company_id` 누락 가능성 → 모든 scheduler 이벤트에 company_id 명시
+- 일정 PUSH가 고객상세로만 가던 문제 → 일정 이벤트는 `/crm/schedules/[id]` deep link
+- 기존 과거 배분 이벤트가 30분 재촉으로 한꺼번에 재생되는 문제 → 기존 이벤트 follow-up 비대상 처리
+
+## 6. 성능 원칙 / 현재 상태
 
 - 모바일 고객목록 pageSize 30
 - 모바일 파이프라인: 단계별 count-only + 선택 단계 고객만 조회
@@ -119,59 +160,70 @@ PUSH 피로 방지:
 - 견적목록 기존 pagination 재사용
 - 고객상세 데이터 병렬 조회
 - PUSH 판정을 위해 전체 고객을 Client로 내려받지 않음
+- PUSH worker는 idempotent + dedupe key 사용
+- 앱 알림함 최근 최대 50건 중심 조회
 
-최근 검증:
+최근 검증 기준:
 - Window workflow lifecycle guard: PASS
 - ESLint: PASS
 - Next.js Production Build: PASS
 - 최근 계측 참고: Compile 8.3s / TypeScript 12.9s / Static generation 42 pages 456ms
 
-## 6. 현재 테스트/배포 상태
+## 7. 현재 테스트/배포 상태
 
-- Vercel 결제 완료 확인: 2026-08-16 18:53 KST
-- 결제 후 신규 커밋으로 Preview build-rate-limit 해제 여부 재검증 중
+- Vercel 결제수단 등록 완료 확인: 2026-08-16
+- 팀 화면은 여전히 Hobby로 표시되어 작은 커밋마다 Preview build rate limit이 발생할 수 있음
+- 개발은 GitHub CI 중심으로 계속 진행
+- Vercel Preview는 체크포인트 커밋 위주로 사용
 - 직전 정상 Preview URL: `https://eightyerp-git-feat-crm-mobile-pwa-push-foundation-eighty-erp.vercel.app`
 - 실제 직원 로그인 상태의 모바일 360/390/430px QA는 아직 필요
 - Android Chrome PWA / iPhone Safari PWA 실기기 설치 확인 필요
 
-## 7. 남은 Release Gate
+## 8. 남은 Release Gate
 
-- [x] Lint / Production Build
+- [x] 기존 Lint / Production Build
+- [x] PUSH 운영 스키마 read-only preflight
+- [x] 멀티회사 company_id 보존 수정
+- [x] 배분 후 30분 미연락 migration 준비
+- [x] 미배정 신규문의 관리자 알림 migration 준비
+- [x] 통합 CRM 알림함 준비
+- [ ] 최신 head Lint / Production Build 재검증
 - [ ] 모바일 360px QA
 - [ ] 모바일 390px QA
 - [ ] 모바일 430px QA
 - [ ] Android Chrome PWA 설치/E2E
 - [ ] iPhone Safari PWA 설치/E2E
-- [ ] PUSH migration preflight
 - [ ] VAPID key/Secret 등록
 - [ ] Edge Function 배포 + scheduler 연결
 - [ ] 직원 1~2명 E2E
-- [ ] 신규배분/일정등록/1시간전/+30분/3일/7일 PUSH 중복방지 QA
+- [ ] 신규배분/30분미연락/미배정/일정등록/1시간전/+30분/3일/7일 PUSH 중복방지 QA
 - [ ] 완료/취소/재예약/상담 발생 시 PUSH reset QA
 - [ ] 대표 최종 승인
 - [ ] main 병합
 - [ ] Production 배포
 
-## 8. 다음 작업 — 반드시 이 순서 우선
+## 9. 다음 작업 — 반드시 이 순서 우선
 
 ### NOW
-1. Preview/실기기 CRM 모바일 QA
-2. PWA 설치 흐름 확인
-3. 고객 → 전화 → 상담 → 다음 연락 → 일정 완료 → 견적 확인 E2E
-4. 발견된 모바일 UX 오류 수정
+1. 최신 head CI 재검증
+2. 모바일 상태변경/통합알림/상담 자동상태전환 회귀 점검
+3. Preview/실기기 CRM 모바일 QA
+4. PWA 설치 흐름 확인
+5. 고객 → 전화 → 상담 → 자동상태전환 → 다음 연락 → 일정 완료 → 견적 확인 E2E
 
 ### NEXT
-5. PUSH migration preflight
-6. 운영 반영 전 RLS/index/rollback 검증
-7. 승인 후 PUSH 실제 연결
-8. 직원 1~2명 테스트
+6. VAPID/Worker Secret 준비
+7. 운영 migration 적용 전 최종 rollback/RLS 확인
+8. 승인 후 PUSH 실제 연결
+9. 직원 1~2명 테스트
 
 ### AFTER
-9. 계약/수금 모바일 읽기 UX 보완
-10. Window Lab / Window Check 연결 UX 마감
-11. 직원 피드백 기반 최소 수정
+10. 견적 발송 후 후속 없음 알림 필요성 실사용 검증
+11. 계약/수금 모바일 읽기 UX 보완
+12. Window Lab / Window Check 연결 UX 마감
+13. 직원 피드백 기반 최소 수정
 
-## 9. 하지 말 것
+## 10. 하지 말 것
 
 - 별도 CRM 고객 DB 생성 금지
 - ERP 기능 전체를 CRM에 복제 금지
@@ -181,7 +233,7 @@ PUSH 피로 방지:
 - 유료 서비스 임의 결제 금지
 - Preview/PUSH 때문에 고객 개인정보를 캐시하지 말 것
 
-## 10. 채팅 관리 규칙
+## 11. 채팅 관리 규칙
 
 앞으로 채팅은 의사결정과 지시용으로만 사용한다.
 
