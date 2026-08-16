@@ -15,6 +15,7 @@ const STATUS_OPTIONS: Array<{ value: CustomerStatus; label: string; group: strin
   { value: "견적제출", label: "견적제출", group: "견적" },
   { value: "계약협의", label: "계약협의", group: "계약" },
   { value: "계약완료", label: "계약완료", group: "계약" },
+  { value: "계약", label: "계약 (기존)", group: "계약" },
   { value: "시공예정", label: "시공예정", group: "시공" },
   { value: "시공중", label: "시공중", group: "시공" },
   { value: "완료", label: "완료", group: "종료" },
@@ -74,7 +75,7 @@ export default async function CrmCustomerStatusPage({ params }: Props) {
       </section>
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-        진행 중 고객을 `보류·연락두절·취소·완료`로 바꿀 때는 실제 고객 상황을 확인한 뒤 변경합니다. 상태 변경 이력은 기존 고객 활동 기록에 남습니다.
+        진행 중 고객을 `보류·연락두절·취소·완료`로 바꿀 때는 실제 고객 상황을 확인한 뒤 변경합니다. `계약 (기존)`은 과거 데이터 보존용이며 새 진행은 `계약완료`를 사용합니다. 상태 변경 이력은 기존 고객 활동 기록에 남습니다.
       </div>
     </div>
   );
