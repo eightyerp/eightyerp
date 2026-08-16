@@ -8,7 +8,10 @@ import {
   type ProjectActionResult,
 } from "@/app/actions/projects";
 import CreateSiteButton from "@/components/customers/CreateSiteButton";
-import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
+import {
+  formatEmployeeOptionLabel,
+  isContractCustomerStatus,
+} from "@/lib/crm/constants";
 import { PROJECT_STATUSES } from "@/lib/crm/project-constants";
 import type { Employee, Project } from "@/types/database";
 
@@ -55,8 +58,8 @@ export default function CustomerSitesPanel({
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleteOf, setDeleteOf] = useState<Project | null>(null);
   const [updateState, updateAction] = useActionState(updateProjectAction, initial);
-
   const primaryProject = projects[0] ?? null;
+  const isContract = isContractCustomerStatus(customerStatus);
 
   return (
     <div className="space-y-4">
@@ -64,7 +67,7 @@ export default function CustomerSitesPanel({
         <div>
           <h3 className="text-sm font-semibold text-navy-900">현장 목록</h3>
           <p className="mt-0.5 text-xs text-slate-600">
-            계약 고객을 현장으로 전환한 뒤 공사 일정을 등록합니다.
+            계약 전 점검·상담부터 견적·계약·공사까지 같은 현장 ID로 이어갑니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -113,35 +116,68 @@ export default function CustomerSitesPanel({
               className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
             />
           </label>
-          <label className="text-xs text-gray-600">
-            현장상태
-            <select
-              name="status"
-              defaultValue={editing.status}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-            >
-              {PROJECT_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-gray-600">
-            담당자
-            <select
-              name="assigned_employee_id"
-              defaultValue={editing.assigned_employee_id ?? ""}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-            >
-              <option value="">미지정</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {empLabel(e)}
-                </option>
-              ))}
-            </select>
-          </label>
+
+          {isContract ? (
+            <label className="text-xs text-gray-600">
+              현장상태
+              <select
+                name="status"
+                defaultValue={editing.status}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                {PROJECT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="text-xs text-gray-600">
+              현장상태
+              <input type="hidden" name="status" value="준비" />
+              <p className="mt-1 rounded-lg border bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
+                준비 · 계약 전 점검/상담
+              </p>
+            </div>
+          )}
+
+          {isAdmin ? (
+            <label className="text-xs text-gray-600">
+              담당자
+              <select
+                name="assigned_employee_id"
+                defaultValue={editing.assigned_employee_id ?? ""}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="">미지정</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {empLabel(employee)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="text-xs text-gray-600">
+              담당자
+              <input
+                type="hidden"
+                name="assigned_employee_id"
+                value={currentEmployeeId ?? editing.assigned_employee_id ?? ""}
+              />
+              <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm text-navy-900">
+                {empLabel(
+                  employees.find(
+                    (employee) =>
+                      employee.id ===
+                      (currentEmployeeId ?? editing.assigned_employee_id),
+                  ),
+                )}
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 sm:col-span-2">
             <button
               type="submit"
@@ -169,72 +205,83 @@ export default function CustomerSitesPanel({
       )}
 
       <div className="space-y-2">
-        {projects.map((p) => (
+        {projects.map((project) => (
           <article
-            key={p.id}
+            key={project.id}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4"
           >
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium text-navy-900">{p.name}</p>
+                <p className="font-medium text-navy-900">{project.name}</p>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CLASS[p.status] || "bg-slate-100 text-slate-900"}`}
+                  className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_CLASS[project.status] || "bg-slate-100 text-slate-900"}`}
                 >
-                  {p.status}
+                  {project.status}
                 </span>
+                {!isContract && project.status === "준비" && (
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                    점검·상담 단계
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-xs text-slate-600">
-                {[p.address || "주소 미등록", `담당 ${empLabel(p.employees)}`].join(
-                  " · ",
-                )}
+                {[
+                  project.address || "주소 미등록",
+                  `담당 ${empLabel(project.employees)}`,
+                ].join(" · ")}
               </p>
             </div>
             <div className="flex flex-wrap gap-1">
               <Link
-                href={`/projects/${p.id}/schedule`}
+                href={`/projects/${project.id}/schedule`}
                 className="rounded-lg bg-navy-800 px-3 py-2 text-xs font-medium text-white"
               >
-                공사 일정 등록
+                {isContract ? "공사 일정 등록" : "현장 일정"}
               </Link>
               <Link
-                href={`/customers/${customerId}/projects/${p.id}/materials`}
+                href={`/customers/${customerId}/projects/${project.id}/materials`}
                 className="rounded-lg border border-gold-300 bg-gold-50 px-3 py-2 text-xs font-medium text-navy-900"
               >
                 마감자재
               </Link>
               <button
                 type="button"
-                onClick={() => setEditing(p)}
+                onClick={() => setEditing(project)}
                 className="rounded-lg border px-3 py-2 text-xs"
               >
                 수정
               </button>
-              <button
-                type="button"
-                onClick={() => setDeleteOf(p)}
-                className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600"
-              >
-                삭제
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteOf(project)}
+                  className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600"
+                >
+                  삭제
+                </button>
+              )}
             </div>
           </article>
         ))}
         {projects.length === 0 && (
-          <p className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-600">
-            등록된 현장이 없습니다. 계약 완료 후 현장을 생성해 주세요.
+          <p className="rounded-xl border border-dashed p-8 text-center text-sm leading-6 text-slate-600">
+            등록된 현장이 없습니다. 점검·Window Lab 상담을 시작하려면 먼저 현장을 만들어 주세요.
           </p>
         )}
       </div>
 
-      {deleteOf && (
+      {isAdmin && deleteOf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <h3 className="font-semibold text-navy-900">현장 삭제</h3>
             <p className="mt-2 text-sm">{deleteOf.name}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              점검·상담·견적·계약에 연결된 현장은 삭제되지 않습니다. 업무가 중단된 현장은 삭제 대신 보류/취소 상태를 우선 사용하세요.
+            </p>
             <form
-              action={async (fd) => {
-                const r = await deleteProjectAction(fd);
-                if (!r.success) alert(r.error);
+              action={async (formData) => {
+                const result = await deleteProjectAction(formData);
+                if (!result.success) alert(result.error);
                 else setDeleteOf(null);
               }}
               className="mt-3 space-y-3"
