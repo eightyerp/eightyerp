@@ -35,6 +35,11 @@ assert(
   "연결 이력이 있는 현장 삭제 방어가 유지된다",
 );
 assert(
+  /현장 삭제는 관리자만/.test(projects) &&
+    /if \(!isAdmin\)/.test(projects),
+  "현장 삭제는 관리자 전용으로 유지한다",
+);
+assert(
   !/setContractQuote\s*\(/.test(quoteActions),
   "견적 액션이 레거시 플래그 전환 함수를 호출하지 않는다",
 );
