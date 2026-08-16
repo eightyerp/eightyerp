@@ -14,6 +14,7 @@
 --   - 고객/상담/일정 데이터 삭제 없음
 --   - 기존 schedule_changed 과거 이벤트만 skipped 처리
 --   - 실제 Push 발송/cron/Secret 활성화는 별도 승인 후 수행
+--   - service_role scheduler에서도 회사 범위가 보존되도록 event.company_id를 명시한다.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -69,6 +70,7 @@ begin
   with candidates as (
     select
       c.id as customer_id,
+      c.company_id,
       c.assigned_employee_id,
       c.name as customer_name,
       c.status::text as customer_status,
@@ -117,6 +119,7 @@ begin
     schedule_id,
     customer_id,
     assigned_employee_id,
+    company_id,
     payload,
     status,
     dedupe_key
@@ -127,6 +130,7 @@ begin
     x.customer_id,
     x.customer_id,
     x.assigned_employee_id,
+    x.company_id,
     jsonb_build_object(
       'source', 'crm_stale_customer_scheduler',
       'customer_name', x.customer_name,
@@ -149,6 +153,7 @@ begin
   with candidates as (
     select
       c.id as customer_id,
+      c.company_id,
       c.assigned_employee_id,
       c.name as customer_name,
       c.status::text as customer_status,
@@ -197,6 +202,7 @@ begin
     schedule_id,
     customer_id,
     assigned_employee_id,
+    company_id,
     payload,
     status,
     dedupe_key
@@ -207,6 +213,7 @@ begin
     x.customer_id,
     x.customer_id,
     x.assigned_employee_id,
+    x.company_id,
     jsonb_build_object(
       'source', 'crm_stale_customer_scheduler',
       'customer_name', x.customer_name,
