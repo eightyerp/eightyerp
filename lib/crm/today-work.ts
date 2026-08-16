@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase-server";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import { listEmployeeTasks } from "@/lib/crm/employee-tasks";
-import { listQuotes } from "@/lib/crm/quote-mgmt";
+import { toKoreaDateKey } from "@/lib/crm/korea-date";
 import {
   getScheduleAccess,
   listEmployeesInScope,
   listTeams,
+  type ScheduleAccess,
 } from "@/lib/crm/schedule-access";
 import { isCustomerScheduleOverdue } from "@/lib/crm/schedule-utils";
 import type {
@@ -68,20 +69,7 @@ export type TodayWorkBundle = {
   filterTeamId: string | null;
 };
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function toDateKey(iso: string | Date) {
-  const d = typeof iso === "string" ? new Date(iso) : iso;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function isToday(iso: string | null | undefined) {
-  if (!iso) return false;
-  return toDateKey(iso) === toDateKey(new Date());
-}
-function empLabel(e?: { name: string; title?: string } | null) {
+function empLabel(e?: { name: string; title?: string | null } | null) {
   if (!e) return null;
   return e.title ? `${e.name} ${e.title}` : e.name;
 }
@@ -205,18 +193,64 @@ function sortItems(a: TodayWorkItem, b: TodayWorkItem) {
   return at - bt;
 }
 
+/**
+ * 대시보드에는 견적 요약만 필요하다. 일반 listQuotes의 quote_items/quote_files 전체 embed를
+ * 피하고, 기존 앱 권한 범위(created_by / 담당직원 / 고객담당자)는 그대로 적용한다.
+ */
+async function listTodayWorkQuotes(
+  access: ScheduleAccess,
+  employees: Employee[],
+  employeeId?: string,
+): Promise<ErpQuote[]> {
+  const scopedIds = new Set(employees.map((employee) => employee.id));
+  if (employeeId && !access.canViewAll && !scopedIds.has(employeeId)) return [];
+
+  const supabase = await createClient();
+  let query = supabase
+    .from("quotes")
+    .select(`
+      id, customer_id, assigned_employee_id, created_by, title, status,
+      final_amount, memo, sent_at, created_at, valid_until, is_contract_quote,
+      customers:customers!quotes_customer_id_fkey (
+        id, name, phone, address, assigned_employee_id, status
+      ),
+      employees ( id, name, title, team_id )
+    `)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (employeeId) query = query.eq("assigned_employee_id", employeeId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message || "견적 목록을 불러오지 못했습니다.");
+
+  let rows = (data ?? []) as unknown as ErpQuote[];
+  if (!access.canViewAll) {
+    rows = rows.filter((row) => {
+      if (row.created_by && row.created_by === access.userId) return true;
+      if (row.assigned_employee_id && scopedIds.has(row.assigned_employee_id)) {
+        return true;
+      }
+      return Boolean(
+        row.customers?.assigned_employee_id &&
+          scopedIds.has(row.customers.assigned_employee_id),
+      );
+    });
+  }
+  return rows;
+}
+
 export async function getTodayWorkBundle(filters: {
   employeeId?: string | null;
   teamId?: string | null;
 } = {}): Promise<TodayWorkBundle> {
   const access = await getScheduleAccess();
-  const employees = await listEmployeesInScope(access);
-  let teams: Team[] = [];
-  try {
-    teams = await listTeams();
-  } catch {
-    teams = [];
-  }
+  const [employees, teams] = await Promise.all([
+    listEmployeesInScope(access),
+    listTeams().catch(() => [] as Team[]),
+  ]);
+  const todayKey = toKoreaDateKey(new Date());
 
   let filterEmployeeId = filters.employeeId ?? null;
   let filterTeamId = filters.teamId ?? null;
@@ -253,9 +287,11 @@ export async function getTodayWorkBundle(filters: {
       },
       access,
     ).catch(() => [] as EmployeeTask[]),
-    listQuotes({
-      employeeId: filterEmployeeId || undefined,
-    }).catch(() => [] as ErpQuote[]),
+    listTodayWorkQuotes(
+      access,
+      employees,
+      filterEmployeeId || undefined,
+    ).catch(() => [] as ErpQuote[]),
   ]);
 
   let scopedSchedules = schedulesAll;
@@ -287,18 +323,17 @@ export async function getTodayWorkBundle(filters: {
   }
 
   const schedulesToday = scopedSchedules.filter(
-    (s) => isToday(s.start_at) && s.status !== "취소",
+    (s) => toKoreaDateKey(s.start_at) === todayKey && s.status !== "취소",
   );
   const overdueSchedules = scopedSchedules.filter(
     (s) => isCustomerScheduleOverdue(s) && s.status !== "취소",
   );
 
-  const todayKey = toDateKey(new Date());
   const contactFromSchedules = scopedSchedules.filter(
-    (s) => s.next_contact_at && toDateKey(s.next_contact_at) === todayKey,
+    (s) => s.next_contact_at && toKoreaDateKey(s.next_contact_at) === todayKey,
   );
 
-  // customers.next_contact_at = today
+  // customers.next_contact_at = today (Asia/Seoul 기준)
   const contactCustomersMap = new Map<string, TodayWorkItem>();
   try {
     const supabase = await createClient();
@@ -417,12 +452,12 @@ export async function getTodayWorkBundle(filters: {
   }
 
   const now = Date.now();
-  const in3Days = now + 3 * 86400000;
+  const expiryEndKey = toKoreaDateKey(new Date(now + 3 * 86400000));
   const expiringQuotes = scopedQuotes.filter((q) => {
     if (!q.valid_until) return false;
     if (["계약전환", "취소", "만료"].includes(q.status)) return false;
-    const t = new Date(q.valid_until).getTime();
-    return t >= startOfDay(new Date()).getTime() && t <= in3Days;
+    const expiryKey = toKoreaDateKey(q.valid_until);
+    return expiryKey >= todayKey && expiryKey <= expiryEndKey;
   });
 
   const oldDraftQuotes = scopedQuotes.filter((q) => {
@@ -453,7 +488,7 @@ export async function getTodayWorkBundle(filters: {
   const items: TodayWorkItem[] = [
     ...schedulesToday.map(scheduleToItem),
     ...overdueSchedules
-      .filter((s) => !isToday(s.start_at))
+      .filter((s) => toKoreaDateKey(s.start_at) !== todayKey)
       .map((s) => {
         const item = scheduleToItem(s);
         item.kind = "overdue";
@@ -502,9 +537,9 @@ export async function getTodayWorkBundle(filters: {
 
   const byAssignee: AssigneeTodayStats[] = [];
   if (access.canViewAll || access.canViewTeam) {
-    const pool = access.canViewAll
-      ? await listEmployeesInScope({ ...access, canViewAll: true })
-      : employees;
+    // employees는 위에서 이미 현재 권한 범위로 조회했다. 관리자라면 회사 전체,
+    // manager라면 팀 범위이므로 여기서 동일 목록을 다시 조회하지 않는다.
+    const pool = employees;
 
     for (const emp of pool) {
       const empItems = unique.filter((i) => i.employeeId === emp.id);
@@ -540,29 +575,17 @@ export async function getTodayWorkBundle(filters: {
     );
   }
 
-  const profileName =
-    access.profile && "employees" in (access as object)
-      ? null
-      : null;
-
   let userName: string | null = null;
   if (access.employeeId) {
     const me = employees.find((e) => e.id === access.employeeId);
     userName = me ? empLabel(me) : null;
   }
   if (!userName) {
-    try {
-      const supabase = await createClient();
-      const { data } = await supabase.auth.getUser();
-      userName =
-        (data.user?.user_metadata?.name as string | undefined) ??
-        data.user?.email ??
-        null;
-    } catch {
-      userName = null;
-    }
+    const profileEmployee = access.profile?.employees;
+    userName = profileEmployee?.name
+      ? empLabel(profileEmployee)
+      : access.profile?.full_name?.trim() || access.profile?.email || null;
   }
-  void profileName;
 
   return {
     access: {

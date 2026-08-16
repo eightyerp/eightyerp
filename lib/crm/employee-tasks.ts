@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase-server";
+import { koreaDayBounds } from "@/lib/crm/korea-date";
 import {
   assertAssigneeInScope,
   canSoftDeleteSchedule,
@@ -109,8 +110,7 @@ export async function listEmployeeTasks(
   }
 
   if (filters.todayOnly) {
-    const start = startOfDay(new Date());
-    const end = endOfDay(new Date());
+    const { start, end } = koreaDayBounds();
     rows = rows.filter((r) => {
       if (!r.due_at) return r.status !== "완료" && r.status !== "취소";
       const t = new Date(r.due_at).getTime();
@@ -216,15 +216,4 @@ export function toTaskSafeError(
     }
   }
   return fallback;
-}
-
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function endOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
 }
