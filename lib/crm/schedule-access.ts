@@ -26,20 +26,14 @@ export async function getScheduleAccess(): Promise<ScheduleAccess> {
   if (!access.isAuthenticated || !access.userId) {
     throw new Error("로그인이 필요합니다.");
   }
-
-  let teamId: string | null = null;
-  const employeeId = access.profile?.employee_id ?? null;
-
-  if (employeeId) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("employees")
-      .select("id, team_id")
-      .eq("id", employeeId)
-      .maybeSingle();
-    teamId = (data?.team_id as string | null) ?? null;
+  if (!access.canAccessErp) {
+    throw new Error("관리자 승인 후 이용할 수 있습니다.");
   }
 
+  const employeeId = access.profile?.employee_id ?? null;
+  // getCurrentUserAccess()가 이미 employee + team_id를 함께 조회한다.
+  // 견적/일정 진입마다 employees를 다시 조회하지 않고 같은 검증 결과를 재사용한다.
+  const teamId = access.profile?.employees?.team_id ?? null;
   const role = access.role;
   const canViewAll = isAdminRole(role);
   const canViewTeam = isManagerOrAboveRole(role);
