@@ -128,8 +128,9 @@ PUSH 피로 방지:
 
 ## 6. 현재 테스트/배포 상태
 
-- 최신 Vercel Preview: Ready
-- Preview URL: `https://eightyerp-git-feat-crm-mobile-pwa-push-foundation-eighty-erp.vercel.app`
+- Vercel 결제 완료 확인: 2026-08-16 18:53 KST
+- 결제 후 신규 커밋으로 Preview build-rate-limit 해제 여부 재검증 중
+- 직전 정상 Preview URL: `https://eightyerp-git-feat-crm-mobile-pwa-push-foundation-eighty-erp.vercel.app`
 - 실제 직원 로그인 상태의 모바일 360/390/430px QA는 아직 필요
 - Android Chrome PWA / iPhone Safari PWA 실기기 설치 확인 필요
 
