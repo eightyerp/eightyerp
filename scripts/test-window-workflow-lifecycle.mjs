@@ -17,6 +17,8 @@ const projectConstants = read("lib/crm/project-constants.ts");
 const projects = read("lib/crm/projects.ts");
 const quoteActions = read("app/actions/quote-mgmt.ts");
 const transition = read("lib/crm/quote-contract-transition.ts");
+const quoteDetail = read("components/quotes/QuoteDetailView.tsx");
+const contractPanel = read("components/quotes/ContractTransitionPanel.tsx");
 const lifecycle = read("docs/WINDOW_WORKFLOW_LIFECYCLE.md");
 
 assert(
@@ -59,6 +61,16 @@ assert(
 assert(
   /현장이 여러 개/.test(quoteActions),
   "여러 현장은 자동 추정하지 않고 차단한다",
+);
+assert(
+  !quoteDetail.includes("계약 견적으로 지정") &&
+    !quoteDetail.includes("setContractQuoteAction"),
+  "견적 상세에 레거시 계약전환 진입점을 다시 노출하지 않는다",
+);
+assert(
+  contractPanel.includes("실제 계약 전환") &&
+    contractPanel.includes("실제 계약으로 전환"),
+  "명시적 실제 계약전환 패널을 유일한 UI 진입점으로 유지한다",
 );
 assert(
   lifecycle.includes("점검 → 상담 → 견적") &&
