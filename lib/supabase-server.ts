@@ -48,7 +48,9 @@ function copyAllCookies(from: NextResponse, to: NextResponse): NextResponse {
 
 /**
  * Refresh auth session cookies and gate protected routes.
- * Must call getUser() (not only getSession) so tokens stay in sync.
+ * getClaims() verifies the JWT signature and is the recommended server-side
+ * identity check for protected pages. With asymmetric signing keys it avoids
+ * the per-request Auth user lookup required by getUser().
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -93,23 +95,22 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Do not run code between createServerClient and auth.getUser().
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  // Do not run code between createServerClient and auth.getClaims().
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const userId =
+    typeof claimsData?.claims?.sub === "string" ? claimsData.claims.sub : null;
 
   // Missing session before login is expected — do not treat as an app error.
-  if (userError && !isMissingSessionError(userError)) {
-    console.error("[auth/proxy] getUser failed", {
-      message: userError.message,
-      status: userError.status,
-      name: userError.name,
+  if (claimsError && !isMissingSessionError(claimsError)) {
+    console.error("[auth/proxy] getClaims failed", {
+      message: claimsError.message,
+      status: claimsError.status,
+      name: claimsError.name,
       path: pathname,
     });
   }
 
-  const isAuthenticated = Boolean(user);
+  const isAuthenticated = Boolean(userId);
   const isPendingPath = isPendingRoute(pathname);
 
   // Unauthenticated users may always reach /login (and other public routes).
@@ -122,11 +123,11 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Approval / active gate for authenticated users
-  if (isAuthenticated && user) {
+  if (isAuthenticated && userId) {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("is_active, is_approved, approval_status")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     let canAccessErp = false;
@@ -136,7 +137,7 @@ export async function updateSession(request: NextRequest) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("profiles")
         .select("is_active")
-        .eq("id", user.id)
+        .eq("id", userId)
         .maybeSingle();
 
       if (fallbackError || !fallback) {
