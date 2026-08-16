@@ -1,6 +1,6 @@
 # Eighty ERP Master Baseline
 
-기준 스냅샷: 2026-08-16 21:22 KST  
+기준 스냅샷: 2026-08-16 21:37 KST  
 운영 기준: `main` / Supabase `eighty-erp` (`zhihbyarqpkudqyomcxv`)
 
 ## 1. 이 문서의 목적
@@ -83,6 +83,7 @@
 | 직원 할 일 | 부분개발 | `employee_tasks` 운영 DB 복구, UX 연결 점검 |
 | ERP 알림 | 부분개발 | 인앱 고객/수금/지출, 외부 카카오 전 단계 |
 | Window workflow hub | 부분개발 | 운영 ID 체인 존재, E2E 확대 필요 |
+| CRM 모바일 | PR대기 | Umbrella #70은 병합 금지, #78/#79/#80으로 분리 |
 | 통합검색 | 신규예정 | 고객/전화/견적/계약/현장/문서 |
 | AS | 신규예정 | 접수→배정→방문→처리→완료 |
 | 구매/발주 | 신규예정 | 자재/협력업체/납기/현장 |
@@ -107,77 +108,118 @@ PR #69 read-only preflight:
 - 신규 workflow RPC/identity trigger/source lock trigger: 운영에 아직 없음
 - 기존 `transition_quote_to_contract(...)` replay project mismatch guard marker: 0
 
+Security #77 read-only inventory:
+
+- 의도된 anon 진입점: 초대 token / 공개 견적 token / 공개 명함 Storage helper
+- authenticated 전용 helper의 불필요한 anon/PUBLIC direct EXECUTE 후보 분리 완료
+- mutable search_path 경고 4종 분류 완료
+- 운영 DB ACL/search_path 변경은 아직 없음
+
 ## 6. 현재 열린 핵심 PR
 
 ### PR #71 — ERP Master Baseline 및 알림 성능 1차 안정화
 
 - 분류: `PR대기 / P0`
-- 별도 브랜치 `agent/erp-master-baseline`
-- DB/RLS/migration 변경 없음
-- ERP 상단 알림 category별 3회 조회 → bundle 1회
+- ERP 알림 category별 3회 조회 → bundle 1회
 - polling 30초 → 60초, hidden tab 중지
 - Baseline/Agent guard CI 추가
 - CI: baseline / lifecycle / ESLint / Production build PASS
-- main 병합/Production 반영 전
+- DB/RLS/migration 변경 없음
+- Ready for review, main 미병합
+
+### PR #76 — 최신 main ERP 핵심동선 성능 V2
+
+- 분류: `PR대기 / P0`
+- `getScheduleAccess()` employee team 재조회 제거
+- 관리자 견적 목록 본문/옵션 조회 병렬화
+- 상담일정 waterfall 및 full quote object 조회 축소
+- `/dashboard`, `/quotes`, `/schedules/customers` GET에서 Proxy 중복 profile gate를 DAL fail-closed로 단일화
+- Server Action/POST/write/기타 경로의 기존 Proxy gate 유지
+- ERP CI PASS, mergeable=true, Ready for review
+- DB migration 없음
+
+### PR #77 — Security Advisor ACL/search_path P0
+
+- 분류: `PR대기 / P0`
+- migration version: **`20260816070000`**
+- authenticated-only helper 12종 anon/PUBLIC 직접 EXECUTE 제거 준비
+- search_path 4종 `pg_catalog, public` 고정 준비
+- 공개 초대/견적/명함 anon 진입점 3종 보존 sentinel
+- Security migration safety + ERP CI 전부 PASS
+- mergeable=true, Ready for review
+- 운영 DB 미적용
 
 ### PR #69 — Window Lab 견적 handoff 원자성 및 project 무결성
 
 - 분류: `PR대기 / P0`
+- migration: `20260816074308`, `20260816100000`
 - 운영 DB read-only preflight PASS
 - 적용 순서: project ref 재확인 → migration → staff rollback verifier → synthetic 0 → 앱 병합/배포
 - 앱을 DB migration보다 먼저 배포하지 않는다.
 
-### PR #70 — 직원용 CRM 모바일 PWA
+### PR #70 — CRM 모바일 Umbrella
 
-- 분류: `PR대기 / 대형 기능`
-- 통째 병합 금지
-- PWA shell → 모바일 업무 → PUSH 스키마/worker → 실제 모바일 UAT 순으로 Gate 분리
+- 분류: `UMBRELLA / DO NOT MERGE`
+- 158 commits / 53 files에 UI, PUSH DB, Edge Function, Service Worker, Android TWA가 혼합
+- 구현 자산 보존용 Source Branch로만 유지
+- 실제 Release는 #78 → #79 → #80으로 분리
+- Umbrella의 기존 `09:00/09:30` PUSH migration은 #69 `10:00`보다 앞이므로 Production 직접 적용 금지
 
-## 7. 정리 완료한 과거 PR
+## 7. Migration ordering 계약
+
+현재 계획 순서에서 DB migration version은 아래처럼 단조 증가하도록 관리한다.
+
+1. **#77 Security** — `20260816070000`
+2. **#69 Quote atomicity** — `20260816074308`, `20260816100000`
+3. **#79 CRM PUSH Gate B** — #69 마지막 version 이후로 재번호화 (`11:30+` 권장, 적용 전 remote ledger 재확인)
+
+새 DB migration을 추가할 때는 **열린 PR의 아직 미적용 migration version까지 포함해 충돌 여부를 확인**한다.
+
+## 8. 정리 완료한 과거 PR
 
 ### 성능
 
 - PR #62: **CLOSED 2026-08-16**
 - 현재 main보다 29 commits behind 확인
-- 분석/아이디어는 Issue #73 `ERP 핵심동선 성능 V2`로 승계
+- 유효한 분석은 #73 / PR #76으로 승계
 
 ### Window Check Android
 
 - PR #44, #49: **CLOSED 2026-08-16**
 - 별도 Window Check 저장소가 Source of Truth
-- 코드/브랜치/Actions 이력은 보존
+- 코드/브랜치/Actions 이력 보존
 
 ### Finance V2 Preview
 
 - PR #48, #50: **CLOSED 2026-08-16**
-- #50은 현재 main과 54 commits ahead / 76 commits behind, mergeable=false 확인
-- 현재 main에는 수금/지출/정산/월손익 운영 기반이 이미 존재
-- 유효한 아이디어는 Issue #75 `Finance UX 통합`으로 승계
-- 과거 Preview/draft migration을 일괄 적용하지 않는다.
+- #50: main과 54 commits ahead / 76 commits behind, mergeable=false
+- 현재 main의 수금/지출/정산/월손익을 유지
+- 유효한 아이디어는 #75 Finance UX 통합으로 승계
 
-## 8. 현재 독립 Backlog
+## 9. 현재 독립 Backlog / Release Gate
 
-- **#72 P0 Security** — Supabase Security Advisor 권한 hardening
-  - 1차 read-only inventory 완료
-  - 공개 token RPC / Storage helper / authenticated helper / trigger-only로 분류
-- **#73 P0 Performance** — 최신 main 기준 핵심동선 성능 V2
-- **#74 P1 Status Center** — 배포·DB·오류·PR·성능 통합 상태센터
+- **#72 P0 Security** — #77 구현 준비 완료, 운영 미적용
+- **#73 P0 Performance** — #76 구현 준비 완료, 운영 미반영
+- **#74 P1 Status Center** — 배포·DB·오류·PR·성능 통합
 - **#75 P1 Finance UX** — 수금·지출·정산·현장재무 업무함
+- **#78 P1 CRM Gate A** — PWA Shell + 핵심 영업 UX, DB migration 없음
+- **#79 P1 CRM Gate B** — PUSH 스키마/Delivery/Scheduler, migration 재번호화 필수
+- **#80 P1 CRM Gate C** — Android/iPhone/TWA/직원 E2E
 - **#65 P0 Lifecycle** — 계약 전 현장→점검→상담→견적→계약
 - **#54 Integration** — ERP↔Window Lab/Window Check 연계도구
 
-## 9. P0 안정화 우선순위
+## 10. P0 안정화 우선순위
 
 1. PR #71 Master Baseline 확정
-2. Issue #73 핵심 동선 속도 V2
-3. Issue #72 Security hardening
+2. PR #76 핵심 동선 성능 V2
+3. PR #77 Security hardening
 4. PR #69 견적/계약 원자성 Release Gate
 5. 직원 UAT 오류를 기능별 backlog로 분리
 6. CRM/Window Lab/Window Check ID 계약 고정
 
 P0 안정 전 AS/발주/문서센터 같은 대형 신규 모듈을 동시에 시작하지 않는다.
 
-## 10. 성능 원칙
+## 11. 성능 원칙
 
 - 사용자/회사/권한은 요청당 1회 계산 후 재사용
 - 같은 원장의 대시보드 카드별 반복 조회 금지
@@ -187,19 +229,20 @@ P0 안정 전 AS/발주/문서센터 같은 대형 신규 모듈을 동시에 �
 - 기능 삭제보다 DB 왕복/payload/직렬 await/반복 권한검증을 먼저 줄임
 - 핵심 동선: `dashboard → customers → quotes → quote detail/save → schedules → employees`
 
-## 11. 변경 규칙
+## 12. 변경 규칙
 
 - 목적 하나 = PR 하나
 - 대형 기능은 Gate 분리
 - 운영 DB 의존 코드와 migration 적용 순서를 PR에 기록
+- **아직 미적용인 다른 열린 PR migration version도 반드시 확인**
 - 과거 migration 재실행 금지, 현재 운영 스키마 기준 forward migration
-- DB write/RLS 변경은 verification + rollback/forward-fix 없이 병합 금지
+- DB write/RLS/ACL 변경은 verification + rollback/forward-fix 없이 병합 금지
 - `main` 직접 실험 금지
 - 신규 기능 전에 ERP/CRM/Window Lab 중복 확인
 - UI의 `준비중` 문구만으로 미개발 판단 금지 — 코드/DB 실제 상태 확인
 
-## 12. 다음 개발 순서
+## 13. 다음 개발 순서
 
-`P0 기준선 #71 → 속도 #73 → 보안 #72 → 원자성 #69 → 현장 허브 → Finance UX #75 → CRM 단계병합 #70 → 상태센터 #74 → 신규모듈`
+`P0 #71 기준선 → #76 속도 → #77 보안 → #69 원자성 → 현장 허브 → #75 Finance UX → #78 CRM A → #79 CRM PUSH → #80 모바일 E2E → #74 상태센터 → 신규모듈`
 
 순서를 바꾸면 이유와 선행조건을 이 문서에 먼저 기록한다.
