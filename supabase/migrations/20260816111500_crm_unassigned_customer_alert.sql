@@ -10,6 +10,7 @@
 --   - 고객/직원 데이터 수정 없음
 --   - 동일 고객/관리자 조합은 dedupe_key로 1회만 생성
 --   - 실제 PUSH 발송/cron/Secret 활성화는 별도 승인 후 수행
+--   - 알림 클릭은 설치형 CRM 범위 안의 간편 담당자 배정 화면으로 연결한다.
 -- =============================================================================
 
 create or replace function public.enqueue_due_crm_unassigned_customer_alerts(
@@ -46,7 +47,7 @@ begin
       'customer_name', c.name,
       'customer_status', c.status,
       'created_at', c.created_at,
-      'url', '/customers/' || c.id::text || '/edit'
+      'url', '/crm/customers/' || c.id::text || '/assignee'
     ),
     'pending',
     'customer_unassigned_10m:' || c.id::text || ':' || e.id::text
