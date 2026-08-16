@@ -16,11 +16,48 @@ function assert(condition, message) {
 const projectConstants = read("lib/crm/project-constants.ts");
 const projects = read("lib/crm/projects.ts");
 const quoteActions = read("app/actions/quote-mgmt.ts");
+const quoteManagement = read("lib/crm/quote-mgmt.ts");
+const quoteWizard = read("components/quotes/QuoteWizardForm.tsx");
+const quoteIntegrityMigration = read(
+  "supabase/migrations/20260816074308_quote_workflow_atomic_integrity.sql",
+);
+const quoteIntegrityRollback = read(
+  "supabase/rollback/20260816074308_quote_workflow_atomic_integrity_down.sql",
+);
+const quoteContractRetryMigration = read(
+  "supabase/migrations/20260816100000_quote_contract_retry_project_guard.sql",
+);
+const quoteContractRetryRollback = read(
+  "supabase/rollback/20260816100000_quote_contract_retry_project_guard_down.sql",
+);
+const quoteIntegrityVerification = read(
+  "supabase/verification/20260816074308_quote_workflow_atomic_integrity_verify.sql",
+);
+const workflowReadiness = read("scripts/test-window-workflow-readiness.mjs");
+const contractRetryReadiness = read(
+  "scripts/test-contract-transition-replay-integrity.mjs",
+);
 const contractActions = read("app/actions/quote-contract-transition.ts");
 const transition = read("lib/crm/quote-contract-transition.ts");
 const quoteDetail = read("components/quotes/QuoteDetailView.tsx");
 const contractPanel = read("components/quotes/ContractTransitionPanel.tsx");
 const lifecycle = read("docs/WINDOW_WORKFLOW_LIFECYCLE.md");
+const quoteContractRetryFunction = quoteContractRetryMigration.slice(
+  quoteContractRetryMigration.indexOf(
+    "create or replace function public.transition_quote_to_contract",
+  ),
+  quoteContractRetryMigration.indexOf(
+    "revoke all on function public.transition_quote_to_contract",
+  ),
+);
+const quoteContractRetryRollbackFunction = quoteContractRetryRollback.slice(
+  quoteContractRetryRollback.indexOf(
+    "create or replace function public.transition_quote_to_contract",
+  ),
+  quoteContractRetryRollback.indexOf(
+    "revoke all on function public.transition_quote_to_contract",
+  ),
+);
 
 assert(
   !/customerStatus\s*===\s*["']계약완료["']/.test(projectConstants),
@@ -54,6 +91,61 @@ assert(
   "일반 견적 액션에 레거시 계약전환 서버 진입점이 남지 않는다",
 );
 assert(
+  !quoteActions.includes("linkWorkflowContext") &&
+    /parseQuoteWorkflowSourceIds\(formData\)/.test(quoteActions) &&
+    /workflowSource/.test(quoteActions),
+  "견적 생성 후 별도 source UPDATE 없이 원자 RPC context를 전달한다",
+);
+assert(
+  /create_quote_with_workflow_context/.test(quoteManagement) &&
+    /p_source_consultation_id/.test(quoteManagement) &&
+    /p_source_inspection_id/.test(quoteManagement),
+  "점검·상담 source가 전용 원자 견적 RPC 한 번으로 전달된다",
+);
+assert(
+  /effectiveProjectId/.test(quoteManagement) &&
+    /source_consultation_id:\s*source\.source_consultation_id/.test(
+      quoteManagement,
+    ) &&
+    /source_inspection_id:\s*source\.source_inspection_id/.test(
+      quoteManagement,
+    ),
+  "연결 견적 수정·버전 생성에서도 project와 source 영구 ID를 유지한다",
+);
+assert(
+  /initialQuote\?\.project_id\s*\?\?\s*initialProjectId/.test(quoteWizard) &&
+    /initialQuote\?\.source_consultation_id/.test(quoteWizard) &&
+    /initialQuote\?\.source_inspection_id/.test(quoteWizard),
+  "견적 수정 폼이 저장된 project/source ID를 누락하지 않는다",
+);
+assert(
+  /p\.customer_id\s*=\s*new\.customer_id/.test(quoteIntegrityMigration) &&
+    /quotes_00_validate_project_identity/.test(quoteIntegrityMigration) &&
+    /quotes_01_lock_workflow_source/.test(quoteIntegrityMigration),
+  "DB가 cross-customer project와 workflow source 재연결을 차단한다",
+);
+assert(
+  /create_quote_with_workflow_context/.test(quoteIntegrityMigration) &&
+    /for update/.test(quoteIntegrityMigration) &&
+    /v_outcome\s*=\s*'replayed'/.test(quoteIntegrityMigration) &&
+    /is distinct from p_source_consultation_id/.test(
+      quoteIntegrityMigration,
+    ) &&
+    /is distinct from p_source_inspection_id/.test(quoteIntegrityMigration),
+  "원자 RPC가 replay source pair까지 동일한지 잠금 후 검증한다",
+);
+assert(
+  /drop function if exists public\.create_quote_with_workflow_context/.test(
+    quoteIntegrityRollback,
+  ) &&
+    /quoteIntegrityRollback/.test(workflowReadiness) &&
+    /rollback/.test(workflowReadiness) &&
+    /WQWF-VERIFY-/.test(quoteIntegrityVerification) &&
+    /rollback;/.test(quoteIntegrityVerification) &&
+    !/commit;/.test(quoteIntegrityVerification),
+  "isolated/실권한 DB smoke와 비파괴 rollback 경로가 함께 유지된다",
+);
+assert(
   /export async function transitionQuoteToContractAction/.test(contractActions) &&
     /transitionQuoteToContract\s*\(/.test(contractActions),
   "명시적 계약전환 액션만 실제 전환 서비스를 호출한다",
@@ -61,6 +153,40 @@ assert(
 assert(
   /supabase\.rpc\(["']transition_quote_to_contract["']/.test(transition),
   "실제 계약전환은 운영 원자적 RPC를 사용한다",
+);
+assert(
+  quoteContractRetryFunction.split("contract replay project mismatch").length -
+      1 ===
+      2 &&
+    quoteContractRetryFunction.split(
+      "v_contract.project_id is distinct from p_project_id",
+    ).length -
+      1 ===
+      2 &&
+    quoteContractRetryFunction.split("errcode = '23514'").length - 1 === 2,
+  "계약 재시도 일반·경쟁 반환 경로 모두 다른 project_id를 fail-closed 한다",
+);
+assert(
+  !quoteContractRetryRollbackFunction.includes(
+    "contract replay project mismatch",
+  ) &&
+    quoteContractRetryRollbackFunction.includes(
+      "발송완료 상태의 견적만 전환할 수 있습니다.",
+    ),
+  "emergency rollback은 migration 39 상태 가드를 정확히 복원한다",
+);
+assert(
+  transition.includes("result.already_converted === true") &&
+    transition.includes("result.idempotent === true") &&
+    transition.includes("contract replay project mismatch") &&
+    transition.includes("기존 계약 현장을 확인해 주세요"),
+  "RPC 멱등 결과와 현장 불일치 오류를 사용자에게 정확히 매핑한다",
+);
+assert(
+  contractRetryReadiness.includes("already_converted") &&
+    contractRetryReadiness.includes("23514") &&
+    contractRetryReadiness.includes("projectA2"),
+  "isolated DB가 최초 전환·exact replay·다른 현장 replay를 실행 검증한다",
 );
 assert(
   /if \(input\.projectMode === ["']link["']\)/.test(transition) &&
