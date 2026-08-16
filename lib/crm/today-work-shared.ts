@@ -81,7 +81,6 @@ export type TodayWorkSummary = {
   todayContract: number;
   overdue: number;
   todayContact: number;
-  noNextAction: number;
   expiringQuotes: number;
 };
 
