@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createCustomerScheduleAction,
   deleteCustomerScheduleAction,
@@ -216,7 +216,7 @@ export default function CustomerSchedulesWorkspace({
     ? (schedules.find((s) => s.id === detail.id) ?? detail)
     : null;
 
-  function upsertSchedule(row: CustomerSchedule) {
+  const upsertSchedule = useCallback((row: CustomerSchedule) => {
     setSchedules((prev) => {
       const idx = prev.findIndex((s) => s.id === row.id);
       if (idx < 0) return [row, ...prev];
@@ -224,9 +224,9 @@ export default function CustomerSchedulesWorkspace({
       next[idx] = row;
       return next;
     });
-  }
+  }, []);
 
-  async function finalizeSaveSuccess(state: ScheduleActionResult) {
+  const finalizeSaveSuccess = useCallback(async (state: ScheduleActionResult) => {
     setToast(state.message ?? "저장되었습니다.");
     setFormOpen(false);
     setEditing(null);
@@ -245,7 +245,7 @@ export default function CustomerSchedulesWorkspace({
       upsertSchedule(full);
     }
     router.refresh();
-  }
+  }, [router, upsertSchedule]);
 
   useEffect(() => {
     if (updatePending) pendingKindRef.current = "update";
@@ -265,7 +265,7 @@ export default function CustomerSchedulesWorkspace({
     if (state.error) {
       console.error("[CustomerScheduleForm]", state.error);
     }
-  }, [updatePending, createPending, updateState, createState]);
+  }, [updatePending, createPending, updateState, createState, finalizeSaveSuccess]);
 
   useEffect(() => {
     if (!toast) return;

@@ -19,6 +19,7 @@ function formatPushTime(value: string): string {
 export default function CustomerPushBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<CustomerPushItem[]>([]);
+  const [recentCount, setRecentCount] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,7 +27,14 @@ export default function CustomerPushBell() {
 
     async function load() {
       const next = await getMyCustomerPushesAction();
-      if (!cancelled) setItems(next);
+      if (cancelled) return;
+      const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
+      setItems(next);
+      setRecentCount(
+        next.filter(
+          (item) => new Date(item.createdAt).getTime() >= recentCutoff,
+        ).length,
+      );
     }
 
     void load();
@@ -51,11 +59,6 @@ export default function CustomerPushBell() {
       document.removeEventListener("touchstart", closeOnOutside);
     };
   }, []);
-
-  const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const recentCount = items.filter(
-    (item) => new Date(item.createdAt).getTime() >= recentCutoff,
-  ).length;
 
   return (
     <div ref={wrapperRef} className="relative">
