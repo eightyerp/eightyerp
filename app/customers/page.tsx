@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerFilters from "@/components/customers/CustomerFilters";
@@ -46,6 +47,8 @@ export default async function CustomersPage({
 }: CustomersPageProps) {
   const params = await searchParams;
   const access = await getCurrentUserAccess();
+  if (!access.isAuthenticated || !access.userId) redirect("/login");
+  if (!access.canAccessErp) redirect("/pending-approval");
   const page = Math.max(1, Number(params.page || "1") || 1);
 
   let customers: CustomerWithRelations[] = [];
@@ -71,27 +74,27 @@ export default async function CustomersPage({
       );
 
   const [listResult, employeeResult, sourceResult] = await Promise.allSettled([
-      getCustomers({
-        q: params.q,
-        employeeId: params.employeeId,
-        leadSourceId: params.leadSourceId,
-        status: (params.status as CustomerStatus | undefined) || "",
-        interestItem: params.interestItem,
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
-        contact:
-          params.contact === "today" ||
-          params.contact === "overdue" ||
-          params.contact === "this_week" ||
-          params.contact === "soon"
-            ? params.contact
-            : "",
-        page,
-        pageSize: CUSTOMER_LIST_PAGE_SIZE,
-      }),
-      employeeOptionsPromise,
-      getCustomerListLeadSources(),
-    ]);
+    getCustomers({
+      q: params.q,
+      employeeId: params.employeeId,
+      leadSourceId: params.leadSourceId,
+      status: (params.status as CustomerStatus | undefined) || "",
+      interestItem: params.interestItem,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      contact:
+        params.contact === "today" ||
+        params.contact === "overdue" ||
+        params.contact === "this_week" ||
+        params.contact === "soon"
+          ? params.contact
+          : "",
+      page,
+      pageSize: CUSTOMER_LIST_PAGE_SIZE,
+    }),
+    employeeOptionsPromise,
+    getCustomerListLeadSources(),
+  ]);
 
   if (listResult.status === "fulfilled") {
     customers = listResult.value.customers;

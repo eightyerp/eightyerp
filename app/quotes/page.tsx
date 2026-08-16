@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import QuotesList from "@/components/quotes/QuotesList";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import {
   schemaMissingDevHint,
   schemaMissingStaffMessage,
@@ -47,60 +49,68 @@ type QuotesPageProps = {
 
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const params = await searchParams;
+  const userAccess = await getCurrentUserAccess();
+  if (!userAccess.isAuthenticated || !userAccess.userId) redirect("/login");
+  if (!userAccess.canAccessErp) redirect("/pending-approval");
+
+  const access = await getScheduleAccess();
   const page = Math.max(1, Number(params.page ?? "1") || 1);
+  const isAdmin = access.isAdmin;
+  const lockEmployeeId =
+    !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
+  const filters = {
+    q: params.q,
+    quoteType: params.quoteType,
+    status: params.status,
+    employeeId: lockEmployeeId ?? params.employeeId,
+    lxOnly: params.lxOnly === "true",
+    contractOnly: params.contractOnly === "true",
+    createdFrom: params.createdFrom,
+    createdTo: params.createdTo,
+  };
+
   let quotes: ErpQuote[] = [];
   let total = 0;
   let totalPages = 1;
   let employees: Employee[] = [];
   let importCustomers: InteriorImportCustomerOption[] = [];
-  let lockEmployeeId: string | null = null;
   let loadError: string | null = null;
   let lookupWarning = false;
   let tablesMissing = false;
-  let isAdmin = false;
 
-  try {
-    const access = await getScheduleAccess();
-    isAdmin = access.isAdmin;
-    lockEmployeeId =
-      !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
+  // 관리자/대표는 견적 범위 계산에 직원 목록이 필요하지 않으므로 견적 본문,
+  // 담당자 옵션, Excel 업로드용 고객 옵션을 동시에 시작한다.
+  const employeePromise = listEmployeesInScope(access);
+  const customerPromise = listInteriorImportCustomers();
+  const quotePromise = access.canViewAll
+    ? listQuotesPage(filters, page, access, [])
+    : employeePromise.then((scopedEmployees) =>
+        listQuotesPage(filters, page, access, scopedEmployees),
+      );
 
-    const [employeeResult, customerResult] = await Promise.allSettled([
-      listEmployeesInScope(access),
-      listInteriorImportCustomers(),
-    ]);
+  const [employeeResult, customerResult, quoteResult] = await Promise.allSettled([
+    employeePromise,
+    customerPromise,
+    quotePromise,
+  ]);
 
-    if (employeeResult.status === "fulfilled") {
-      employees = employeeResult.value;
-    } else {
-      lookupWarning = true;
-    }
+  if (employeeResult.status === "fulfilled") {
+    employees = employeeResult.value;
+  } else {
+    lookupWarning = true;
+  }
 
-    if (customerResult.status === "fulfilled") {
-      importCustomers = customerResult.value;
-    } else {
-      lookupWarning = true;
-    }
+  if (customerResult.status === "fulfilled") {
+    importCustomers = customerResult.value;
+  } else {
+    lookupWarning = true;
+  }
 
-    const result = await listQuotesPage(
-      {
-        q: params.q,
-        quoteType: params.quoteType,
-        status: params.status,
-        employeeId: lockEmployeeId ?? params.employeeId,
-        lxOnly: params.lxOnly === "true",
-        contractOnly: params.contractOnly === "true",
-        createdFrom: params.createdFrom,
-        createdTo: params.createdTo,
-      },
-      page,
-      access,
-      employees,
-    );
-    quotes = result.quotes;
-    total = result.total;
-    totalPages = result.totalPages;
-  } catch {
+  if (quoteResult.status === "fulfilled") {
+    quotes = quoteResult.value.quotes;
+    total = quoteResult.value.total;
+    totalPages = quoteResult.value.totalPages;
+  } else {
     tablesMissing = await isQuotesSchemaMissing();
     loadError = tablesMissing
       ? null

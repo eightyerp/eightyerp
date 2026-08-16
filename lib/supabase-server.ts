@@ -5,6 +5,21 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isPendingRoute, isPublicRoute } from "@/lib/auth";
 import { getSupabaseEnv } from "@/lib/supabase-env";
 
+const DAL_AUDITED_GET_ROUTES = new Set([
+  "/dashboard",
+  "/customers",
+  "/quotes",
+  "/schedules/customers",
+  "/system/employees",
+]);
+
+function canUseDalOnlyApprovalGate(request: NextRequest, pathname: string) {
+  return (
+    (request.method === "GET" || request.method === "HEAD") &&
+    DAL_AUDITED_GET_ROUTES.has(pathname)
+  );
+}
+
 function isMissingSessionError(error: {
   name?: string;
   message?: string;
@@ -49,8 +64,7 @@ function copyAllCookies(from: NextResponse, to: NextResponse): NextResponse {
 /**
  * Refresh auth session cookies and gate protected routes.
  * getClaims() verifies the JWT signature and is the recommended server-side
- * identity check for protected pages. With asymmetric signing keys it avoids
- * the per-request Auth user lookup required by getUser().
+ * identity check for protected pages. Secure authorization remains in the DAL.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -122,7 +136,19 @@ export async function updateSession(request: NextRequest) {
     return copyAllCookies(supabaseResponse, redirectResponse);
   }
 
-  // Approval / active gate for authenticated users
+  // These high-frequency GET pages have explicit secure DAL checks in their
+  // page/data layer. Avoid repeating a profiles DB lookup in Proxy for every
+  // client navigation while keeping JWT verification here and all writes gated.
+  if (
+    isAuthenticated &&
+    userId &&
+    canUseDalOnlyApprovalGate(request, pathname)
+  ) {
+    return supabaseResponse;
+  }
+
+  // Approval / active gate for authenticated users on non-audited routes and
+  // non-GET requests (including Server Actions).
   if (isAuthenticated && userId) {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")

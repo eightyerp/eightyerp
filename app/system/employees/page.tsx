@@ -14,12 +14,15 @@ export default async function EmployeeMasterPage() {
   if (!data.isAuthenticated) redirect("/login");
   if (!data.canAccessErp) redirect("/pending-approval");
 
-  const pendingAccounts = data.canManageLoginAccounts
-    ? await listPendingSignups().catch(() => [])
-    : [];
-  const masterEvents = data.canManageAll
-    ? await listEmployeeMasterEvents().catch(() => [])
-    : [];
+  const [pendingAccounts, masterEvents] = await Promise.all([
+    data.canManageLoginAccounts
+      ? listPendingSignups().catch(() => [])
+      : Promise.resolve([]),
+    data.canManageAll
+      ? listEmployeeMasterEvents().catch(() => [])
+      : Promise.resolve([]),
+  ]);
+
   const activeEmployees = data.employees.filter(
     (employee) => employee.is_active && !employee.merged_into_employee_id,
   );
