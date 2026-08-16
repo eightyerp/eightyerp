@@ -15,6 +15,7 @@
 --   - 기존 schedule_changed 과거 이벤트만 skipped 처리
 --   - 실제 Push 발송/cron/Secret 활성화는 별도 승인 후 수행
 --   - service_role scheduler에서도 회사 범위가 보존되도록 event.company_id를 명시한다.
+--   - 미처리/연기 포함 열린 일정이 있는 고객은 장기방치 PUSH에서 제외해 일정 알림과 중복하지 않는다.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -46,7 +47,8 @@ create index if not exists crm_customer_schedules_customer_start_active_idx
 -- 기본 정책
 --   - 3일 이상 ~ 7일 미만: customer_stale_3d 1회
 --   - 7일 이상: customer_stale_7d 1회
---   - 미래 연락일 또는 미래 고객 일정이 있으면 방치로 보지 않음
+--   - 미래 연락일 또는 열린 고객 일정이 있으면 방치로 보지 않음
+--   - 열린 일정이 과거 시각이면 consult_unhandled가 담당하므로 stale PUSH와 중복하지 않음
 --   - 상담/전화/문자/카카오/실측/견적발송/계약협의 등 의미 있는 활동이
 --     새로 생기면 last_activity_at이 바뀌어 이후 타이머가 자연스럽게 reset됨
 --   - 담당자변경/상태변경만으로는 방치 타이머를 reset하지 않음
@@ -110,7 +112,6 @@ begin
         where s.customer_id = c.id
           and s.deleted_at is null
           and s.status not in ('완료', '취소')
-          and s.start_at >= p_now
       )
   )
   insert into public.schedule_alert_events (
@@ -193,7 +194,6 @@ begin
         where s.customer_id = c.id
           and s.deleted_at is null
           and s.status not in ('완료', '취소')
-          and s.start_at >= p_now
       )
   )
   insert into public.schedule_alert_events (
