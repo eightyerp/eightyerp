@@ -1,5 +1,5 @@
 // @ts-nocheck
-import webpush from "npm:web-push@3.6.7";
+import { sendNotification, setVapidDetails } from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.110.6";
 
 type QueueEvent = {
@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    webpush.setVapidDetails(
+    setVapidDetails(
       env("CRM_WEB_PUSH_VAPID_SUBJECT"),
       env("CRM_WEB_PUSH_VAPID_PUBLIC_KEY"),
       env("CRM_WEB_PUSH_VAPID_PRIVATE_KEY"),
@@ -176,7 +176,7 @@ Deno.serve(async (req: Request) => {
 
       for (const subscription of targets) {
         try {
-          await webpush.sendNotification(
+          await sendNotification(
             {
               endpoint: subscription.endpoint,
               keys: {
