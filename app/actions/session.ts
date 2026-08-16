@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUserAccess } from "@/lib/crm/access";
 import { ROLE_LABEL } from "@/lib/crm/constants";
+import {
+  isCompanyNavigationRole,
+  type CompanyNavigationRole,
+  type NavigationRole,
+} from "@/lib/modules/navigation";
 import { createClient } from "@/lib/supabase-server";
 
 type CompanyOptionRpcRow = {
@@ -27,6 +32,8 @@ export type TopBarUserDisplay = {
   companies: TopBarCompanyOption[];
   activeCompanyId: string | null;
   activeCompanyName: string;
+  navigationRole: NavigationRole | null;
+  companyRole: CompanyNavigationRole | null;
 };
 
 export type CompanySwitchResult = {
@@ -37,7 +44,7 @@ export type CompanySwitchResult = {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** TopBar 표시용 — 사용자와 회사 정보를 한 번의 서버 요청으로 반환 */
+/** TopBar/Sidebar 표시용 — 사용자와 회사/권한 정보를 한 번의 서버 조회로 반환 */
 export async function getTopBarUserAction(): Promise<TopBarUserDisplay> {
   const access = await getCurrentUserAccess();
   const profile = access.profile;
@@ -83,6 +90,10 @@ export async function getTopBarUserAction(): Promise<TopBarUserDisplay> {
     companies,
     activeCompanyId: currentCompany?.companyId ?? null,
     activeCompanyName: currentCompany?.companyName ?? "",
+    navigationRole: access.role,
+    companyRole: isCompanyNavigationRole(access.companyRole)
+      ? access.companyRole
+      : null,
   };
 }
 

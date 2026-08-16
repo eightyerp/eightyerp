@@ -4,12 +4,9 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import EightyLogo from "@/components/brand/EightyLogo";
-import { createClient } from "@/lib/supabase";
 import {
   filterNavigation,
   getActiveNavigationItemId,
-  isCompanyNavigationRole,
-  isNavigationRole,
   type CompanyNavigationRole,
   type NavigationRole,
 } from "@/lib/modules/navigation";
@@ -17,6 +14,8 @@ import {
 type SidebarProps = {
   open: boolean;
   onClose: () => void;
+  role: NavigationRole | null;
+  companyRole: CompanyNavigationRole | null;
 };
 
 const GROUP_CACHE_KEY = "eighty:sidebar-groups:v2";
@@ -29,55 +28,14 @@ function SearchParamsReader({
   return children(useSearchParams());
 }
 
-export default function Sidebar({ open, onClose }: SidebarProps) {
+export default function Sidebar({
+  open,
+  onClose,
+  role,
+  companyRole,
+}: SidebarProps) {
   const pathname = usePathname();
-  const [role, setRole] = useState<NavigationRole | null>(null);
-  const [companyRole, setCompanyRole] = useState<CompanyNavigationRole | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user || cancelled) return;
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role, is_active, is_approved, approval_status")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (!profile || cancelled) return;
-        const approved =
-          typeof profile.is_approved === "boolean"
-            ? profile.is_approved === true
-            : true;
-        const status =
-          (profile.approval_status as string | undefined) ??
-          (approved ? "approved" : "pending");
-        const canAccess =
-          profile.is_active === true && approved && status === "approved";
-        if (canAccess && isNavigationRole(profile.role)) {
-          const nextRole = profile.role;
-          const { data: companyRoleData } = await supabase.rpc(
-            "current_company_role",
-          );
-          const nextCompanyRole = isCompanyNavigationRole(companyRoleData)
-            ? companyRoleData
-            : null;
-          setRole(nextRole);
-          setCompanyRole(nextCompanyRole);
-        }
-      } catch {
-        // ignore — menu stays without admin links
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -109,7 +67,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     return (
       <ul className="space-y-0.5">
         {nav.map((group) => {
-          const activeItemId = getActiveNavigationItemId(group.items, pathname, searchParams);
+          const activeItemId = getActiveNavigationItemId(
+            group.items,
+            pathname,
+            searchParams,
+          );
           const active = activeItemId !== null;
           const expanded =
             openGroups[group.id] ??

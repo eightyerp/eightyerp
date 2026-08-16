@@ -2,47 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { TopBarUserDisplay } from "@/app/actions/session";
 import LogoutButton from "@/components/auth/LogoutButton";
 import CompanySwitcher from "@/components/dashboard/CompanySwitcher";
 import ErpNotificationBell from "@/components/dashboard/ErpNotificationBell";
-import {
-  getTopBarUserAction,
-  type TopBarUserDisplay,
-} from "@/app/actions/session";
 
 type TopBarProps = {
   onMenuToggle: () => void;
+  user: TopBarUserDisplay;
 };
 
-const fallbackUser: TopBarUserDisplay = {
-  name: "직원",
-  roleLabel: "",
-  department: "",
-  companies: [],
-  activeCompanyId: null,
-  activeCompanyName: "",
-};
-
-export default function TopBar({ onMenuToggle }: TopBarProps) {
+export default function TopBar({ onMenuToggle, user }: TopBarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [user, setUser] = useState<TopBarUserDisplay>(fallbackUser);
   const searchRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getTopBarUserAction()
-      .then((next) => {
-        if (!cancelled) setUser(next);
-      })
-      .catch(() => {
-        /* keep fallback */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent | TouchEvent) {
