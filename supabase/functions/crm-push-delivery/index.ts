@@ -76,6 +76,15 @@ function pushPayload(event: QueueEvent) {
     };
   }
 
+  if (event.eventType === "customer_unassigned_10m") {
+    return {
+      title: "담당자 미배정 신규문의",
+      body: "신규 고객이 10분 이상 미배정 상태입니다. 담당자를 지정해 주세요.",
+      url,
+      tag: `crm-unassigned-${event.id}`,
+    };
+  }
+
   if (event.eventType === "schedule_changed") {
     const action = event.payload.action === "create" ? "등록" : "변경";
     return {
@@ -124,6 +133,7 @@ function pushPayload(event: QueueEvent) {
 function ttlFor(eventType: string) {
   if (eventType === "customer_assigned") return 86400;
   if (eventType === "customer_assignment_uncontacted_30m") return 14400;
+  if (eventType === "customer_unassigned_10m") return 21600;
   if (eventType === "customer_stale_3d" || eventType === "customer_stale_7d") return 43200;
   if (eventType === "schedule_changed") return 21600;
   return 3600;
@@ -150,17 +160,23 @@ Deno.serve(async (req: Request) => {
       env("CRM_WEB_PUSH_VAPID_PRIVATE_KEY"),
     );
 
-    // 동일 worker가 예약/미처리, 장기방치, 신규배분 첫 연락 누락을 함께 판정한다.
+    // 동일 worker가 예약/미처리, 장기방치, 신규배분 첫 연락 누락, 미배정 문의를 함께 판정한다.
     // 운영 scheduler는 하나만 유지해 알림 판정 로직의 중복을 막는다.
-    const [scheduleEnqueueResult, staleEnqueueResult, assignmentFollowupResult] =
-      await Promise.all([
-        supabase.rpc("enqueue_due_crm_schedule_alerts"),
-        supabase.rpc("enqueue_due_crm_stale_customer_alerts"),
-        supabase.rpc("enqueue_due_crm_assignment_followups"),
-      ]);
+    const [
+      scheduleEnqueueResult,
+      staleEnqueueResult,
+      assignmentFollowupResult,
+      unassignedResult,
+    ] = await Promise.all([
+      supabase.rpc("enqueue_due_crm_schedule_alerts"),
+      supabase.rpc("enqueue_due_crm_stale_customer_alerts"),
+      supabase.rpc("enqueue_due_crm_assignment_followups"),
+      supabase.rpc("enqueue_due_crm_unassigned_customer_alerts"),
+    ]);
     if (scheduleEnqueueResult.error) throw scheduleEnqueueResult.error;
     if (staleEnqueueResult.error) throw staleEnqueueResult.error;
     if (assignmentFollowupResult.error) throw assignmentFollowupResult.error;
+    if (unassignedResult.error) throw unassignedResult.error;
 
     const [assignmentResult, scheduleResult] = await Promise.all([
       supabase
@@ -179,11 +195,12 @@ Deno.serve(async (req: Request) => {
           "consult_remind_1h",
           "consult_unhandled",
           "customer_assignment_uncontacted_30m",
+          "customer_unassigned_10m",
           "customer_stale_3d",
           "customer_stale_7d",
         ])
         .order("created_at", { ascending: true })
-        .limit(180),
+        .limit(200),
     ]);
 
     if (assignmentResult.error) throw assignmentResult.error;
