@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { saveCrmConsultationAction } from "@/app/actions/crm-mobile";
 import { getCustomerAgeDays } from "@/lib/crm/customer-age";
+import { listCustomerCollectionReceipts } from "@/lib/crm/collections";
+import {
+  listCustomerContractSummaries,
+  type CustomerContractSummary,
+} from "@/lib/crm/contracts";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
   getCustomerById,
@@ -10,6 +15,29 @@ import {
 import type { CustomerConsultLog, CustomerSchedule } from "@/types/database";
 
 const TERMINAL_STATUSES = new Set(["완료", "보류", "연락두절", "취소"]);
+const INACTIVE_CONTRACT_STATUSES = new Set([
+  "draft",
+  "cancelled",
+  "terminated",
+]);
+const WINDOW_LAB_MARKER = /^\[window lab\]\s*/i;
+
+function formatMoney(value: number) {
+  return `${Math.round(value).toLocaleString("ko-KR")}원`;
+}
+
+function contractBasisAmount(contract: CustomerContractSummary) {
+  return Number(
+    contract.cumulative_contract_amount ?? contract.contract_amount ?? 0,
+  );
+}
+
+function contractOutstandingAmount(contract: CustomerContractSummary) {
+  return Math.max(
+    0,
+    contractBasisAmount(contract) - Number(contract.received_amount ?? 0),
+  );
+}
 
 function formatKoreaDateTime(value: string | null | undefined) {
   if (!value) return "-";
@@ -62,22 +90,53 @@ function UpcomingSchedule({ schedule }: { schedule: CustomerSchedule }) {
 }
 
 function ConsultLog({ log }: { log: CustomerConsultLog }) {
+  const isWindowLab = WINDOW_LAB_MARKER.test(log.consult_content);
+  const content = isWindowLab
+    ? log.consult_content.replace(WINDOW_LAB_MARKER, "").trim()
+    : log.consult_content;
+  const shouldCollapse =
+    isWindowLab &&
+    (content.length > 240 || content.split("\n").length > 6);
+
   return (
     <div className="border-b border-slate-100 py-3 last:border-b-0">
       <div className="flex items-center justify-between gap-3">
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">
-          {log.consult_type}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">
+            {log.consult_type}
+          </span>
+          {isWindowLab && (
+            <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-800 ring-1 ring-inset ring-blue-200">
+              Window Lab · 창호상담
+            </span>
+          )}
+        </div>
+        <span className="text-[11px] text-slate-400">
+          {formatKoreaDateTime(log.created_at)}
         </span>
-        <span className="text-[11px] text-slate-400">{formatKoreaDateTime(log.created_at)}</span>
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{log.consult_content}</p>
+      {shouldCollapse ? (
+        <details className="mt-2 rounded-xl bg-blue-50/60 px-3 py-2">
+          <summary className="cursor-pointer text-sm font-bold text-blue-900">
+            창호 상담요약 보기
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            {content}
+          </p>
+        </details>
+      ) : (
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+          {content}
+        </p>
+      )}
       {log.next_contact_date && (
-        <p className="mt-2 text-xs font-semibold text-amber-700">다음 연락 {log.next_contact_date}</p>
+        <p className="mt-2 text-xs font-semibold text-amber-700">
+          다음 연락 {log.next_contact_date}
+        </p>
       )}
     </div>
   );
 }
-
 type Props = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string }>;
@@ -89,16 +148,61 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
   const customer = await getCustomerById(id);
   if (!customer || customer.deleted_at) notFound();
 
-  const [consultResult, scheduleResult] = await Promise.allSettled([
+  const [
+    consultResult,
+    scheduleResult,
+    contractResult,
+    collectionResult,
+  ] = await Promise.allSettled([
     getCustomerConsultLogs(id),
     listCustomerSchedules({ customerId: id }),
+    listCustomerContractSummaries(id),
+    listCustomerCollectionReceipts(id),
   ]);
 
-  const consultLogs = consultResult.status === "fulfilled" ? consultResult.value.slice(0, 8) : [];
-  const schedules = scheduleResult.status === "fulfilled" ? scheduleResult.value : [];
+  const consultLogs =
+    consultResult.status === "fulfilled"
+      ? consultResult.value.slice(0, 8)
+      : [];
+  const schedules =
+    scheduleResult.status === "fulfilled" ? scheduleResult.value : [];
+  const financeReady =
+    contractResult.status === "fulfilled" &&
+    collectionResult.status === "fulfilled";
+  const contracts =
+    contractResult.status === "fulfilled" ? contractResult.value : [];
+  const collectionReceipts =
+    collectionResult.status === "fulfilled" ? collectionResult.value : [];
   const upcoming = schedules
     .filter((schedule) => !["완료", "취소"].includes(schedule.status))
     .slice(0, 3);
+  const activeContracts = contracts.filter(
+    (contract) =>
+      contract.contract_kind === "original" &&
+      !INACTIVE_CONTRACT_STATUSES.has(contract.status),
+  );
+  const contractTotal = activeContracts.reduce(
+    (sum, contract) => sum + contractBasisAmount(contract),
+    0,
+  );
+  const receivedTotal = activeContracts.reduce(
+    (sum, contract) => sum + Number(contract.received_amount ?? 0),
+    0,
+  );
+  const outstandingTotal = activeContracts.reduce(
+    (sum, contract) => sum + contractOutstandingAmount(contract),
+    0,
+  );
+  const pendingTotal = collectionReceipts
+    .filter((receipt) => receipt.status === "pending")
+    .reduce((sum, receipt) => sum + Number(receipt.amount ?? 0), 0);
+  const financeHref = `/finance/collections?customerId=${encodeURIComponent(id)}`;
+  const windowLabBase = (
+    process.env.NEXT_PUBLIC_WINDOW_LAB_BASE_URL ||
+    "https://eighty-window-lab.vercel.app"
+  ).replace(/\/+$/, "");
+  const windowLabQuery = new URLSearchParams({ customerId: id });
+  const windowLabHref = `${windowLabBase}/?${windowLabQuery.toString()}`;
 
   const assignee = customer.employees
     ? [customer.employees.name, customer.employees.title].filter(Boolean).join(" ")
@@ -178,6 +282,23 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
         </Link>
       </section>
 
+      <a
+        href={windowLabHref}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm"
+      >
+        <div>
+          <p className="text-sm font-black text-blue-950">창호 전문상담 연결</p>
+          <p className="mt-0.5 text-xs text-blue-800">
+            같은 고객정보로 Window Lab 창호상담을 시작합니다.
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-black text-blue-900">
+          열기 ↗
+        </span>
+      </a>
+
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-4 text-xs">
           <div>
@@ -207,6 +328,64 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-black text-slate-950">
+              계약 · 수금 현황
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              영업 확인용 요약이며 등록·승인은 ERP에서 처리합니다.
+            </p>
+          </div>
+          <Link
+            href={financeHref}
+            className="shrink-0 rounded-xl bg-emerald-800 px-3 py-2 text-xs font-black text-white"
+          >
+            상세
+          </Link>
+        </div>
+        {financeReady ? (
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-sky-50 px-3 py-3">
+              <p className="text-[11px] font-semibold text-sky-700">
+                계약 기준금액
+              </p>
+              <p className="mt-1 text-sm font-black text-sky-950">
+                {formatMoney(contractTotal)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-emerald-50 px-3 py-3">
+              <p className="text-[11px] font-semibold text-emerald-700">
+                확정 수금
+              </p>
+              <p className="mt-1 text-sm font-black text-emerald-950">
+                {formatMoney(receivedTotal)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-red-50 px-3 py-3">
+              <p className="text-[11px] font-semibold text-red-700">미수금</p>
+              <p className="mt-1 text-sm font-black text-red-900">
+                {formatMoney(outstandingTotal)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-amber-50 px-3 py-3">
+              <p className="text-[11px] font-semibold text-amber-700">
+                확인대기
+              </p>
+              <p className="mt-1 text-sm font-black text-amber-900">
+                {formatMoney(pendingTotal)}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-800">
+            수금 현황을 불러오지 못했습니다. 금액을 0원으로 표시하지 않고
+            ERP에서 다시 확인합니다.
+          </div>
+        )}
       </section>
 
       <section>
