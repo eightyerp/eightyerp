@@ -1,0 +1,33 @@
+name: Patch Legacy Contract Server Action
+
+on:
+  push:
+    branches:
+      - feat/precontract-site-contract-transition-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feat/precontract-site-contract-transition-v2
+          fetch-depth: 0
+      - name: Remove legacy contract action
+        run: node scripts/patch-remove-legacy-contract-action.mjs
+      - name: Commit patch if changed
+        run: |
+          if git diff --quiet; then
+            echo "No legacy contract action remains."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/actions/quote-mgmt.ts
+          git commit -m "fix: remove legacy contract transition server entry"
+          git push origin HEAD:feat/precontract-site-contract-transition-v2
