@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { getMyCollectionNotificationsAction } from "@/app/actions/collections";
-import { getMyCustomerPushesAction } from "@/app/actions/customer-push";
-import { getMyExpenseNotificationsAction } from "@/app/actions/expenses";
+import { getErpNotificationsAction } from "@/app/actions/erp-notifications";
 import {
   COLLECTION_PAYMENT_LABELS,
   COLLECTION_TYPE_LABELS,
@@ -48,12 +46,11 @@ export default function ErpNotificationBell() {
 
   useEffect(() => {
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
     async function load() {
-      const [customers, collections, expenses] = await Promise.all([
-        getMyCustomerPushesAction(),
-        getMyCollectionNotificationsAction(),
-        getMyExpenseNotificationsAction(),
-      ]);
+      const { customers, collections, expenses } =
+        await getErpNotificationsAction();
       if (cancelled) return;
       const merged: NotificationItem[] = [
         ...customers.map((item) => ({
@@ -79,11 +76,17 @@ export default function ErpNotificationBell() {
         .slice(0, 20);
       setItems(merged);
     }
-    void load();
-    const interval = window.setInterval(() => void load(), 30_000);
+
+    // 첫 화면/오늘 할 일 로딩과 경쟁하지 않도록 알림은 후순위로 시작한다.
+    const initial = window.setTimeout(() => {
+      void load();
+      interval = window.setInterval(() => void load(), 30_000);
+    }, 800);
+
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      window.clearTimeout(initial);
+      if (interval) window.clearInterval(interval);
     };
   }, []);
 
@@ -143,6 +146,7 @@ export default function ErpNotificationBell() {
                     <Link
                       key={`customer-${item.id}`}
                       href={`/customers/${item.customerId}`}
+                      prefetch={false}
                       onClick={() => setOpen(false)}
                       className="block border-b border-gray-100 px-4 py-3 hover:bg-sky-50/60"
                     >
@@ -165,6 +169,7 @@ export default function ErpNotificationBell() {
                     <Link
                       key={`collection-${item.id}`}
                       href="/finance/collections"
+                      prefetch={false}
                       onClick={() => setOpen(false)}
                       className={`block border-b border-gray-100 px-4 py-3 ${isRequest ? "hover:bg-amber-50" : "hover:bg-emerald-50"}`}
                     >
@@ -194,6 +199,7 @@ export default function ErpNotificationBell() {
                   <Link
                     key={`expense-${item.id}`}
                     href="/finance/payments"
+                    prefetch={false}
                     onClick={() => setOpen(false)}
                     className={`block border-b border-gray-100 px-4 py-3 ${isRequest ? "hover:bg-amber-50" : isPaid ? "hover:bg-emerald-50" : "hover:bg-sky-50"}`}
                   >
