@@ -3,6 +3,7 @@ import Link from "next/link";
 const STEPS = [
   {
     title: "Android · Chrome",
+    description: "Play 스토어 설치 없이 Chrome에서 바로 홈 화면 앱으로 설치합니다.",
     steps: [
       "EIGHTY CRM을 Chrome에서 엽니다.",
       "오른쪽 위 ⋮ 메뉴를 누릅니다.",
@@ -13,11 +14,12 @@ const STEPS = [
   },
   {
     title: "iPhone · Safari",
+    description: "App Store는 필요 없지만 Safari에서 홈 화면 추가를 한 번 직접 눌러야 합니다.",
     steps: [
       "EIGHTY CRM을 Safari에서 엽니다.",
-      "하단 공유 버튼을 누릅니다.",
-      "홈 화면에 추가를 선택합니다.",
-      "추가 후 Safari 탭이 아니라 홈 화면의 EIGHTY CRM 아이콘으로 다시 실행합니다.",
+      "공유 버튼을 누르고 홈 화면에 추가를 선택합니다.",
+      "웹 앱으로 열기 옵션이 보이면 켠 상태로 추가합니다.",
+      "Safari 탭이 아니라 홈 화면의 EIGHTY CRM 아이콘으로 다시 실행합니다.",
       "설치된 CRM의 알림 화면에서 업무 알림을 켭니다.",
     ],
   },
@@ -33,7 +35,7 @@ export default function CrmInstallPage() {
         <p className="mt-4 text-xs font-semibold text-slate-500">직원 테스트 준비</p>
         <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">EIGHTY CRM 설치</h1>
         <p className="mt-1 text-sm leading-6 text-slate-500">
-          휴대폰 홈 화면에 추가하면 브라우저 주소창 없이 앱처럼 빠르게 실행할 수 있습니다.
+          Android와 iPhone 모두 같은 CRM을 사용하되, 각 휴대폰의 공식 홈 화면 설치방식을 사용합니다.
         </p>
       </section>
 
@@ -45,9 +47,9 @@ export default function CrmInstallPage() {
       </div>
 
       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
-        <p className="text-sm font-black text-sky-950">업무 PUSH를 받을 때</p>
+        <p className="text-sm font-black text-sky-950">iPhone PUSH 중요</p>
         <p className="mt-1 text-xs leading-5 text-sky-800">
-          먼저 홈 화면에 CRM을 설치한 뒤 설치된 아이콘으로 앱을 열고, `알림` 화면에서 `업무 알림 켜기`를 누릅니다. 브라우저가 알림 권한을 물으면 허용합니다.
+          iPhone은 Safari 탭이 아니라 홈 화면에 설치한 EIGHTY CRM을 실행한 뒤 알림 권한을 켜야 합니다. 설치 전에는 CRM이 먼저 설치방법을 안내합니다.
         </p>
       </div>
 
@@ -55,6 +57,7 @@ export default function CrmInstallPage() {
         {STEPS.map((guide) => (
           <article key={guide.title} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-base font-black text-slate-950">{guide.title}</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{guide.description}</p>
             <ol className="mt-3 space-y-3">
               {guide.steps.map((step, index) => (
                 <li key={step} className="flex gap-3 text-sm leading-6 text-slate-700">
