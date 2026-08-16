@@ -11,6 +11,7 @@
 --   - 이 migration 파일 생성만으로 운영 DB에는 변화가 없다.
 --   - pg_cron/pg_net 활성화, cron job, Edge Function Secret은 별도 승인 후 적용한다.
 --   - 고객 데이터 삭제/초기화 없음.
+--   - service_role scheduler에서도 회사 범위가 보존되도록 event.company_id를 명시한다.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -187,7 +188,8 @@ begin
     event_type,
     customer_id,
     payload,
-    status
+    status,
+    company_id
   )
   values (
     'customer_assigned',
@@ -202,7 +204,8 @@ begin
       'status', new.status,
       'url', '/crm/customers/' || new.id::text
     ),
-    'pending'
+    'pending',
+    new.company_id
   );
 
   return new;
@@ -263,6 +266,7 @@ begin
     schedule_id,
     customer_id,
     assigned_employee_id,
+    company_id,
     payload,
     status,
     dedupe_key
@@ -273,6 +277,7 @@ begin
     s.id,
     s.customer_id,
     s.assigned_employee_id,
+    s.company_id,
     jsonb_build_object(
       'source', 'crm_push_scheduler',
       'scheduled_start_at', s.start_at,
@@ -300,6 +305,7 @@ begin
     schedule_id,
     customer_id,
     assigned_employee_id,
+    company_id,
     payload,
     status,
     dedupe_key
@@ -310,6 +316,7 @@ begin
     s.id,
     s.customer_id,
     s.assigned_employee_id,
+    s.company_id,
     jsonb_build_object(
       'source', 'crm_push_scheduler',
       'scheduled_start_at', s.start_at,
