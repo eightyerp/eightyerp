@@ -50,6 +50,14 @@ const quoteContractRetryFunction = quoteContractRetryMigration.slice(
     "revoke all on function public.transition_quote_to_contract",
   ),
 );
+const quoteContractRetryRollbackFunction = quoteContractRetryRollback.slice(
+  quoteContractRetryRollback.indexOf(
+    "create or replace function public.transition_quote_to_contract",
+  ),
+  quoteContractRetryRollback.indexOf(
+    "revoke all on function public.transition_quote_to_contract",
+  ),
+);
 
 assert(
   !/customerStatus\s*===\s*["']계약완료["']/.test(projectConstants),
@@ -159,10 +167,10 @@ assert(
   "계약 재시도 일반·경쟁 반환 경로 모두 다른 project_id를 fail-closed 한다",
 );
 assert(
-  !quoteContractRetryRollback.includes(
+  !quoteContractRetryRollbackFunction.includes(
     "contract replay project mismatch",
   ) &&
-    quoteContractRetryRollback.includes(
+    quoteContractRetryRollbackFunction.includes(
       "발송완료 상태의 견적만 전환할 수 있습니다.",
     ),
   "emergency rollback은 migration 39 상태 가드를 정확히 복원한다",
