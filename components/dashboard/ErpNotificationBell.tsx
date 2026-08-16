@@ -16,6 +16,8 @@ type NotificationItem =
   | { kind: "collection"; createdAt: string; item: CollectionNotificationItem }
   | { kind: "expense"; createdAt: string; item: ExpenseNotificationItem };
 
+const ERP_NOTIFICATION_POLL_MS = 60_000;
+
 function formatTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -48,52 +50,68 @@ export default function ErpNotificationBell() {
   useEffect(() => {
     let cancelled = false;
     let interval: number | null = null;
+    let loading = false;
 
     async function load() {
-      const { customers, collections, expenses } =
-        await getErpNotificationsAction();
-      if (cancelled) return;
-      const merged: NotificationItem[] = [
-        ...customers.map((item) => ({
-          kind: "customer" as const,
-          createdAt: item.createdAt,
-          item,
-        })),
-        ...collections.map((item) => ({
-          kind: "collection" as const,
-          createdAt: item.createdAt,
-          item,
-        })),
-        ...expenses.map((item) => ({
-          kind: "expense" as const,
-          createdAt: item.createdAt,
-          item,
-        })),
-      ]
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        )
-        .slice(0, 20);
-      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-      setItems(merged);
-      setRecentCount(
-        merged.filter(
-          (item) => new Date(item.createdAt).getTime() >= cutoff,
-        ).length,
-      );
+      if (loading || document.visibilityState === "hidden") return;
+      loading = true;
+      try {
+        const { customers, collections, expenses } =
+          await getErpNotificationsAction();
+        if (cancelled) return;
+        const merged: NotificationItem[] = [
+          ...customers.map((item) => ({
+            kind: "customer" as const,
+            createdAt: item.createdAt,
+            item,
+          })),
+          ...collections.map((item) => ({
+            kind: "collection" as const,
+            createdAt: item.createdAt,
+            item,
+          })),
+          ...expenses.map((item) => ({
+            kind: "expense" as const,
+            createdAt: item.createdAt,
+            item,
+          })),
+        ]
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .slice(0, 20);
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        setItems(merged);
+        setRecentCount(
+          merged.filter(
+            (item) => new Date(item.createdAt).getTime() >= cutoff,
+          ).length,
+        );
+      } finally {
+        loading = false;
+      }
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") void load();
     }
 
     // 첫 화면/오늘 할 일 로딩과 경쟁하지 않도록 알림은 후순위로 시작한다.
     const initial = window.setTimeout(() => {
       void load();
-      interval = window.setInterval(() => void load(), 30_000);
+      interval = window.setInterval(() => void load(), ERP_NOTIFICATION_POLL_MS);
     }, 800);
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
       cancelled = true;
       window.clearTimeout(initial);
       if (interval !== null) window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
 

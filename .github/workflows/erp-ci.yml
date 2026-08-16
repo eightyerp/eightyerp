@@ -26,6 +26,9 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: ERP baseline guard
+        run: npm run test:erp-baseline
+
       - name: Window workflow lifecycle guard
         run: node scripts/test-window-workflow-lifecycle.mjs
 
