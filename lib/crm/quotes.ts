@@ -103,6 +103,30 @@ export async function getQuoteSends(
   return (data ?? []) as CustomerQuoteSend[];
 }
 
+export async function getQuoteSendsForQuotes(
+  quoteIds: readonly string[],
+): Promise<Record<string, CustomerQuoteSend[]>> {
+  const uniqueQuoteIds = [...new Set(quoteIds.filter(Boolean))];
+  if (uniqueQuoteIds.length === 0) return {};
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("customer_quote_sends")
+    .select("*")
+    .in("quote_id", uniqueQuoteIds)
+    .order("sent_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  const sendsByQuoteId = Object.fromEntries(
+    uniqueQuoteIds.map((quoteId) => [quoteId, [] as CustomerQuoteSend[]]),
+  );
+  for (const send of (data ?? []) as CustomerQuoteSend[]) {
+    sendsByQuoteId[send.quote_id]?.push(send);
+  }
+  return sendsByQuoteId;
+}
+
 export async function createSignedQuoteUrl(
   filePath: string,
   expiresInSeconds = 60 * 10,

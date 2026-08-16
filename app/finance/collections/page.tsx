@@ -8,7 +8,14 @@ import {
   listCollectionReceipts,
 } from "@/lib/crm/collections";
 
-export default async function CollectionsPage() {
+type CollectionsPageProps = {
+  searchParams: Promise<{ customerId?: string }>;
+};
+
+export default async function CollectionsPage({
+  searchParams,
+}: CollectionsPageProps) {
+  const { customerId } = await searchParams;
   const access = await getCurrentUserAccess();
   if (!access.isAuthenticated) redirect("/login");
   if (!access.canAccessErp) redirect("/pending-approval");
@@ -35,6 +42,10 @@ export default async function CollectionsPage() {
         : "수금관리 정보를 불러오지 못했습니다.";
   }
 
+  const initialContractId = customerId
+    ? contracts.find((contract) => contract.customers?.id === customerId)?.id
+    : undefined;
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -56,6 +67,7 @@ export default async function CollectionsPage() {
             contracts={contracts}
             receipts={receipts}
             isFinanceAdmin={collectionAccess.isFinanceAdmin}
+            initialContractId={initialContractId}
           />
         )}
       </div>

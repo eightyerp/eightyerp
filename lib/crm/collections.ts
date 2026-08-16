@@ -6,6 +6,7 @@ import {
   type CollectionReceipt,
   type CollectionReceiptStatus,
   type CollectionType,
+  type CustomerCollectionReceiptSummary,
 } from "@/lib/crm/collection-shared";
 import { createClient } from "@/lib/supabase-server";
 
@@ -29,6 +30,17 @@ export type CollectionMutation = {
 };
 
 const ADMIN_ROLES = new Set(["owner", "director", "admin"]);
+
+const COLLECTION_RECEIPT_SELECT = `
+  id, company_id, contract_id, customer_id, project_id, assigned_employee_id,
+  collection_type, payment_method, amount, received_at, status, memo,
+  reported_by_employee_id, confirmed_at, cancelled_at, cancel_reason, created_at,
+  contracts:contracts!collection_receipts_contract_id_fkey ( contract_number, title ),
+  customers:customers!collection_receipts_customer_id_fkey ( id, name, phone ),
+  projects:projects!collection_receipts_project_id_fkey ( id, name ),
+  assigned_employee:employees!collection_receipts_assigned_employee_id_fkey ( id, name, title, phone, email ),
+  reported_employee:employees!collection_receipts_reported_by_employee_id_fkey ( id, name, title )
+`;
 
 export async function getCollectionAccess(): Promise<CollectionAccess> {
   const { access, companyRole } = await getCurrentCompanyAccess();
@@ -68,22 +80,34 @@ export async function listCollectionReceipts(limit = 200): Promise<CollectionRec
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("collection_receipts")
-    .select(
-      `
-      id, company_id, contract_id, customer_id, project_id, assigned_employee_id,
-      collection_type, payment_method, amount, received_at, status, memo,
-      reported_by_employee_id, confirmed_at, cancelled_at, cancel_reason, created_at,
-      contracts:contracts!collection_receipts_contract_id_fkey ( contract_number, title ),
-      customers:customers!collection_receipts_customer_id_fkey ( id, name, phone ),
-      projects:projects!collection_receipts_project_id_fkey ( id, name ),
-      assigned_employee:employees!collection_receipts_assigned_employee_id_fkey ( id, name, title, phone, email ),
-      reported_employee:employees!collection_receipts_reported_by_employee_id_fkey ( id, name, title )
-    `,
-    )
+    .select(COLLECTION_RECEIPT_SELECT)
     .order("created_at", { ascending: false })
     .limit(Math.max(1, Math.min(limit, 500)));
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as CollectionReceipt[];
+}
+
+export async function listCustomerCollectionReceipts(
+  customerId: string,
+  limit = 100,
+): Promise<CustomerCollectionReceiptSummary[]> {
+  await getCurrentCompanyAccess();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("collection_receipts")
+    .select(
+      `
+      id, contract_id, collection_type, payment_method, amount, received_at,
+      status, memo, cancel_reason, created_at,
+      contracts:contracts!collection_receipts_contract_id_fkey ( contract_number, title ),
+      reported_employee:employees!collection_receipts_reported_by_employee_id_fkey ( id, name, title )
+    `,
+    )
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false })
+    .limit(Math.max(1, Math.min(limit, 200)));
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as CustomerCollectionReceiptSummary[];
 }
 
 async function callCollectionRpc(name: string, args: Record<string, unknown>) {
@@ -135,18 +159,7 @@ export async function getCollectionReceiptContext(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("collection_receipts")
-    .select(
-      `
-      id, company_id, contract_id, customer_id, project_id, assigned_employee_id,
-      collection_type, payment_method, amount, received_at, status, memo,
-      reported_by_employee_id, confirmed_at, cancelled_at, cancel_reason, created_at,
-      contracts:contracts!collection_receipts_contract_id_fkey ( contract_number, title ),
-      customers:customers!collection_receipts_customer_id_fkey ( id, name, phone ),
-      projects:projects!collection_receipts_project_id_fkey ( id, name ),
-      assigned_employee:employees!collection_receipts_assigned_employee_id_fkey ( id, name, title, phone, email ),
-      reported_employee:employees!collection_receipts_reported_by_employee_id_fkey ( id, name, title )
-    `,
-    )
+    .select(COLLECTION_RECEIPT_SELECT)
     .eq("id", receiptId)
     .maybeSingle();
   if (error) throw new Error(error.message);

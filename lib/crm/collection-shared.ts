@@ -47,6 +47,22 @@ export type CollectionReceipt = {
   reported_employee: { id: string; name: string; title: string } | null;
 };
 
+export type CustomerCollectionReceiptSummary = Pick<
+  CollectionReceipt,
+  | "id"
+  | "contract_id"
+  | "collection_type"
+  | "payment_method"
+  | "amount"
+  | "received_at"
+  | "status"
+  | "memo"
+  | "cancel_reason"
+  | "created_at"
+  | "contracts"
+  | "reported_employee"
+>;
+
 export type CollectionNotificationItem = {
   id: string;
   eventType: "collection_reported" | "collection_confirmed";

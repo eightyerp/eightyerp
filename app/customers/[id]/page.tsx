@@ -3,9 +3,16 @@ import { notFound } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import CustomerDetailPanels from "@/components/customers/CustomerDetailPanels";
 import CustomerInfoPushButton from "@/components/customers/CustomerInfoPushButton";
-import WindowWorkflowHub, { type WindowInspectionSummary } from "@/components/customers/WindowWorkflowHub";
-import { createClient } from "@/lib/supabase-server";
+import WindowWorkflowHub, {
+  type WindowInspectionSummary,
+} from "@/components/customers/WindowWorkflowHub";
 import { getCurrentUserAccess } from "@/lib/crm/access";
+import type { CustomerCollectionReceiptSummary } from "@/lib/crm/collection-shared";
+import { listCustomerCollectionReceipts } from "@/lib/crm/collections";
+import {
+  listCustomerContractSummaries,
+  type CustomerContractSummary,
+} from "@/lib/crm/contracts";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
   getCustomerActivities,
@@ -26,6 +33,7 @@ import {
   classifyCrmPanelLoadError,
   toCrmErrorMessage,
 } from "@/lib/crm/errors";
+import { createClient } from "@/lib/supabase-server";
 import type {
   CustomerActivity,
   CustomerConsultLog,
@@ -71,6 +79,36 @@ function panelWarning(
   };
 }
 
+async function loadLegacyCustomerQuotes(customerId: string): Promise<{
+  quotes: CustomerQuote[];
+  sendsByQuoteId: Record<string, CustomerQuoteSend[]>;
+}> {
+  const { getCustomerQuotes, getQuoteSendsForQuotes } = await import(
+    "@/lib/crm/quotes"
+  );
+  const quotes = await getCustomerQuotes(customerId);
+  const sendsByQuoteId = await getQuoteSendsForQuotes(
+    quotes.map((quote) => quote.id),
+  );
+  return { quotes, sendsByQuoteId };
+}
+
+async function listWindowInspectionSummaries(
+  customerId: string,
+): Promise<WindowInspectionSummary[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("window_inspections")
+    .select(
+      "id, project_id, inspection_status, completed_at, total_windows, status_counts, highest_status_level, report_status, report_reference",
+    )
+    .eq("customer_id", customerId)
+    .order("updated_at", { ascending: false })
+    .limit(10);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as WindowInspectionSummary[];
+}
+
 export default async function CustomerDetailPage({
   params,
   searchParams,
@@ -84,6 +122,10 @@ export default async function CustomerDetailPage({
   let consultDevHint: string | null = null;
   let quoteWarning: string | null = null;
   let quoteDevHint: string | null = null;
+  let contractWarning: string | null = null;
+  let contractDevHint: string | null = null;
+  let collectionWarning: string | null = null;
+  let collectionDevHint: string | null = null;
   let customer: CustomerWithRelations | null = null;
   let consultLogs: CustomerConsultLog[] = [];
   let quotes: CustomerQuote[] = [];
@@ -96,6 +138,8 @@ export default async function CustomerDetailPage({
   let projectsDevHint: string | null = null;
   let assigneeChangeHistory: CustomerActivity[] = [];
   let windowInspections: WindowInspectionSummary[] = [];
+  let contracts: CustomerContractSummary[] = [];
+  let collectionReceipts: CustomerCollectionReceiptSummary[] = [];
 
   try {
     const [found, empList] = await Promise.all([
@@ -105,26 +149,48 @@ export default async function CustomerDetailPage({
     customer = found;
     employees = empList;
 
-    try {
-      projects = await listCustomerProjects(id);
-    } catch (error) {
-      const w = panelWarning(
-        "현장",
-        error,
-        "supabase/migrations/20260722000001_customer_projects.sql",
-        access.isAdmin,
-      );
-      projectsWarning = w.message;
-      projectsDevHint = w.devHint;
-    }
-
     if (customer && !customer.deleted_at) {
-      try {
-        consultLogs = await getCustomerConsultLogs(id);
-      } catch (error) {
+      const [
+        projectResult,
+        consultResult,
+        activityResult,
+        legacyQuoteResult,
+        erpQuoteResult,
+        scheduleResult,
+        inspectionResult,
+        contractResult,
+        collectionResult,
+      ] = await Promise.allSettled([
+        listCustomerProjects(id),
+        getCustomerConsultLogs(id),
+        getCustomerActivities(id),
+        loadLegacyCustomerQuotes(id),
+        listQuotes({ customerId: id }),
+        listCustomerSchedules({ customerId: id }),
+        listWindowInspectionSummaries(id),
+        listCustomerContractSummaries(id),
+        listCustomerCollectionReceipts(id),
+      ]);
+
+      if (projectResult.status === "fulfilled") {
+        projects = projectResult.value;
+      } else {
+        const w = panelWarning(
+          "현장",
+          projectResult.reason,
+          "supabase/migrations/20260722000001_customer_projects.sql",
+          access.isAdmin,
+        );
+        projectsWarning = w.message;
+        projectsDevHint = w.devHint;
+      }
+
+      if (consultResult.status === "fulfilled") {
+        consultLogs = consultResult.value;
+      } else {
         const w = panelWarning(
           "상담이력",
-          error,
+          consultResult.reason,
           "supabase/migrations/20260716000007_customer_consult_logs.sql",
           access.isAdmin,
         );
@@ -132,42 +198,23 @@ export default async function CustomerDetailPage({
         consultDevHint = w.devHint;
       }
 
-      try {
-        const activities = await getCustomerActivities(id);
-        assigneeChangeHistory = activities.filter(
+      if (activityResult.status === "fulfilled") {
+        assigneeChangeHistory = activityResult.value.filter(
           (row) => row.activity_type === "담당자변경",
         );
-      } catch {
-        assigneeChangeHistory = [];
       }
 
-      try {
-        const { getCustomerQuotes, getQuoteSends } = await import(
-          "@/lib/crm/quotes"
-        );
-        quotes = await getCustomerQuotes(id);
-        const sendEntries = await Promise.all(
-          quotes.map(async (quote) => {
-            try {
-              const sends = await getQuoteSends(quote.id);
-              return [quote.id, sends] as const;
-            } catch {
-              return [quote.id, [] as CustomerQuoteSend[]] as const;
-            }
-          }),
-        );
-        quoteSendsByQuoteId = Object.fromEntries(sendEntries);
-      } catch {
-        // 레거시 customer_quotes — 없어도 고객 상세는 유지
-        quotes = [];
+      if (legacyQuoteResult.status === "fulfilled") {
+        quotes = legacyQuoteResult.value.quotes;
+        quoteSendsByQuoteId = legacyQuoteResult.value.sendsByQuoteId;
       }
 
-      try {
-        erpQuotes = await listQuotes({ customerId: id });
-      } catch (error) {
+      if (erpQuoteResult.status === "fulfilled") {
+        erpQuotes = erpQuoteResult.value;
+      } else {
         const w = panelWarning(
           "견적",
-          error,
+          erpQuoteResult.reason,
           "supabase/migrations/20260724000001_quotes_and_simple_materials.sql (+ 20260726000001_quotes_management_v1.sql)",
           access.isAdmin,
         );
@@ -175,19 +222,38 @@ export default async function CustomerDetailPage({
         quoteDevHint = w.devHint;
       }
 
-      try {
-        schedules = await listCustomerSchedules({ customerId: id });
-      } catch {
-        schedules = [];
+      if (scheduleResult.status === "fulfilled") {
+        schedules = scheduleResult.value;
       }
-      try {
-        const supabase = await createClient();
-        const { data } = await supabase.from("window_inspections")
-          .select("id, project_id, inspection_status, completed_at, total_windows, status_counts, highest_status_level, report_status, report_reference")
-          .eq("customer_id", id).order("updated_at", { ascending: false }).limit(10);
-        windowInspections = (data ?? []) as WindowInspectionSummary[];
-      } catch {
-        windowInspections = [];
+
+      if (inspectionResult.status === "fulfilled") {
+        windowInspections = inspectionResult.value;
+      }
+
+      if (contractResult.status === "fulfilled") {
+        contracts = contractResult.value;
+      } else {
+        const w = panelWarning(
+          "계약",
+          contractResult.reason,
+          "supabase/migrations/20260803000041_contract_lifecycle.sql",
+          access.isAdmin,
+        );
+        contractWarning = w.message;
+        contractDevHint = w.devHint;
+      }
+
+      if (collectionResult.status === "fulfilled") {
+        collectionReceipts = collectionResult.value;
+      } else {
+        const w = panelWarning(
+          "수금",
+          collectionResult.reason,
+          "supabase/migrations/20260812114934_collection_receipts_v1.sql",
+          access.isAdmin,
+        );
+        collectionWarning = w.message;
+        collectionDevHint = w.devHint;
       }
     }
   } catch (error) {
@@ -199,7 +265,8 @@ export default async function CustomerDetailPage({
   }
 
   const assignedEmployee = customer.assigned_employee_id
-    ? employees.find((employee) => employee.id === customer!.assigned_employee_id) ?? null
+    ? employees.find((employee) => employee.id === customer.assigned_employee_id) ??
+      null
     : null;
   const assigneeName = assignedEmployee
     ? [assignedEmployee.name, assignedEmployee.title].filter(Boolean).join(" ")
@@ -261,6 +328,24 @@ export default async function CustomerDetailPage({
           </div>
         )}
 
+        {contractWarning && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p>{contractWarning}</p>
+            {contractDevHint && (
+              <p className="mt-1 text-xs">{contractDevHint}</p>
+            )}
+          </div>
+        )}
+
+        {collectionWarning && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p>{collectionWarning}</p>
+            {collectionDevHint && (
+              <p className="mt-1 text-xs">{collectionDevHint}</p>
+            )}
+          </div>
+        )}
+
         {projectsWarning && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p>{projectsWarning}</p>
@@ -272,29 +357,31 @@ export default async function CustomerDetailPage({
 
         {!loadError && (
           <>
-          <WindowWorkflowHub
-            customerId={customer.id}
-            companyId={access.profile?.active_company_id ?? null}
-            projects={projects}
-            inspections={windowInspections}
-            consultLogs={consultLogs}
-            quotes={erpQuotes}
-            selectedProjectId={query.workflowProjectId ?? null}
-          />
-          <CustomerDetailPanels
-            customer={customer}
-            consultLogs={consultLogs}
-            quotes={quotes}
-            quoteSendsByQuoteId={quoteSendsByQuoteId}
-            erpQuotes={erpQuotes}
-            schedules={schedules}
-            employees={employees}
-            projects={projects}
-            assigneeChangeHistory={assigneeChangeHistory}
-            canDelete={access.isAdmin}
-            isAdmin={access.isAdmin}
-            currentEmployeeId={access.profile?.employee_id ?? null}
-          />
+            <WindowWorkflowHub
+              customerId={customer.id}
+              companyId={access.profile?.active_company_id ?? null}
+              projects={projects}
+              inspections={windowInspections}
+              consultLogs={consultLogs}
+              quotes={erpQuotes}
+              selectedProjectId={query.workflowProjectId ?? null}
+            />
+            <CustomerDetailPanels
+              customer={customer}
+              consultLogs={consultLogs}
+              quotes={quotes}
+              quoteSendsByQuoteId={quoteSendsByQuoteId}
+              erpQuotes={erpQuotes}
+              schedules={schedules}
+              employees={employees}
+              projects={projects}
+              contracts={contracts}
+              collectionReceipts={collectionReceipts}
+              assigneeChangeHistory={assigneeChangeHistory}
+              canDelete={access.isAdmin}
+              isAdmin={access.isAdmin}
+              currentEmployeeId={access.profile?.employee_id ?? null}
+            />
           </>
         )}
       </div>
