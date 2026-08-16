@@ -2,6 +2,7 @@ import AdminDashboardHomeV2 from "@/components/dashboard/AdminDashboardHomeV2";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import EmployeeGoalDashboard from "@/components/dashboard/EmployeeGoalDashboard";
 import TodayWorkDashboard from "@/components/dashboard/TodayWorkDashboard";
+import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getCompanyMonthlyPnl } from "@/lib/crm/company-pnl";
 import { getCompanySalesTarget } from "@/lib/crm/company-sales-target";
 import { getDashboardSettlementSummary } from "@/lib/crm/dashboard-settlement";
@@ -26,37 +27,41 @@ export default async function DashboardPage({ searchParams }: Props) {
   let companyPnl = null;
   let salesEmployees: SettlementEmployeeOption[] = [];
 
-  try {
-    settlementSummary = await getDashboardSettlementSummary();
-  } catch {
-    settlementSummary = null;
+  // getCurrentUserAccess는 같은 서버 렌더에서 cache되므로 권한을 한 번 확인한 뒤
+  // 서로 독립적인 대시보드 데이터는 동시에 시작한다.
+  const access = await getCurrentUserAccess();
+  const isAdmin = access.isAdmin;
+
+  const [settlementResult, bundleResult, targetResult, employeeResult, pnlResult] =
+    await Promise.allSettled([
+      getDashboardSettlementSummary(),
+      getTodayWorkBundle({
+        employeeId: params.employeeId ?? null,
+        teamId: params.teamId ?? null,
+      }),
+      isAdmin ? getCompanySalesTarget(2026) : Promise.resolve(null),
+      isAdmin
+        ? listSettlementEmployees()
+        : Promise.resolve([] as SettlementEmployeeOption[]),
+      isAdmin ? getCompanyMonthlyPnl(2026) : Promise.resolve(null),
+    ]);
+
+  settlementSummary =
+    settlementResult.status === "fulfilled" ? settlementResult.value : null;
+  bundle = bundleResult.status === "fulfilled" ? bundleResult.value : null;
+  if (bundleResult.status === "rejected") {
+    loadError =
+      bundleResult.reason instanceof Error
+        ? bundleResult.reason.message
+        : "오늘 할 일을 불러오지 못했습니다.";
   }
 
-  const isAdmin = settlementSummary?.isFinanceAdmin === true;
-
   if (isAdmin) {
-    const [targetResult, employeeResult, pnlResult] = await Promise.allSettled([
-      getCompanySalesTarget(2026),
-      listSettlementEmployees(),
-      getCompanyMonthlyPnl(2026),
-    ]);
     companyTarget =
       targetResult.status === "fulfilled" ? targetResult.value : null;
     salesEmployees =
       employeeResult.status === "fulfilled" ? employeeResult.value : [];
     companyPnl = pnlResult.status === "fulfilled" ? pnlResult.value : null;
-  }
-
-  try {
-    bundle = await getTodayWorkBundle({
-      employeeId: params.employeeId ?? null,
-      teamId: params.teamId ?? null,
-    });
-  } catch (error) {
-    loadError =
-      error instanceof Error
-        ? error.message
-        : "오늘 할 일을 불러오지 못했습니다.";
   }
 
   const schedulesById: Record<string, CustomerSchedule> = {};
