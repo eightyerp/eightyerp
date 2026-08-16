@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { saveCrmConsultationAction } from "@/app/actions/crm-mobile";
+import { getCustomerAgeDays } from "@/lib/crm/customer-age";
 import { listCustomerSchedules } from "@/lib/crm/customer-schedules";
 import {
   getCustomerById,
   getCustomerConsultLogs,
 } from "@/lib/crm/customers";
 import type { CustomerConsultLog, CustomerSchedule } from "@/types/database";
+
+const TERMINAL_STATUSES = new Set(["완료", "보류", "연락두절", "취소"]);
 
 function formatKoreaDateTime(value: string | null | undefined) {
   if (!value) return "-";
@@ -19,6 +22,17 @@ function formatKoreaDateTime(value: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+  }).format(date);
+}
+
+function formatReceivedDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).format(date);
 }
 
@@ -89,6 +103,11 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
   const assignee = customer.employees
     ? [customer.employees.name, customer.employees.title].filter(Boolean).join(" ")
     : "미배정";
+  const ageDays = getCustomerAgeDays(customer.created_at);
+  const needsNextAction =
+    !TERMINAL_STATUSES.has(customer.status) &&
+    upcoming.length === 0 &&
+    !customer.next_contact_at;
 
   return (
     <div className="space-y-5">
@@ -107,9 +126,12 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
             <p className="mt-1 text-sm font-semibold text-slate-700">{customer.phone}</p>
             {customer.address && <p className="mt-1 text-sm text-slate-500">{customer.address}</p>}
           </div>
-          <span className="shrink-0 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
-            {assignee}
-          </span>
+          <div className="shrink-0 text-right">
+            <span className="inline-flex rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
+              {assignee}
+            </span>
+            <p className="mt-2 text-[11px] font-semibold text-slate-400">접수 D+{ageDays}</p>
+          </div>
         </div>
       </section>
 
@@ -119,7 +141,23 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
         </div>
       )}
 
-      <section className="grid grid-cols-4 gap-2">
+      {needsNextAction && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-amber-900">다음 행동이 없습니다</p>
+              <p className="mt-1 text-xs leading-5 text-amber-800">
+                진행 중인 고객입니다. 다음 연락시간을 잡아두면 CRM 홈·일정·PUSH에서 놓치지 않게 관리할 수 있습니다.
+              </p>
+            </div>
+            <a href="#consult" className="shrink-0 rounded-xl bg-amber-900 px-3 py-2 text-xs font-black text-white">
+              일정 잡기
+            </a>
+          </div>
+        </div>
+      )}
+
+      <section className="grid grid-cols-3 gap-2">
         <a href={`tel:${customer.phone}`} className="rounded-2xl bg-navy-900 px-2 py-3 text-center text-xs font-bold text-white">
           전화
         </a>
@@ -129,8 +167,14 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
         <a href="#consult" className="rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center text-xs font-bold text-slate-700">
           상담기록
         </a>
+        <a href="#consult" className="rounded-2xl border border-amber-200 bg-amber-50 px-2 py-3 text-center text-xs font-bold text-amber-900">
+          다음 연락
+        </a>
         <Link href={`/quotes/new?customerId=${customer.id}`} className="rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center text-xs font-bold text-slate-700">
           견적
+        </Link>
+        <Link href="/crm/schedules" className="rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center text-xs font-bold text-slate-700">
+          일정
         </Link>
       </section>
 
@@ -152,6 +196,16 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
             <p className="text-slate-400">현재 단계</p>
             <p className="mt-1 font-bold text-slate-800">{customer.status}</p>
           </div>
+          <div>
+            <p className="text-slate-400">접수일</p>
+            <p className="mt-1 font-bold text-slate-800">{formatReceivedDate(customer.created_at)}</p>
+          </div>
+          <div>
+            <p className="text-slate-400">접수 경과</p>
+            <p className={`mt-1 font-black ${ageDays >= 14 ? "text-red-700" : ageDays >= 7 ? "text-amber-800" : "text-slate-800"}`}>
+              D+{ageDays}
+            </p>
+          </div>
         </div>
       </section>
 
@@ -159,7 +213,7 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-black text-slate-950">예정 일정</h2>
-            <p className="mt-0.5 text-xs text-slate-500">예약 및 재연락 시간은 푸시 기준이 됩니다.</p>
+            <p className="mt-0.5 text-xs text-slate-500">예약 및 재연락 시간은 PUSH 기준이 됩니다.</p>
           </div>
           <Link href="/crm/schedules" className="text-xs font-bold text-navy-900">전체 일정</Link>
         </div>
@@ -175,8 +229,8 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
 
       <section id="consult" className="scroll-mt-20 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div>
-          <h2 className="text-base font-black text-slate-950">상담기록</h2>
-          <p className="mt-0.5 text-xs text-slate-500">기록과 다음 연락을 한 번에 처리합니다.</p>
+          <h2 className="text-base font-black text-slate-950">상담기록 · 다음 연락</h2>
+          <p className="mt-0.5 text-xs text-slate-500">고객 반응을 짧게 남기고 다음 연락시간까지 한 번에 잡습니다.</p>
         </div>
         <form action={saveCrmConsultationAction} className="mt-4 space-y-3">
           <input type="hidden" name="customer_id" value={customer.id} />
@@ -194,18 +248,18 @@ export default async function CrmCustomerDetailPage({ params, searchParams }: Pr
             </label>
             <label className="text-xs font-bold text-slate-600">
               다음 연락시간
-              <input type="datetime-local" name="next_contact_at" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-800 outline-none focus:border-navy-900" />
+              <input type="datetime-local" name="next_contact_at" className="mt-1.5 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-slate-800 outline-none focus:border-amber-700" />
             </label>
           </div>
           <label className="block text-xs font-bold text-slate-600">
             상담내용
-            <textarea name="consult_content" required rows={3} placeholder="고객 반응과 다음 행동만 짧게 기록" className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-800 outline-none focus:border-navy-900" />
+            <textarea name="consult_content" required rows={3} placeholder="예: 견적 검토 중, 목요일 오후 다시 연락" className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-800 outline-none focus:border-navy-900" />
           </label>
           <button type="submit" className="w-full rounded-xl bg-navy-900 px-4 py-3 text-sm font-black text-white">
             상담기록 저장
           </button>
           {!customer.assigned_employee_id && (
-            <p className="text-xs font-semibold text-amber-700">담당자가 없는 고객은 다음 연락시간을 입력해도 직원용 시간 푸시 일정을 만들 수 없습니다.</p>
+            <p className="text-xs font-semibold text-amber-700">담당자가 없는 고객은 다음 연락시간을 입력해도 직원용 시간 PUSH 일정을 만들 수 없습니다.</p>
           )}
         </form>
       </section>
