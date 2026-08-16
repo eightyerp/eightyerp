@@ -41,6 +41,10 @@ assertIncludes(mobileAction, '"방문상담"', "mobile scheduling supports visit
 assertIncludes(mobileAction, '"실측"', "mobile scheduling supports site measurement");
 assertIncludes(mobileAction, "createCustomerSchedule", "next contact and mobile scheduling create real schedules");
 
+const assigneeAction = read("app/actions/crm-assignee.ts");
+assertIncludes(assigneeAction, "updateCrmCustomerAssigneeAction", "mobile admin assignee action exists");
+assertIncludes(assigneeAction, "change_assignee: true", "assignee action reuses secured CRM assignment logic");
+
 const newCustomerPage = read("app/crm/customers/new/page.tsx");
 assertIncludes(newCustomerPage, "CrmNewCustomerForm", "CRM has compact in-app customer registration screen");
 
@@ -50,6 +54,10 @@ assertIncludes(newSchedulePage, 'query.conflict === "1"', "schedule conflict fee
 
 const statusPage = read("app/crm/customers/[id]/status/page.tsx");
 assertIncludes(statusPage, "계약 (기존)", "legacy contract state is visible instead of silently resetting");
+
+const assigneePage = read("app/crm/customers/[id]/assignee/page.tsx");
+assertIncludes(assigneePage, "담당자 배정", "unassigned customer can be assigned inside CRM PWA");
+assertIncludes(assigneePage, "updateCrmCustomerAssigneeAction", "assignee screen uses mobile secure action");
 
 const pushFoundation = read("supabase/migrations/20260816090000_crm_mobile_push_foundation.sql");
 assertIncludes(pushFoundation, "customer_assigned", "company assignment push event exists");
@@ -71,6 +79,7 @@ assertIncludes(assignmentFollowup, "automatic_system_assignment", "system assign
 const unassignedAlert = read("supabase/migrations/20260816111500_crm_unassigned_customer_alert.sql");
 assertIncludes(unassignedAlert, "customer_unassigned_10m", "unassigned lead admin alert exists");
 assertIncludes(unassignedAlert, "super_admin", "unassigned lead reaches administrators");
+assertIncludes(unassignedAlert, "/assignee", "unassigned admin push stays inside CRM PWA");
 
 const worker = read("supabase/functions/crm-push-delivery/index.ts");
 for (const eventType of [
@@ -86,16 +95,13 @@ for (const eventType of [
   assertIncludes(worker, eventType, `push worker handles ${eventType}`);
 }
 assertIncludes(worker, "/crm/schedules/", "schedule push deep-links to mobile schedule handler");
-assertIncludes(worker, 'value.startsWith("/customers/")', "admin push may deep-link to safe customer edit route");
 assertIncludes(worker, "self_schedule_change", "self-created schedule change push is suppressed");
-
-const serviceWorker = read("public/sw-crm.js");
-assertIncludes(serviceWorker, '"/customers/"', "service worker permits safe same-origin customer admin deep links");
 
 const inbox = read("lib/crm/crm-alert-inbox.ts");
 assertIncludes(inbox, "listMyCrmAlerts", "unified in-app alert inbox exists");
 assertIncludes(inbox, "customer_assignment_uncontacted_30m", "inbox shows first-contact misses");
 assertIncludes(inbox, "customer_unassigned_10m", "inbox shows unassigned leads");
+assertIncludes(inbox, "/assignee", "inbox keeps unassigned admin action inside CRM PWA");
 assertIncludes(inbox, "customer_stale_7d", "inbox shows long-stale customers");
 assertIncludes(inbox, "self_schedule_change", "inbox hides self-generated schedule change noise");
 
