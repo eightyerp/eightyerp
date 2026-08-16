@@ -19,10 +19,6 @@ import {
   toQuoteSafeError,
   updateQuote,
 } from "@/lib/crm/quote-mgmt";
-import {
-  getQuoteContractTransitionOptions,
-  transitionQuoteToContract,
-} from "@/lib/crm/quote-contract-transition";
 import { buildQuoteGuideMessage } from "@/lib/crm/quote-constants";
 import { createClient } from "@/lib/supabase-server";
 import { requireAuthenticatedAccess } from "@/lib/crm/access";
@@ -408,69 +404,6 @@ export async function deleteQuoteFileAction(
     return {
       success: false,
       error: toQuoteSafeError(error, "파일 삭제에 실패했습니다."),
-    };
-  }
-}
-
-/**
- * 기존 UI 이름은 유지하지만 실제 동작은 더 이상 quote 플래그만 바꾸지 않는다.
- * 운영 `transition_quote_to_contract` RPC를 호출해 계약·현장·실행예산을
- * 한 트랜잭션으로 전환한다.
- */
-export async function setContractQuoteAction(
-  formData: FormData,
-): Promise<QuoteActionResult> {
-  try {
-    const id = String(formData.get("quote_id") ?? "").trim();
-    if (!id) return { success: false, error: "견적 ID가 없습니다." };
-
-    const options = await getQuoteContractTransitionOptions(id);
-    let projectMode: "link" | "create";
-    let projectId: string | null = null;
-
-    if (
-      options.quoteProjectId &&
-      options.projects.some((project) => project.id === options.quoteProjectId)
-    ) {
-      projectMode = "link";
-      projectId = options.quoteProjectId;
-    } else if (options.projects.length === 1) {
-      projectMode = "link";
-      projectId = options.projects[0].id;
-    } else if (options.projects.length === 0) {
-      projectMode = "create";
-    } else {
-      return {
-        success: false,
-        error:
-          "이 고객에 현장이 여러 개 있습니다. 견적에 사용할 현장을 먼저 연결한 뒤 계약 전환해 주세요.",
-      };
-    }
-
-    const result = await transitionQuoteToContract({
-      quoteId: id,
-      projectMode,
-      projectId,
-    });
-    const quote = await getQuoteById(id);
-    if (!quote) throw new Error("전환된 견적 정보를 확인하지 못했습니다.");
-
-    revalidateQuotes(quote.customer_id, quote.id);
-    revalidatePath("/contracts");
-    revalidatePath(`/contracts/${result.contractId}`);
-    revalidatePath(`/projects/${result.projectId}/schedule`);
-
-    return {
-      success: true,
-      message: result.idempotent
-        ? "이미 전환된 계약 정보를 확인했습니다."
-        : "계약 전환이 완료되었습니다. 계약·현장·실행예산이 연결되었습니다.",
-      quoteId: quote.id,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: toQuoteSafeError(error, "계약 전환에 실패했습니다."),
     };
   }
 }
