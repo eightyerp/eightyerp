@@ -37,7 +37,7 @@ async function isQuotesSchemaMissing(): Promise<boolean> {
 }
 
 type NewQuotePageProps = {
-  searchParams: Promise<{ customerId?: string }>;
+  searchParams: Promise<{ customerId?: string; projectId?: string; consultationId?: string; inspectionId?: string }>;
 };
 
 export default async function NewQuotePage({
@@ -45,6 +45,9 @@ export default async function NewQuotePage({
 }: NewQuotePageProps) {
   const params = await searchParams;
   const customerId = params.customerId?.trim() || null;
+  const projectId = params.projectId?.trim() || null;
+  const consultationId = params.consultationId?.trim() || null;
+  const inspectionId = params.inspectionId?.trim() || null;
   const userAccess = await getCurrentUserAccess();
   const devHint = schemaMissingDevHint(MIGRATION_PATH, userAccess.isAdmin);
 
@@ -56,6 +59,9 @@ export default async function NewQuotePage({
     quote_vat_rate: number;
   } | null = null;
   let loadError: string | null = null;
+  let verifiedConsultationId: string | null = null;
+  let verifiedInspectionId: string | null = null;
+  let verifiedProjectId: string | null = null;
   const tablesMissing = await isQuotesSchemaMissing();
 
   try {
@@ -95,6 +101,30 @@ export default async function NewQuotePage({
         ];
       }
     }
+    if (customerId && userAccess.profile?.active_company_id) {
+      const supabase = await createClient();
+      if (projectId) {
+        const { data } = await supabase.from("projects").select("id")
+          .eq("id", projectId).eq("customer_id", customerId)
+          .eq("company_id", userAccess.profile.active_company_id).is("deleted_at", null).maybeSingle();
+        verifiedProjectId = data?.id ?? null;
+      }
+      if (inspectionId && verifiedProjectId) {
+        const { data } = await supabase.from("window_inspections").select("id")
+          .eq("id", inspectionId).eq("customer_id", customerId)
+          .eq("company_id", userAccess.profile.active_company_id)
+          .eq("project_id", verifiedProjectId).maybeSingle();
+        verifiedInspectionId = data?.id ?? null;
+      }
+      if (consultationId && verifiedProjectId && verifiedInspectionId) {
+        const { data } = await supabase.from("customer_consult_logs").select("id")
+          .eq("id", consultationId).eq("customer_id", customerId)
+          .eq("company_id", userAccess.profile.active_company_id)
+          .eq("source_project_id", verifiedProjectId)
+          .eq("source_inspection_id", verifiedInspectionId).maybeSingle();
+        verifiedConsultationId = data?.id ?? null;
+      }
+    }
   } catch {
     loadError = "고객 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
@@ -130,6 +160,9 @@ export default async function NewQuotePage({
             employees={employees}
             customers={customers}
             initialCustomerId={customerId}
+            initialProjectId={verifiedProjectId}
+            initialConsultationId={verifiedConsultationId}
+            initialInspectionId={verifiedInspectionId}
             brand={brand}
             companyVatSettings={companyVatSettings}
           />

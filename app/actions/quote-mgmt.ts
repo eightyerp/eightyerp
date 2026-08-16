@@ -21,6 +21,8 @@ import {
   updateQuote,
 } from "@/lib/crm/quote-mgmt";
 import { buildQuoteGuideMessage } from "@/lib/crm/quote-constants";
+import { createClient } from "@/lib/supabase-server";
+import { requireAuthenticatedAccess } from "@/lib/crm/access";
 
 export type QuoteActionResult = {
   success: boolean;
@@ -52,6 +54,36 @@ function revalidateQuotes(customerId?: string | null, quoteId?: string | null) {
     revalidatePath(`/quotes/${quoteId}`);
     revalidatePath(`/quotes/${quoteId}/edit`);
   }
+}
+
+async function linkWorkflowContext(formData: FormData, quoteId: string, customerId: string) {
+  const projectId = String(formData.get("project_id") ?? "").trim() || null;
+  const consultationId = String(formData.get("source_consultation_id") ?? "").trim() || null;
+  const inspectionId = String(formData.get("source_inspection_id") ?? "").trim() || null;
+  if (!consultationId && !inspectionId) return;
+  if (!projectId || !consultationId || !inspectionId) throw new Error("점검·상담·현장 연결 정보가 필요합니다.");
+  const access = await requireAuthenticatedAccess();
+  const companyId = access.profile?.active_company_id;
+  if (!companyId) throw new Error("회사 권한을 확인할 수 없습니다.");
+  const supabase = await createClient();
+  if (consultationId) {
+    const { data } = await supabase.from("customer_consult_logs").select("id")
+      .eq("id", consultationId).eq("customer_id", customerId).eq("company_id", companyId)
+      .eq("source_project_id", projectId).eq("source_inspection_id", inspectionId).maybeSingle();
+    if (!data) throw new Error("상담 연결 정보가 올바르지 않습니다.");
+  }
+  if (inspectionId) {
+    const { data } = await supabase.from("window_inspections").select("id")
+      .eq("id", inspectionId).eq("customer_id", customerId).eq("company_id", companyId)
+      .eq("project_id", projectId).maybeSingle();
+    if (!data) throw new Error("점검 연결 정보가 올바르지 않습니다.");
+  }
+  const { data: linkedQuote, error } = await supabase.from("quotes").update({
+    source_consultation_id: consultationId,
+    source_inspection_id: inspectionId,
+  }).eq("id", quoteId).eq("customer_id", customerId).eq("company_id", companyId)
+    .eq("project_id", projectId).select("id").maybeSingle();
+  if (error || !linkedQuote) throw new Error("견적 업무 연결을 저장하지 못했습니다.");
 }
 
 function parseRemovedItemIds(formData: FormData): string[] {
@@ -129,6 +161,7 @@ export async function saveQuoteWizardAction(
       requestId,
     });
     const quoteId = quote.quote_id || quote.id;
+    await linkWorkflowContext(formData, quoteId, form.customer_id);
     revalidateQuotes(form.customer_id, quoteId);
     return {
       success: true,

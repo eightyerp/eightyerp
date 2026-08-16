@@ -106,6 +106,9 @@ type QuoteWizardFormProps = {
   employees: Employee[];
   customers: WizardCustomer[];
   initialCustomerId?: string | null;
+  initialProjectId?: string | null;
+  initialConsultationId?: string | null;
+  initialInspectionId?: string | null;
   initialQuote?: ErpQuote | null;
   /** 페이지 로더에서 1회 조회한 회사 표지 브랜드 */
   brand?: QuoteBrandProfile | null;
@@ -266,6 +269,9 @@ export default function QuoteWizardForm({
   employees,
   customers,
   initialCustomerId,
+  initialProjectId = null,
+  initialConsultationId = null,
+  initialInspectionId = null,
   initialQuote,
   brand = null,
   companyVatSettings = null,
@@ -1075,6 +1081,9 @@ export default function QuoteWizardForm({
       }}
     >
       <input type="hidden" name="customer_id" value={customerId} />
+      <input type="hidden" name="project_id" value={initialProjectId ?? ""} />
+      <input type="hidden" name="source_consultation_id" value={initialConsultationId ?? ""} />
+      <input type="hidden" name="source_inspection_id" value={initialInspectionId ?? ""} />
       <input type="hidden" name="quote_type" value={quoteType} />
       <input type="hidden" name="quote_mode" value={quoteMode} />
       <input type="hidden" name="title" value={title} />
