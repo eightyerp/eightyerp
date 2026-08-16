@@ -253,11 +253,16 @@ export async function softDeleteProject(input: {
 
   const existing = await getProjectById(input.id);
   if (!existing) throw new Error("현장을 찾을 수 없습니다.");
-  const { access } = await assertCanManageProject(existing);
+  const { access, isAdmin } = await assertCanManageProject(existing);
+  if (!isAdmin) {
+    throw new Error(
+      "현장 삭제는 관리자만 할 수 있습니다. 일반 직원은 상태를 보류/취소로 관리해 주세요.",
+    );
+  }
   const supabase = await createClient();
 
   // project_id는 점검→상담→견적→계약을 잇는 공통 업무 ID다.
-  // 연결 이력이 생긴 뒤에는 soft-delete도 허용하지 않는다.
+  // 관리자라도 연결 이력이 생긴 뒤에는 soft-delete를 허용하지 않는다.
   const [contractResult, inspectionResult, quoteResult, consultResult] =
     await Promise.all([
       supabase
