@@ -1,6 +1,6 @@
 # Eighty ERP Master Baseline
 
-기준 스냅샷: 2026-08-16 21:13 KST  
+기준 스냅샷: 2026-08-16 21:19 KST  
 운영 기준: `main` / Supabase `eighty-erp` (`zhihbyarqpkudqyomcxv`)
 
 ## 1. 이 문서의 목적
@@ -142,10 +142,10 @@ PR #69 read-only preflight 추가 확인:
 
 ### 최신 main에서 재구성
 
-- **PR #62 core ERP navigation round trip 제거**
-  - 분류: `PR대기 / 성능 참고`
-  - 현재 main 기준 오래된 merge-base에서 29 commits behind 확인
-  - 방침: 통째 병합 금지, **Issue #73**에서 필요한 개선만 최신 main에 재구성
+- **Issue #73 ERP 핵심동선 성능 V2**
+  - 과거 PR #62의 유효한 분석/아이디어를 최신 main에서 재구성하는 Source of Truth
+  - 기존 **PR #62는 29 commits behind 확인 후 2026-08-16 CLOSED**
+  - 브랜치와 diff는 참고자료로 보존하며 통째 병합하지 않는다.
 
 - **PR #50 Finance V2 Gate 3**
   - 분류: `PR대기 / 기능 참고`
@@ -157,15 +157,19 @@ PR #69 read-only preflight 추가 확인:
   - 분류: `PR대기 / 대형 기능`
   - 방침: PWA shell → 모바일 업무 → PUSH 스키마/worker 순으로 작은 Gate로 나누며 통째 병합 금지
 
-### 보관/폐기후보
+### 보관 완료
 
 - **PR #44, #49 ERP 저장소 내부 Android Window Check**
-  - 분류: `보관/폐기후보`
-  - 방침: 현재 별도 Window Check 저장소가 기준이므로 ERP 본체에 Android 앱 소스를 다시 합치지 않는다.
+  - 분류: `보관 / CLOSED (2026-08-16)`
+  - 현재 별도 Window Check 저장소가 Source of Truth
+  - ERP 본체에 Android 앱 소스를 다시 합치지 않는다.
+  - 브랜치/코드/Actions 이력은 삭제하지 않고 보존한다.
 
 ### P0/P1 독립 backlog
 
 - **Issue #72**: Supabase Security Advisor 권한 hardening
+  - read-only 1차 inventory 완료
+  - 익명 공개 진입점 / Storage-RLS helper / authenticated helper / trigger-only 함수를 분류
 - **Issue #73**: 최신 main 기준 ERP 핵심동선 성능 V2
 - **Issue #74**: ERP 시스템 상태센터
 
