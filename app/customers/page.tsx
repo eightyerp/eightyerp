@@ -6,9 +6,9 @@ import CustomerPagination from "@/components/customers/CustomerPagination";
 import CustomerTable from "@/components/customers/CustomerTable";
 import ExternalInquiryPasteModal from "@/components/customers/ExternalInquiryPasteModal";
 import { getCurrentUserAccess } from "@/lib/crm/access";
+import { getCustomersWithDateRange } from "@/lib/crm/customer-list-date-range";
 import { CUSTOMER_LIST_PAGE_SIZE } from "@/lib/crm/customer-list-query";
 import {
-  getCustomers,
   getCustomerListEmployees,
   getCustomerListLeadSources,
 } from "@/lib/crm/customers";
@@ -17,6 +17,10 @@ import {
   schemaMissingStaffMessage,
 } from "@/lib/crm/dev-diagnostics";
 import { toCrmErrorMessage } from "@/lib/crm/errors";
+import {
+  formatDateRangeLabel,
+  normalizeDateRange,
+} from "@/lib/date-range";
 import type {
   CustomerStatus,
   CustomerWithRelations,
@@ -31,6 +35,9 @@ type CustomersPageProps = {
     leadSourceId?: string;
     status?: string;
     interestItem?: string;
+    from?: string;
+    to?: string;
+    /** legacy DateRange aliases */
     dateFrom?: string;
     dateTo?: string;
     contact?: string;
@@ -47,13 +54,19 @@ export default async function CustomersPage({
   const params = await searchParams;
   const access = await getCurrentUserAccess();
   const page = Math.max(1, Number(params.page || "1") || 1);
+  const dateRange = normalizeDateRange(
+    params.from ?? params.dateFrom,
+    params.to ?? params.dateTo,
+  );
+  const normalizedFrom = dateRange.error ? undefined : dateRange.from || undefined;
+  const normalizedTo = dateRange.error ? undefined : dateRange.to || undefined;
 
   let customers: CustomerWithRelations[] = [];
   let total = 0;
   let totalPages = 1;
   let employees: EmployeeOption[] = [];
   let leadSources: LeadSourceOption[] = [];
-  let loadError: string | null = null;
+  let loadError: string | null = dateRange.error;
   let lookupWarning = false;
 
   const employeeOptionsPromise = access.isAdmin
@@ -70,15 +83,16 @@ export default async function CustomersPage({
           : [],
       );
 
-  const [listResult, employeeResult, sourceResult] = await Promise.allSettled([
-      getCustomers({
+  const listPromise = dateRange.error
+    ? Promise.reject(new Error(dateRange.error))
+    : getCustomersWithDateRange({
         q: params.q,
         employeeId: params.employeeId,
         leadSourceId: params.leadSourceId,
         status: (params.status as CustomerStatus | undefined) || "",
         interestItem: params.interestItem,
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
+        dateFrom: normalizedFrom,
+        dateTo: normalizedTo,
         contact:
           params.contact === "today" ||
           params.contact === "overdue" ||
@@ -88,16 +102,19 @@ export default async function CustomersPage({
             : "",
         page,
         pageSize: CUSTOMER_LIST_PAGE_SIZE,
-      }),
-      employeeOptionsPromise,
-      getCustomerListLeadSources(),
-    ]);
+      });
+
+  const [listResult, employeeResult, sourceResult] = await Promise.allSettled([
+    listPromise,
+    employeeOptionsPromise,
+    getCustomerListLeadSources(),
+  ]);
 
   if (listResult.status === "fulfilled") {
     customers = listResult.value.customers;
     total = listResult.value.total;
     totalPages = listResult.value.totalPages;
-  } else {
+  } else if (!dateRange.error) {
     loadError = toCrmErrorMessage(listResult.reason);
   }
 
@@ -113,6 +130,10 @@ export default async function CustomersPage({
     "supabase/migrations/20260716000000_crm_customers.sql",
     access.isAdmin,
   );
+  const activeDateRangeLabel = formatDateRangeLabel({
+    from: normalizedFrom ?? "",
+    to: normalizedTo ?? "",
+  });
 
   return (
     <DashboardLayout>
@@ -195,7 +216,9 @@ export default async function CustomersPage({
 
         {loadError && !tablesMissing && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            고객 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+            {dateRange.error
+              ? dateRange.error
+              : "고객 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."}
           </div>
         )}
 
@@ -225,6 +248,9 @@ export default async function CustomersPage({
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
               <p>
                 총 {total}건
+                <span className="ml-2 font-medium text-navy-800">
+                  · 접수일 {activeDateRangeLabel}
+                </span>
                 {params.contact && (
                   <span className="ml-2 font-medium text-navy-800">
                     · 연락필터:{" "}
@@ -268,8 +294,8 @@ export default async function CustomersPage({
                 leadSourceId: params.leadSourceId,
                 status: params.status,
                 interestItem: params.interestItem,
-                dateFrom: params.dateFrom,
-                dateTo: params.dateTo,
+                from: normalizedFrom,
+                to: normalizedTo,
                 contact: params.contact,
               }}
             />

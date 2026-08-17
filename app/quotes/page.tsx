@@ -5,7 +5,7 @@ import {
   schemaMissingStaffMessage,
 } from "@/lib/crm/dev-diagnostics";
 import { isMissingRelationError } from "@/lib/crm/errors";
-import { listQuotesPage } from "@/lib/crm/quote-mgmt";
+import { listQuotesPageWithDateRange } from "@/lib/crm/quote-list-date-range";
 import {
   listInteriorImportCustomers,
   type InteriorImportCustomerOption,
@@ -14,6 +14,7 @@ import {
   getScheduleAccess,
   listEmployeesInScope,
 } from "@/lib/crm/schedule-access";
+import { normalizeDateRange } from "@/lib/date-range";
 import { createClient } from "@/lib/supabase-server";
 import type { Employee, ErpQuote } from "@/types/database";
 
@@ -39,6 +40,9 @@ type QuotesPageProps = {
     employeeId?: string;
     lxOnly?: string;
     contractOnly?: string;
+    from?: string;
+    to?: string;
+    /** legacy DateRange aliases */
     createdFrom?: string;
     createdTo?: string;
     page?: string;
@@ -48,66 +52,82 @@ type QuotesPageProps = {
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page ?? "1") || 1);
+  const dateRange = normalizeDateRange(
+    params.from ?? params.createdFrom,
+    params.to ?? params.createdTo,
+  );
+  const normalizedFrom = dateRange.error ? undefined : dateRange.from || undefined;
+  const normalizedTo = dateRange.error ? undefined : dateRange.to || undefined;
+
   let quotes: ErpQuote[] = [];
   let total = 0;
   let totalPages = 1;
   let employees: Employee[] = [];
   let importCustomers: InteriorImportCustomerOption[] = [];
   let lockEmployeeId: string | null = null;
-  let loadError: string | null = null;
+  let loadError: string | null = dateRange.error;
   let lookupWarning = false;
   let tablesMissing = false;
   let isAdmin = false;
 
-  try {
-    const access = await getScheduleAccess();
-    isAdmin = access.isAdmin;
-    lockEmployeeId =
-      !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
+  if (!dateRange.error) {
+    try {
+      const access = await getScheduleAccess();
+      isAdmin = access.isAdmin;
+      lockEmployeeId =
+        !access.canViewAll && !access.canViewTeam ? access.employeeId : null;
 
-    const [employeeResult, customerResult] = await Promise.allSettled([
-      listEmployeesInScope(access),
-      listInteriorImportCustomers(),
-    ]);
+      const [employeeResult, customerResult] = await Promise.allSettled([
+        listEmployeesInScope(access),
+        listInteriorImportCustomers(),
+      ]);
 
-    if (employeeResult.status === "fulfilled") {
-      employees = employeeResult.value;
-    } else {
-      lookupWarning = true;
+      if (employeeResult.status === "fulfilled") {
+        employees = employeeResult.value;
+      } else {
+        lookupWarning = true;
+      }
+
+      if (customerResult.status === "fulfilled") {
+        importCustomers = customerResult.value;
+      } else {
+        lookupWarning = true;
+      }
+
+      const result = await listQuotesPageWithDateRange(
+        {
+          q: params.q,
+          quoteType: params.quoteType,
+          status: params.status,
+          employeeId: lockEmployeeId ?? params.employeeId,
+          lxOnly: params.lxOnly === "true",
+          contractOnly: params.contractOnly === "true",
+          createdFrom: normalizedFrom,
+          createdTo: normalizedTo,
+        },
+        page,
+        access,
+        employees,
+      );
+      quotes = result.quotes;
+      total = result.total;
+      totalPages = result.totalPages;
+    } catch {
+      tablesMissing = await isQuotesSchemaMissing();
+      loadError = tablesMissing
+        ? null
+        : "견적 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
     }
-
-    if (customerResult.status === "fulfilled") {
-      importCustomers = customerResult.value;
-    } else {
-      lookupWarning = true;
-    }
-
-    const result = await listQuotesPage(
-      {
-        q: params.q,
-        quoteType: params.quoteType,
-        status: params.status,
-        employeeId: lockEmployeeId ?? params.employeeId,
-        lxOnly: params.lxOnly === "true",
-        contractOnly: params.contractOnly === "true",
-        createdFrom: params.createdFrom,
-        createdTo: params.createdTo,
-      },
-      page,
-      access,
-      employees,
-    );
-    quotes = result.quotes;
-    total = result.total;
-    totalPages = result.totalPages;
-  } catch {
-    tablesMissing = await isQuotesSchemaMissing();
-    loadError = tablesMissing
-      ? null
-      : "견적 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
 
   const devHint = schemaMissingDevHint(MIGRATION_PATH, isAdmin);
+  const normalizedFilters = {
+    ...params,
+    from: normalizedFrom,
+    to: normalizedTo,
+    createdFrom: undefined,
+    createdTo: undefined,
+  };
 
   return (
     <DashboardLayout>
@@ -132,7 +152,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
         {loadError && !tablesMissing && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {loadError}
+            {dateRange.error
+              ? dateRange.error
+              : "견적 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."}
           </div>
         )}
 
@@ -148,7 +170,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             employees={employees}
             importCustomers={importCustomers}
             lockEmployeeId={lockEmployeeId}
-            initialFilters={params}
+            initialFilters={normalizedFilters}
             page={page}
             total={total}
             totalPages={totalPages}

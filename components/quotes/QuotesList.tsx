@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import DateRangeFilter from "@/components/common/DateRangeFilter";
 import {
   ERP_QUOTE_STATUSES,
   ERP_QUOTE_STATUS_BADGE,
@@ -13,6 +14,7 @@ import {
 import { formatEmployeeOptionLabel } from "@/lib/crm/constants";
 import { calcQuoteSummary, isQuoteExpired } from "@/lib/crm/quote-mgmt-client";
 import { QUOTE_SEARCH_DEBOUNCE_MS } from "@/lib/crm/quote-list-query";
+import { formatDateRangeLabel } from "@/lib/date-range";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { consumeQuoteListFlash } from "@/lib/crm/quote-list-flash";
 import type { InteriorImportCustomerOption } from "@/lib/crm/interior-quote-import";
@@ -56,8 +58,8 @@ type Filters = {
   employeeId: string;
   lxOnly: boolean;
   contractOnly: boolean;
-  createdFrom: string;
-  createdTo: string;
+  from: string;
+  to: string;
 };
 
 type SortKey =
@@ -74,8 +76,8 @@ const EMPTY_FILTERS: Filters = {
   employeeId: "",
   lxOnly: false,
   contractOnly: false,
-  createdFrom: "",
-  createdTo: "",
+  from: "",
+  to: "",
 };
 
 function formatMoney(value: number | null | undefined): string {
@@ -111,8 +113,8 @@ export default function QuotesList({
     employeeId: lockEmployeeId ?? initialFilters?.employeeId ?? "",
     lxOnly: initialFilters?.lxOnly === "true",
     contractOnly: initialFilters?.contractOnly === "true",
-    createdFrom: initialFilters?.createdFrom ?? "",
-    createdTo: initialFilters?.createdTo ?? "",
+    from: initialFilters?.from ?? initialFilters?.createdFrom ?? "",
+    to: initialFilters?.to ?? initialFilters?.createdTo ?? "",
   });
   const [sort, setSort] = useState<SortKey>("recent");
   const [saveToast, setSaveToast] = useState<string | null>(null);
@@ -131,9 +133,11 @@ export default function QuotesList({
       employeeId: lockEmployeeId ? "" : next.employeeId,
       lxOnly: next.lxOnly ? "true" : "",
       contractOnly: next.contractOnly ? "true" : "",
-      createdFrom: next.createdFrom,
-      createdTo: next.createdTo,
+      from: next.from,
+      to: next.to,
     };
+    params.delete("createdFrom");
+    params.delete("createdTo");
     for (const [key, value] of Object.entries(values)) {
       if (value) params.set(key, value);
       else params.delete(key);
@@ -222,12 +226,6 @@ export default function QuotesList({
       if (empFilter && quote.assigned_employee_id !== empFilter) return false;
       if (filters.lxOnly && !quote.is_lx_material) return false;
       if (filters.contractOnly && !quote.is_contract_quote) return false;
-      if (filters.createdFrom) {
-        if (quote.created_at < `${filters.createdFrom}T00:00:00`) return false;
-      }
-      if (filters.createdTo) {
-        if (quote.created_at > `${filters.createdTo}T23:59:59`) return false;
-      }
       return true;
     });
 
@@ -264,6 +262,11 @@ export default function QuotesList({
     [filters, lockEmployeeId],
   );
 
+  const activeDateRangeLabel = formatDateRangeLabel({
+    from: filters.from,
+    to: filters.to,
+  });
+
   return (
     <div className="space-y-4">
       {saveToast ? (
@@ -293,7 +296,10 @@ export default function QuotesList({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
           총 {total}건
-          {hasActiveFilters && ` (현재 페이지 ${filtered.length}건)`}
+          <span className="ml-2 font-medium text-navy-800">
+            · 작성일 {activeDateRangeLabel}
+          </span>
+          {hasActiveFilters && ` · 현재 페이지 ${filtered.length}건`}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -380,22 +386,17 @@ export default function QuotesList({
             </select>
           </div>
         )}
-        <div>
-          <label className={filterLabelClass}>작성일 시작</label>
-          <input
-            type="date"
-            value={filters.createdFrom}
-            onChange={(e) => setField("createdFrom", e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className={filterLabelClass}>작성일 종료</label>
-          <input
-            type="date"
-            value={filters.createdTo}
-            onChange={(e) => setField("createdTo", e.target.value)}
-            className={inputClass}
+        <div className="md:col-span-2 xl:col-span-4">
+          <DateRangeFilter
+            from={filters.from}
+            to={filters.to}
+            label="작성일 조회기간"
+            mode="apply"
+            onApply={(range) => {
+              const next = { ...filters, from: range.from, to: range.to };
+              setFilters(next);
+              navigateWithFilters(next);
+            }}
           />
         </div>
         <div className="flex items-end gap-4">

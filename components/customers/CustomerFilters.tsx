@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
+import DateRangeFilter from "@/components/common/DateRangeFilter";
 import {
   CUSTOMER_STATUSES,
   INTEREST_ITEMS,
@@ -32,6 +33,8 @@ export default function CustomerFilters({
   const [query, setQuery] = useState(queryFromUrl);
   const lastSubmittedQuery = useRef(queryFromUrl.trim());
   const searchSequence = useRef(0);
+  const dateFrom = searchParams.get("from") ?? searchParams.get("dateFrom") ?? "";
+  const dateTo = searchParams.get("to") ?? searchParams.get("dateTo") ?? "";
 
   useEffect(() => {
     const normalizedQuery = query.trim();
@@ -65,8 +68,6 @@ export default function CustomerFilters({
       "leadSourceId",
       "status",
       "interestItem",
-      "dateFrom",
-      "dateTo",
       "contact",
     ] as const;
 
@@ -75,17 +76,17 @@ export default function CustomerFilters({
       if (value) params.set(field, value);
     }
 
+    const from = String(formData.get("from") ?? "").trim();
+    const to = String(formData.get("to") ?? "").trim();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+
     lastSubmittedQuery.current = String(formData.get("q") ?? "").trim();
     searchSequence.current += 1;
 
-    // preserve contact from URL if form doesn't include it but dashboard linked here
-    const contactFromUrl = searchParams.get("contact");
-    if (!params.get("contact") && contactFromUrl) {
-      // only keep if user didn't clear via empty select — contact is in form
-    }
-
     startTransition(() => {
-      router.push(`/customers?${params.toString()}`);
+      const queryString = params.toString();
+      router.push(queryString ? `/customers?${queryString}` : "/customers");
     });
   }
 
@@ -193,30 +194,6 @@ export default function CustomerFilters({
 
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600">
-          등록일 시작
-        </label>
-        <input
-          type="date"
-          name="dateFrom"
-          defaultValue={searchParams.get("dateFrom") ?? ""}
-          className={inputClass}
-        />
-      </div>
-
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600">
-          등록일 종료
-        </label>
-        <input
-          type="date"
-          name="dateTo"
-          defaultValue={searchParams.get("dateTo") ?? ""}
-          className={inputClass}
-        />
-      </div>
-
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600">
           연락일정
         </label>
         <select
@@ -230,6 +207,17 @@ export default function CustomerFilters({
           <option value="soon">3일 이내</option>
           <option value="this_week">이번 주</option>
         </select>
+      </div>
+
+      <div className="md:col-span-2 xl:col-span-4">
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          label="접수일 조회기간"
+          mode="form"
+          fromName="from"
+          toName="to"
+        />
       </div>
 
       <div className="flex items-end gap-2 md:col-span-2 xl:col-span-4">

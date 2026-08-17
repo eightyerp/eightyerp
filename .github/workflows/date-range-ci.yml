@@ -1,0 +1,48 @@
+name: ERP DateRange CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/customers/page.tsx"
+      - "app/quotes/page.tsx"
+      - "components/common/DateRangeFilter.tsx"
+      - "components/customers/CustomerFilters.tsx"
+      - "components/quotes/QuotesList.tsx"
+      - "lib/date-range.ts"
+      - "lib/crm/customer-list-date-range.ts"
+      - "lib/crm/quote-list-date-range.ts"
+      - "scripts/test-date-range.ts"
+      - "package.json"
+      - ".github/workflows/date-range-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: DateRange contract
+        run: npm run test:date-range
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
