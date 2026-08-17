@@ -38,7 +38,7 @@ jobs:
       - name: Production build
         run: npm run build
 
-  local-db-migrations:
+  window-check-local-db:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -50,11 +50,76 @@ jobs:
         with:
           version: latest
 
-      - name: Initialize local Supabase config
-        run: supabase init --force
+      - name: Preserve historical migrations outside local replay
+        run: |
+          mv supabase/migrations /tmp/eighty-erp-full-migrations
+          mkdir -p supabase/migrations
 
-      - name: Apply all migrations to local Supabase Postgres
-        run: supabase db start
+      - name: Initialize clean local Supabase
+        run: |
+          supabase init --force
+          supabase db start
+
+      - name: Apply current ERP dependency fixture
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat scripts/fixtures/window-check-operational-current-schema.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Execute Window Check operational migration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat /tmp/eighty-erp-full-migrations/20260818030000_window_check_operational_storage_v1.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Verify resulting schema and policies
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat <<'SQL' |
+          select count(*) = 3 as detail_tables_exist
+          from information_schema.tables
+          where table_schema = 'public'
+            and table_name in (
+              'window_inspection_snapshots',
+              'window_inspection_photos',
+              'window_inspection_reports'
+            );
+
+          select count(*) = 5 as helpers_private
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'erp_private'
+            and p.proname in (
+              'can_access_window_inspection',
+              'can_write_window_inspection',
+              'validate_window_inspection_child_company',
+              'validate_window_inspection_report_snapshot',
+              'window_storage_path_uuid'
+            );
+
+          select count(*) = 2 as buckets_private
+          from storage.buckets
+          where id in ('window-inspection-private', 'window-report-private')
+            and public = false;
+
+          select count(*) = 0 as helpers_not_public
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+            and p.proname in (
+              'can_access_window_inspection',
+              'can_write_window_inspection',
+              'validate_window_inspection_child_company',
+              'validate_window_inspection_report_snapshot',
+              'window_storage_path_uuid'
+            );
+          SQL
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -At |
+            tee /tmp/window-check-schema-verification.txt
+          grep -Fx 't' /tmp/window-check-schema-verification.txt | test "$(wc -l)" -eq 4
 
       - name: Lint local database functions
         run: supabase db lint --local --level error --fail-on error
