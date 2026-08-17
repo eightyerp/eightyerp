@@ -36,7 +36,7 @@ diagnostic_as() {
   local user_id="$2"
   local output
   output="$(query_as "$user_id" "select concat_ws('|', coalesce(auth.uid()::text,'NULL'), coalesce(public.current_company_id()::text,'NULL'), coalesce(public.current_employee_id()::text,'NULL'), coalesce(public.current_company_role(),'NULL'), erp_private.can_access_window_inspection('$INSPECTION_ID')::text, erp_private.can_write_window_inspection('$INSPECTION_ID')::text, (select count(*) from public.window_inspections where id='$INSPECTION_ID')::text);")"
-  echo "$label=$output"
+  echo "$label=$output" >&2
   printf '%s' "$output"
 }
 
@@ -91,7 +91,7 @@ expect_insert_denied() {
   echo "$label snapshot INSERT was denied as expected:"
   cat "$stderr_file" || true
   if grep -Eqi 'syntax error|does not exist|connection|could not connect' "$stderr_file"; then
-    echo "$label failed for a test-harness/schema reason instead of RLS"
+    echo "$label failed for a test-harness/schema reason instead of authorization"
     exit 1
   fi
   echo "$label snapshot INSERT denial: PASS"
