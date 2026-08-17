@@ -1,0 +1,55 @@
+name: ERP Finance DateRange CI
+
+on:
+  pull_request:
+    paths:
+      - "app/finance/collections/**"
+      - "app/finance/payments/**"
+      - "components/finance/**"
+      - "lib/crm/collection-ledger.ts"
+      - "lib/crm/expense-ledger.ts"
+      - "lib/date-range.ts"
+      - "scripts/test-finance-date-range.mjs"
+      - "scripts/test-date-range.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/finance-date-range-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: ERP lifecycle guard
+        run: node scripts/test-window-workflow-lifecycle.mjs
+
+      - name: DateRange contract
+        run: npm run test:date-range
+
+      - name: Finance DateRange contract
+        run: npm run test:finance-date-range
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
