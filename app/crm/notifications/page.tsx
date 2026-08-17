@@ -1,5 +1,4 @@
 import Link from "next/link";
-import CrmPushSetupCard from "@/components/crm/CrmPushSetupCard";
 import { listMyCrmAlerts, type CrmAlertItem } from "@/lib/crm/crm-alert-inbox";
 
 function formatKoreaDateTime(value: string) {
@@ -42,18 +41,16 @@ export default async function CrmNotificationsPage() {
         <p className="text-xs font-semibold text-slate-500">고객 누락 방지</p>
         <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">알림</h1>
         <p className="mt-1 text-sm text-slate-500">
-          신규 배분부터 일정·미처리·장기방치까지 한곳에서 확인합니다.
+          고객 배분과 일정 관련 업무 기록을 한곳에서 확인합니다.
         </p>
       </section>
-
-      <CrmPushSetupCard />
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
             <h2 className="text-base font-black text-slate-950">내 CRM 알림</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              휴대폰 PUSH를 꺼도 앱 안의 알림 기록은 여기서 확인할 수 있습니다.
+              PUSH 운영 연결 전에도 앱 안에서 확인 가능한 업무 기록을 보여줍니다.
             </p>
           </div>
           <span className="shrink-0 text-xs font-bold text-slate-400">최근 {alerts.length}건</span>

@@ -13,22 +13,22 @@ function check(content, needle, label) {
 }
 
 const manifest = read("public/crm-manifest.webmanifest");
-check(manifest, '"id": "/crm"', "CRM PWA identity is stable across Android/iPhone updates");
+check(manifest, '"id": "/crm"', "CRM PWA identity stays stable");
 check(manifest, '"display": "standalone"', "CRM installs as standalone app");
 check(manifest, '"orientation": "portrait"', "CRM keeps phone-first portrait mode");
-
-const pushCard = read("components/crm/CrmPushSetupCard.tsx");
-check(pushCard, '"install_required"', "iPhone pre-install state is explicit");
-check(pushCard, "isIosDevice", "CRM detects iPhone/iPad platform");
-check(pushCard, "isStandaloneApp", "CRM detects installed Home Screen app mode");
-check(pushCard, "iPhone에서는 먼저 Safari", "iPhone explains Home Screen install before push");
-check(pushCard, 'href="/crm/install"', "iPhone push setup links to install guide");
 
 const installPage = read("app/crm/install/page.tsx");
 check(installPage, "Android · Chrome", "Android installation guide exists");
 check(installPage, "iPhone · Safari", "iPhone installation guide exists");
-check(installPage, "Play 스토어 설치 없이", "Android no-store install is explained");
-check(installPage, "App Store는 필요 없지만", "iPhone no-App-Store install is explained");
-check(installPage, "웹 앱으로 열기", "iPhone web-app mode is explicitly guided");
+check(installPage, "Play 스토어 설치 없이", "Android PWA installation is explained");
+check(installPage, "App Store는 필요 없지만", "iPhone PWA installation is explained");
+check(installPage, "웹 앱으로 열기", "iPhone standalone web-app mode is guided");
 
-console.log("PASS: EIGHTY CRM Android/iPhone install contract complete");
+const serviceWorkerRegistration = read("components/crm/CrmServiceWorkerRegistration.tsx");
+check(serviceWorkerRegistration, '.register("/sw-crm.js", { scope: "/crm" })', "CRM service worker stays scoped to /crm");
+
+const serviceWorker = read("public/sw-crm.js");
+check(serviceWorker, "self.skipWaiting()", "CRM service worker activates quickly");
+check(serviceWorker, "self.clients.claim()", "CRM service worker takes control after activation");
+
+console.log("PASS: EIGHTY CRM Android/iPhone Core install contract complete");
