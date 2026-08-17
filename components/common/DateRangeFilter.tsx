@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import {
   formatDateRangeQuickInput,
   getDateRangePreset,
@@ -40,17 +40,18 @@ export default function DateRangeFilter({
   toName = "to",
   onApply,
 }: DateRangeFilterProps) {
-  const [draft, setDraft] = useState<DateRangeValue>({ from, to });
-  const [quickInput, setQuickInput] = useState(
-    formatDateRangeQuickInput({ from, to }),
-  );
+  const quickRef = useRef<HTMLInputElement>(null);
+  const fromRef = useRef<HTMLInputElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setDraft({ from, to });
-    setQuickInput(formatDateRangeQuickInput({ from, to }));
-    setError(null);
-  }, [from, to]);
+  function writeRange(range: DateRangeValue) {
+    if (fromRef.current) fromRef.current.value = range.from;
+    if (toRef.current) toRef.current.value = range.to;
+    if (quickRef.current) {
+      quickRef.current.value = formatDateRangeQuickInput(range);
+    }
+  }
 
   function commit(range: DateRangeValue) {
     const normalized = normalizeDateRange(range.from, range.to);
@@ -59,14 +60,13 @@ export default function DateRangeFilter({
       return;
     }
     const next = { from: normalized.from, to: normalized.to };
-    setDraft(next);
-    setQuickInput(formatDateRangeQuickInput(next));
+    writeRange(next);
     setError(null);
     onApply?.(next);
   }
 
   function applyQuickInput() {
-    const parsed = parseDateRangeQuickInput(quickInput);
+    const parsed = parseDateRangeQuickInput(quickRef.current?.value ?? "");
     if (parsed.error) {
       setError(parsed.error);
       return;
@@ -75,7 +75,10 @@ export default function DateRangeFilter({
   }
 
   function applyDraft() {
-    commit(draft);
+    commit({
+      from: fromRef.current?.value ?? from,
+      to: toRef.current?.value ?? to,
+    });
   }
 
   function applyPreset(preset: DateRangePreset) {
@@ -83,7 +86,10 @@ export default function DateRangeFilter({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+    <div
+      key={`${from}|${to}`}
+      className="rounded-xl border border-slate-200 bg-slate-50/70 p-3"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold text-slate-700">{label}</p>
@@ -110,14 +116,15 @@ export default function DateRangeFilter({
           <label className={labelClass}>빠른입력</label>
           <div className="flex gap-2">
             <input
-              value={quickInput}
-              onChange={(event) => setQuickInput(event.target.value)}
+              ref={quickRef}
+              defaultValue={formatDateRangeQuickInput({ from, to })}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
                   applyQuickInput();
                 }
               }}
+              onChange={() => setError(null)}
               placeholder="260801~260817"
               autoComplete="off"
               spellCheck={false}
@@ -136,13 +143,11 @@ export default function DateRangeFilter({
         <div>
           <label className={labelClass}>시작일</label>
           <input
+            ref={fromRef}
             type="date"
             name={fromName}
-            value={draft.from}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, from: event.target.value }));
-              setError(null);
-            }}
+            defaultValue={from}
+            onChange={() => setError(null)}
             className={inputClass}
           />
         </div>
@@ -152,13 +157,11 @@ export default function DateRangeFilter({
         <div>
           <label className={labelClass}>종료일</label>
           <input
+            ref={toRef}
             type="date"
             name={toName}
-            value={draft.to}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, to: event.target.value }));
-              setError(null);
-            }}
+            defaultValue={to}
+            onChange={() => setError(null)}
             className={inputClass}
           />
         </div>
