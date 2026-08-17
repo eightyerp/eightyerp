@@ -33,9 +33,9 @@ check(manifest, '"display": "standalone"', "CRM remains installable app shell");
 
 const shell = read("components/crm/CrmShell.tsx");
 check(shell, 'href="/crm/customers/new"', "new customer registration stays inside CRM");
-check(shell, 'href="/crm/customers"', "customer work remains a primary navigation item");
-check(shell, 'href="/crm/schedules"', "schedule work remains a primary navigation item");
-check(shell, 'href="/crm/quotes"', "quote work remains a primary navigation item");
+check(shell, '{ href: "/crm/customers",', "customer work remains a primary navigation item");
+check(shell, '{ href: "/crm/schedules",', "schedule work remains a primary navigation item");
+check(shell, '{ href: "/crm/quotes",', "quote work remains a primary navigation item");
 
 const mobileAction = read("app/actions/crm-mobile.ts");
 check(mobileAction, "createCrmCustomerAction", "mobile customer registration action exists");
