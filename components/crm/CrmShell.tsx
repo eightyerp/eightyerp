@@ -12,6 +12,11 @@ const NAV_ITEMS = [
   { href: "/crm/more", label: "더보기", icon: "more" },
 ] as const;
 
+type PendingNav = {
+  href: string;
+  fromPathname: string;
+};
+
 function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
   if (name === "home") {
     return <path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5Z" />;
@@ -38,11 +43,10 @@ function isActive(pathname: string, href: string) {
 export default function CrmShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [pendingNav, setPendingNav] = useState<PendingNav | null>(null);
+  const activePendingNav = pendingNav?.fromPathname === pathname ? pendingNav : null;
 
   useEffect(() => {
-    setPendingHref(null);
-
     // 고객카드처럼 수십 개 동적 route는 prefetch하지 않는다.
     // 반복 사용하는 하단 5개 메뉴만 현재 화면이 안정된 뒤 미리 워밍한다.
     const timer = window.setTimeout(() => {
@@ -90,8 +94,8 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <div className="mx-auto grid h-16 max-w-3xl grid-cols-5">
           {NAV_ITEMS.map((item) => {
-            const active = pendingHref
-              ? item.href === pendingHref
+            const active = activePendingNav
+              ? item.href === activePendingNav.href
               : isActive(pathname, item.href);
             return (
               <Link
@@ -99,12 +103,12 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 aria-label={item.label}
                 onPointerDown={() => router.prefetch(item.href)}
-                onNavigate={() => setPendingHref(item.href)}
+                onNavigate={() => setPendingNav({ href: item.href, fromPathname: pathname })}
                 className={`relative flex min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors ${
                   active ? "text-navy-900" : "text-slate-500"
                 }`}
               >
-                {pendingHref === item.href && pathname !== item.href && (
+                {activePendingNav?.href === item.href && (
                   <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-navy-900" />
                 )}
                 <svg
