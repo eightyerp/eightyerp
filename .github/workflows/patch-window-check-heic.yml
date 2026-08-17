@@ -1,0 +1,67 @@
+name: One-time Window Check HEIC patch
+
+on:
+  push:
+    branches:
+      - feature/window-check-operational-storage-v1
+    paths:
+      - ".github/workflows/patch-window-check-heic.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/window-check-operational-storage-v1
+          fetch-depth: 0
+
+      - name: Add HEIC and HEIF to immutable operational media
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          targets = {
+              Path('supabase/migrations/20260818030000_window_check_operational_storage_v1.sql'): [
+                  (
+                      "check (mime_type in ('image/jpeg', 'image/png', 'image/webp'))",
+                      "check (mime_type in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'))",
+                  ),
+                  (
+                      "array['image/jpeg', 'image/png', 'image/webp']::text[]",
+                      "array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']::text[]",
+                  ),
+              ],
+              Path('scripts/test-window-check-operational-storage.mjs'): [
+                  (
+                      "requireText(\"'window-report-private'\", 'Missing private report bucket.');",
+                      "requireText(\"'window-report-private'\", 'Missing private report bucket.');\nrequireText(\"'image/heic'\", 'Immutable HEIC evidence support must remain enabled.');\nrequireText(\"'image/heif'\", 'Immutable HEIF evidence support must remain enabled.');",
+                  ),
+              ],
+          }
+
+          for path, replacements in targets.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f'{path}: expected exactly one match for {old!r}, got {count}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit exact MIME contract patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations/20260818030000_window_check_operational_storage_v1.sql
+          git add scripts/test-window-check-operational-storage.mjs
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No changes to commit"; exit 1; }
+          git commit -m "fix: preserve HEIC and HEIF Window Check evidence"
+          git push origin HEAD:feature/window-check-operational-storage-v1
