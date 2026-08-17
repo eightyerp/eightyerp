@@ -37,3 +37,28 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  local-db-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Initialize local Supabase config
+        run: supabase init --force
+
+      - name: Apply all migrations to local Supabase Postgres
+        run: supabase db start
+
+      - name: Lint local database functions
+        run: supabase db lint --local --level error --fail-on error
+
+      - name: Stop local Supabase database
+        if: always()
+        run: supabase stop --no-backup || true
