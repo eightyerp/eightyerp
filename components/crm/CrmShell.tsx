@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
   { href: "/crm", label: "홈", icon: "home" },
@@ -36,6 +37,22 @@ function isActive(pathname: string, href: string) {
 
 export default function CrmShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingHref(null);
+
+    // 고객카드처럼 수십 개 동적 route는 prefetch하지 않는다.
+    // 반복 사용하는 하단 5개 메뉴만 현재 화면이 안정된 뒤 미리 워밍한다.
+    const timer = window.setTimeout(() => {
+      for (const item of NAV_ITEMS) {
+        if (!isActive(pathname, item.href)) router.prefetch(item.href);
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [pathname, router]);
 
   return (
     <div className="min-h-dvh bg-slate-50 text-slate-950">
@@ -51,6 +68,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
           <div className="flex shrink-0 items-center gap-2">
             <Link
               href="/crm/customers/new"
+              prefetch={false}
               className="inline-flex h-9 items-center rounded-full bg-navy-900 px-3 text-xs font-black text-white shadow-sm"
               aria-label="신규 고객 등록"
             >
@@ -58,6 +76,7 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
             </Link>
             <Link
               href="/crm/notifications"
+              prefetch={false}
               className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm"
             >
               알림
@@ -71,16 +90,23 @@ export default function CrmShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <div className="mx-auto grid h-16 max-w-3xl grid-cols-5">
           {NAV_ITEMS.map((item) => {
-            const active = isActive(pathname, item.href);
+            const active = pendingHref
+              ? item.href === pendingHref
+              : isActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-label={item.label}
-                className={`flex min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
+                onPointerDown={() => router.prefetch(item.href)}
+                onNavigate={() => setPendingHref(item.href)}
+                className={`relative flex min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors ${
                   active ? "text-navy-900" : "text-slate-500"
                 }`}
               >
+                {pendingHref === item.href && pathname !== item.href && (
+                  <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-navy-900" />
+                )}
                 <svg
                   viewBox="0 0 24 24"
                   className="h-5 w-5"
