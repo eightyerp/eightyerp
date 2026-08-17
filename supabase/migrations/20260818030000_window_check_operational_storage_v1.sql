@@ -218,7 +218,7 @@ create table if not exists public.window_inspection_photos (
   byte_size bigint not null
     check (byte_size > 0 and byte_size <= 26214400),
   mime_type text not null
-    check (mime_type in ('image/jpeg', 'image/png', 'image/webp')),
+    check (mime_type in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif')),
   captured_at timestamptz,
   rotation_degrees integer not null default 0
     check (rotation_degrees in (0, 90, 180, 270)),
@@ -389,7 +389,7 @@ values
     'window-inspection-private',
     false,
     26214400,
-    array['image/jpeg', 'image/png', 'image/webp']::text[]
+    array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']::text[]
   ),
   (
     'window-report-private',

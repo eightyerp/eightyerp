@@ -20,6 +20,8 @@ requireText('wi.performed_by_employee_id = public.current_employee_id()', 'Clien
 requireText('unique (company_id, report_number, report_version)', 'Report number/version uniqueness must allow immutable re-issues.');
 requireText("'window-inspection-private'", 'Missing private inspection bucket.');
 requireText("'window-report-private'", 'Missing private report bucket.');
+requireText("'image/heic'", 'Immutable HEIC evidence support must remain enabled.');
+requireText("'image/heif'", 'Immutable HEIF evidence support must remain enabled.');
 requireText('and b.public = false', 'Bucket assertions must enforce private storage.');
 requireText("payload_json::text not ilike '%content://%'", 'Server snapshot must reject content:// URIs.');
 requireText("payload_json::text not ilike '%file://%'", 'Server snapshot must reject file:// URIs.');
