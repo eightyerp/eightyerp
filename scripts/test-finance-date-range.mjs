@@ -71,6 +71,20 @@ assert(
   expenseLedger.includes("truncated: total > EXPENSE_ACTION_QUEUE_LIMIT"),
   "expense action queue must disclose truncation",
 );
+assert(
+  expenseLedger.includes('.is("expense_documents", null)') &&
+    expenseLedger.includes("listExpenseMissingEvidenceQueue"),
+  "missing-evidence queue must use a server-side anti-join instead of recent-N preload",
+);
+assert(
+  expenseLedger.includes('.eq("tax_evidence_type", "unverified")') &&
+    expenseLedger.includes("listExpenseTaxEvidenceQueue"),
+  "tax-evidence queue must filter server-side",
+);
+assert(
+  expenseLedger.includes("truncated: total > EXPENSE_EVIDENCE_QUEUE_LIMIT"),
+  "evidence queues must disclose truncation",
+);
 
 assert(
   !collectionsPage.includes("listCollectionReceipts"),
@@ -82,9 +96,23 @@ assert(
   "collections page must separate ledger and pending queue",
 );
 assert(
+  collectionsPage.includes("receipts={pendingQueue.receipts}"),
+  "staff/admin pending totals must remain date-independent",
+);
+assert(
   paymentsPage.includes("listExpenseLedgerPage") &&
     paymentsPage.includes("listExpenseActionQueue"),
   "payments page must separate ledger and action queue",
+);
+assert(
+  paymentsPage.includes("listExpenseMissingEvidenceQueue") &&
+    paymentsPage.includes("listExpenseTaxEvidenceQueue"),
+  "payments page must use specialized evidence queues",
+);
+assert(
+  !paymentsPage.includes("listExpenseRequests(access.isFinanceAdmin ? 500") &&
+    !paymentsPage.includes("listExpenseRequests(500)"),
+  "admin finance page must not preload 500 full expense rows",
 );
 assert(
   paymentsPage.includes("requests={ledger.requests}") &&
