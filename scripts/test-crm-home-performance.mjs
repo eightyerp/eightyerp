@@ -34,7 +34,7 @@ const shell = read("components/crm/CrmShell.tsx");
 check(shell, "router.prefetch(item.href)", "primary CRM navigation routes are warmed");
 check(shell, "window.setTimeout(() =>", "menu warming waits until current screen settles");
 check(shell, "onPointerDown={() => router.prefetch(item.href)}", "tap intent warms the selected menu immediately");
-check(shell, "onNavigate={() => setPendingHref(item.href)}", "bottom navigation gives immediate selected feedback");
+check(shell, "setPendingNav({ href: item.href, fromPathname: pathname })", "bottom navigation gives immediate selected feedback without effect reset");
 check(shell, "prefetch={false}", "secondary header actions do not add background route load");
 
 const schedulesPage = read("app/crm/schedules/page.tsx");
