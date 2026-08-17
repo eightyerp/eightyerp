@@ -21,6 +21,25 @@ export type CrmMobileQuoteListItem = {
   } | null;
 };
 
+export type CrmMobileQuoteDetail = CrmMobileQuoteListItem & {
+  supply_amount: number | null;
+  vat_amount: number | null;
+  discount_amount: number;
+  issued_at: string | null;
+  sent_at: string | null;
+  valid_until: string | null;
+  is_contract_quote: boolean;
+  customers: {
+    id: string;
+    name: string;
+    phone: string;
+    address: string | null;
+    status: string;
+    assigned_employee_id: string | null;
+  } | null;
+  employees: { id: string; name: string; title: string | null } | null;
+};
+
 export type CrmMobileQuoteListResult = {
   quotes: CrmMobileQuoteListItem[];
   total: number;
@@ -35,6 +54,14 @@ function relationOne<T>(value: T | T[] | null | undefined): T | null {
 
 function normalizeSearch(value: string | undefined): string {
   return (value ?? "").trim().replace(/[%_,()]/g, "");
+}
+
+async function requireCrmQuoteAccess() {
+  const access = await getCurrentUserAccess();
+  if (!access.isAuthenticated || !access.userId || !access.canAccessErp) {
+    throw new Error("CRM 접근 권한이 없습니다.");
+  }
+  return access;
 }
 
 async function listManagerEmployeeIds(teamId: string): Promise<string[]> {
@@ -59,17 +86,13 @@ async function listManagerEmployeeIds(teamId: string): Promise<string[]> {
 
 /**
  * 직원 CRM 견적목록 전용 경량 조회.
- * ERP 견적목록의 큰 QUOTE_LIST_SELECT와 직원 전체 객체 조회를 사용하지 않는다.
+ * ERP 견적목록용 대형 조회/직원 전체 객체 로딩을 사용하지 않는다.
  */
 export async function listCrmMobileQuotes(input: {
   q?: string;
   page?: number;
 } = {}): Promise<CrmMobileQuoteListResult> {
-  const access = await getCurrentUserAccess();
-  if (!access.isAuthenticated || !access.userId || !access.canAccessErp) {
-    throw new Error("CRM 접근 권한이 없습니다.");
-  }
-
+  const access = await requireCrmQuoteAccess();
   const employeeId = access.profile?.employee_id ?? null;
   const teamId = access.profile?.employees?.team_id ?? null;
   const canViewAll = access.isAdmin;
@@ -181,5 +204,55 @@ export async function listCrmMobileQuotes(input: {
     total,
     page,
     totalPages: Math.max(1, Math.ceil(total / CRM_QUOTE_PAGE_SIZE)),
+  };
+}
+
+/** CRM 견적 요약에 필요한 필드만 조회한다. 항목/파일 embed는 ERP 상세에서만 읽는다. */
+export async function getCrmMobileQuoteDetail(
+  quoteId: string,
+): Promise<CrmMobileQuoteDetail | null> {
+  await requireCrmQuoteAccess();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("quotes")
+    .select(
+      `
+      id, customer_id, quote_type, title, quote_number, status,
+      final_amount, customer_total_amount, supply_amount, vat_amount,
+      discount_amount, issued_at, sent_at, valid_until, is_contract_quote,
+      created_at,
+      customers:customers!quotes_customer_id_fkey (
+        id, name, phone, address, status, assigned_employee_id
+      ),
+      employees ( id, name, title )
+      `,
+    )
+    .eq("id", quoteId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) throw new Error("견적을 불러오지 못했습니다.");
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    customer_id: data.customer_id,
+    quote_type: data.quote_type,
+    title: data.title,
+    quote_number: data.quote_number,
+    status: data.status,
+    final_amount: Number(data.final_amount ?? 0),
+    customer_total_amount:
+      data.customer_total_amount == null ? null : Number(data.customer_total_amount),
+    supply_amount: data.supply_amount == null ? null : Number(data.supply_amount),
+    vat_amount: data.vat_amount == null ? null : Number(data.vat_amount),
+    discount_amount: Number(data.discount_amount ?? 0),
+    issued_at: data.issued_at,
+    sent_at: data.sent_at,
+    valid_until: data.valid_until,
+    is_contract_quote: Boolean(data.is_contract_quote),
+    created_at: data.created_at,
+    customers: relationOne(data.customers),
+    employees: relationOne(data.employees),
   };
 }

@@ -47,14 +47,22 @@ check(quotesPage, "listCrmMobileQuotes", "CRM quotes uses dedicated mobile quote
 check(quotesPage, "prefetch={false}", "CRM quote cards do not prefetch many dynamic quote routes");
 checkNot(quotesPage, "listQuotesPage", "CRM quotes avoids large ERP quote list query");
 checkNot(quotesPage, "getScheduleAccess", "CRM quote page avoids separate schedule-access waterfall");
+const quoteDetailPage = read("app/crm/quotes/[id]/page.tsx");
+check(quoteDetailPage, "getCrmMobileQuoteDetail", "CRM quote detail uses lightweight summary query");
+checkNot(quoteDetailPage, "getQuoteById", "CRM quote detail avoids full ERP quote items/files query");
+check(quoteDetailPage, "prefetch={false}", "CRM quote detail avoids prefetching heavy ERP/customer detail routes");
 const quoteQuery = read("lib/crm/crm-mobile-quotes.ts");
 check(quoteQuery, "CRM_QUOTE_PAGE_SIZE = 30", "CRM quote list is bounded to 30 rows");
 check(quoteQuery, 'select("id")', "manager quote scope fetches only employee ids");
 check(quoteQuery, "access.isAdmin", "admin quote list skips employee-scope lookup");
 check(quoteQuery, "access.role === \"manager\"", "manager quote scope stays team-aware");
-check(quoteQuery, "customer_total_amount, created_at", "CRM quote select contains visible quote fields");
-checkNot(quoteQuery, "QUOTE_LIST_SELECT", "CRM quote list does not use heavy ERP select");
+check(quoteQuery, "customer_total_amount, created_at", "CRM quote list selects visible quote fields");
+check(quoteQuery, "getCrmMobileQuoteDetail", "CRM quote detail query is isolated from ERP detail loader");
+checkNot(quoteQuery, "select(QUOTE_LIST_SELECT", "CRM quote list does not execute heavy ERP select");
 checkNot(quoteQuery, "listEmployeesInScope", "CRM quote list does not load full employee objects");
+checkNot(quoteQuery, "quote_items", "CRM quote query does not embed quote items");
+checkNot(quoteQuery, "quote_files", "CRM quote query does not embed quote files");
+checkNot(quoteQuery, 'select("*")', "CRM quote query never selects all quote columns");
 
 const detailPage = read("app/crm/customers/[id]/page.tsx");
 check(detailPage, "getCrmCustomerDetail", "CRM customer detail uses lightweight customer header query");

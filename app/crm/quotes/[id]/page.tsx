@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getQuoteById } from "@/lib/crm/quote-mgmt";
+import { getCrmMobileQuoteDetail } from "@/lib/crm/crm-mobile-quotes";
 
 function money(value: number | null | undefined) {
   return `${Math.round(value ?? 0).toLocaleString("ko-KR")}원`;
@@ -37,8 +37,8 @@ type Props = {
 
 export default async function CrmQuoteDetailPage({ params }: Props) {
   const { id } = await params;
-  const quote = await getQuoteById(id);
-  if (!quote || quote.deleted_at) notFound();
+  const quote = await getCrmMobileQuoteDetail(id);
+  if (!quote) notFound();
 
   const customer = quote.customers;
   const total = quote.customer_total_amount ?? quote.final_amount;
@@ -59,7 +59,9 @@ export default async function CrmQuoteDetailPage({ params }: Props) {
               {customer?.name || quote.title}
             </h1>
             <p className="mt-1 truncate text-sm text-slate-500">{quote.title}</p>
-            {quote.quote_number && <p className="mt-1 text-xs font-semibold text-slate-400">{quote.quote_number}</p>}
+            {quote.quote_number && (
+              <p className="mt-1 text-xs font-semibold text-slate-400">{quote.quote_number}</p>
+            )}
           </div>
           <span className={`shrink-0 rounded-full px-2.5 py-1.5 text-xs font-black ring-1 ring-inset ${statusClass(quote.status)}`}>
             {quote.status}
@@ -96,17 +98,26 @@ export default async function CrmQuoteDetailPage({ params }: Props) {
             <div className="min-w-0">
               <p className="text-base font-black text-slate-950">{customer.name}</p>
               <p className="mt-1 text-sm font-semibold text-slate-700">{customer.phone}</p>
-              {customer.address && <p className="mt-1 text-xs leading-5 text-slate-500">{customer.address}</p>}
+              {customer.address && (
+                <p className="mt-1 text-xs leading-5 text-slate-500">{customer.address}</p>
+              )}
             </div>
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
               {customer.status}
             </span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <a href={`tel:${customer.phone}`} className="rounded-xl bg-navy-900 px-3 py-3 text-center text-sm font-black text-white">
+            <a
+              href={`tel:${customer.phone}`}
+              className="rounded-xl bg-navy-900 px-3 py-3 text-center text-sm font-black text-white"
+            >
               전화하기
             </a>
-            <Link href={`/crm/customers/${customer.id}`} className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-700">
+            <Link
+              href={`/crm/customers/${customer.id}`}
+              prefetch={false}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-center text-sm font-bold text-slate-700"
+            >
               고객 보기
             </Link>
           </div>
@@ -137,6 +148,7 @@ export default async function CrmQuoteDetailPage({ params }: Props) {
 
       <Link
         href={`/quotes/${quote.id}`}
+        prefetch={false}
         className="block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-sm font-black text-slate-700"
       >
         ERP에서 상세 보기·수정
