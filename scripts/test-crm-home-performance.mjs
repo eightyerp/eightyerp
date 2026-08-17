@@ -39,11 +39,22 @@ const customerCard = read("components/crm/CrmCustomerCard.tsx");
 check(customerCard, "prefetch={false}", "customer cards do not prefetch many dynamic customer routes");
 const todayWorkList = read("components/crm/CrmTodayWorkList.tsx");
 check(todayWorkList, "prefetch={false}", "today-work cards do not prefetch dynamic customer/schedule routes");
-const quotesPage = read("app/crm/quotes/page.tsx");
-check(quotesPage, "Promise.all([searchParams, getScheduleAccess()])", "CRM quotes starts params and access work together");
-check(quotesPage, "prefetch={false}", "CRM quote cards do not prefetch many dynamic quote routes");
 const loading = read("app/crm/loading.tsx");
 check(loading, "animate-pulse", "CRM navigation gives immediate loading feedback");
+
+const quotesPage = read("app/crm/quotes/page.tsx");
+check(quotesPage, "listCrmMobileQuotes", "CRM quotes uses dedicated mobile quote query");
+check(quotesPage, "prefetch={false}", "CRM quote cards do not prefetch many dynamic quote routes");
+checkNot(quotesPage, "listQuotesPage", "CRM quotes avoids large ERP quote list query");
+checkNot(quotesPage, "getScheduleAccess", "CRM quote page avoids separate schedule-access waterfall");
+const quoteQuery = read("lib/crm/crm-mobile-quotes.ts");
+check(quoteQuery, "CRM_QUOTE_PAGE_SIZE = 30", "CRM quote list is bounded to 30 rows");
+check(quoteQuery, 'select("id")', "manager quote scope fetches only employee ids");
+check(quoteQuery, "access.isAdmin", "admin quote list skips employee-scope lookup");
+check(quoteQuery, "access.role === \"manager\"", "manager quote scope stays team-aware");
+check(quoteQuery, "customer_total_amount, created_at", "CRM quote select contains visible quote fields");
+checkNot(quoteQuery, "QUOTE_LIST_SELECT", "CRM quote list does not use heavy ERP select");
+checkNot(quoteQuery, "listEmployeesInScope", "CRM quote list does not load full employee objects");
 
 const detailPage = read("app/crm/customers/[id]/page.tsx");
 check(detailPage, "getCrmCustomerDetail", "CRM customer detail uses lightweight customer header query");
@@ -61,6 +72,10 @@ check(detailQuery, 'in("status", [...OPEN_SCHEDULE_STATUSES])', "customer detail
 check(detailQuery, ".limit(safeLimit)", "customer detail secondary queries are bounded");
 check(detailQuery, 'select("id, consult_type, consult_content, next_contact_date, created_at")', "customer detail consult query selects only visible columns");
 checkNot(detailQuery, 'select("*")', "customer detail lightweight queries never select all columns");
+
+const newCustomerPage = read("app/crm/customers/new/page.tsx");
+check(newCustomerPage, "access.isAdmin ? getEmployees() : Promise.resolve([])", "staff new-customer screen skips full employee list");
+check(newCustomerPage, "const leadSourcesPromise = getLeadSources()", "new-customer lookup begins without avoidable waterfall");
 
 const homeQuery = read("lib/crm/crm-mobile-home.ts");
 check(homeQuery, 'limit(100)', "CRM home schedule/customer query has bounded result sets");
