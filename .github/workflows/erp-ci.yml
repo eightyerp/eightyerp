@@ -122,6 +122,85 @@ jobs:
             tee /tmp/window-check-schema-verification.txt
           test "$(grep -c '^t$' /tmp/window-check-schema-verification.txt)" -eq 4
 
+      - name: Seed deidentified RLS actors
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat scripts/fixtures/window-check-operational-rls-seed.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Verify Window Check read and insert RLS
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          INSPECTOR_USER='10000000-0000-4000-8000-000000000001'
+          OTHER_USER='10000000-0000-4000-8000-000000000002'
+          ADMIN_USER='10000000-0000-4000-8000-000000000003'
+
+          query_as() {
+            local user_id="$1"
+            local sql="$2"
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atq <<SQL
+          begin;
+          set local "request.jwt.claim.sub" = '$user_id';
+          set local role authenticated;
+          $sql
+          rollback;
+          SQL
+          }
+
+          INSPECTION_ID='70000000-0000-4000-8000-000000000001'
+          test "$(query_as "$INSPECTOR_USER" "select count(*) from public.window_inspections where id='$INSPECTION_ID';")" = '1'
+          test "$(query_as "$OTHER_USER" "select count(*) from public.window_inspections where id='$INSPECTION_ID';")" = '0'
+          test "$(query_as "$ADMIN_USER" "select count(*) from public.window_inspections where id='$INSPECTION_ID';")" = '1'
+
+          inspector_insert="insert into public.window_inspection_snapshots (
+            inspection_id, company_id, snapshot_version, schema_version, payload_json,
+            payload_sha256, approval_input_sha256, approved_by_user_id,
+            approved_by_employee_id, approved_at
+          ) values (
+            '$INSPECTION_ID', '20000000-0000-4000-8000-000000000001', 1,
+            'window-check-approved-v1', '{\"serverPayloadSchemaVersion\":\"window-check-approved-v1\"}'::jsonb,
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            '$INSPECTOR_USER', '30000000-0000-4000-8000-000000000001', now()
+          );"
+          query_as "$INSPECTOR_USER" "$inspector_insert"
+
+          other_insert="insert into public.window_inspection_snapshots (
+            inspection_id, company_id, snapshot_version, schema_version, payload_json,
+            payload_sha256, approval_input_sha256, approved_by_user_id,
+            approved_by_employee_id, approved_at
+          ) values (
+            '$INSPECTION_ID', '20000000-0000-4000-8000-000000000001', 1,
+            'window-check-approved-v1', '{\"serverPayloadSchemaVersion\":\"window-check-approved-v1\"}'::jsonb,
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            '$OTHER_USER', '30000000-0000-4000-8000-000000000002', now()
+          );"
+          if query_as "$OTHER_USER" "$other_insert" >/tmp/other-insert.out 2>/tmp/other-insert.err; then
+            echo 'Other employee unexpectedly inserted inspector snapshot'
+            exit 1
+          fi
+          grep -Eqi 'row-level security|permission denied' /tmp/other-insert.err
+
+          admin_insert="insert into public.window_inspection_snapshots (
+            inspection_id, company_id, snapshot_version, schema_version, payload_json,
+            payload_sha256, approval_input_sha256, approved_by_user_id,
+            approved_by_employee_id, approved_at
+          ) values (
+            '$INSPECTION_ID', '20000000-0000-4000-8000-000000000001', 1,
+            'window-check-approved-v1', '{\"serverPayloadSchemaVersion\":\"window-check-approved-v1\"}'::jsonb,
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            '$ADMIN_USER', '30000000-0000-4000-8000-000000000003', now()
+          );"
+          if query_as "$ADMIN_USER" "$admin_insert" >/tmp/admin-insert.out 2>/tmp/admin-insert.err; then
+            echo 'Admin unexpectedly inserted another employee inspection snapshot through client RLS'
+            exit 1
+          fi
+          grep -Eqi 'row-level security|permission denied' /tmp/admin-insert.err
+
       - name: Lint local database functions
         run: supabase db lint --local --level error --fail-on error
 
