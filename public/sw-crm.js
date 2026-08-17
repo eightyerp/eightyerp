@@ -1,5 +1,3 @@
-const CRM_SCOPE = "/crm";
-
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
