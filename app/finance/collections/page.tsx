@@ -66,9 +66,7 @@ export default async function CollectionsPage({
         page,
         customerId: params.customerId,
       }),
-      isFinanceAdmin
-        ? listCollectionPendingQueue()
-        : Promise.resolve(pendingQueue),
+      listCollectionPendingQueue(),
     ]);
 
     if (contractsResult.status === "fulfilled") {
@@ -89,9 +87,9 @@ export default async function CollectionsPage({
 
     if (pendingResult.status === "fulfilled") {
       pendingQueue = pendingResult.value;
-    } else if (isFinanceAdmin) {
+    } else {
       lookupWarning =
-        "수금 원장은 정상 조회되지만 직원 수금 확인대기 업무함을 불러오지 못했습니다.";
+        "수금 원장은 정상 조회되지만 확인대기 업무 상태를 불러오지 못했습니다.";
     }
   }
 
@@ -110,7 +108,7 @@ export default async function CollectionsPage({
           <h1 className="mt-0.5 text-2xl font-bold text-slate-950">수금관리</h1>
           <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-600">
             계약별 실제 수금 원장을 관리합니다. 조회기간은 원장에만 적용되고,
-            직원 수금 확인대기는 기간과 무관하게 계속 표시됩니다.
+            수금 확인대기는 기간과 무관하게 계속 표시됩니다.
           </p>
         </div>
 
@@ -152,7 +150,7 @@ export default async function CollectionsPage({
             >
               <CollectionsWorkspace
                 contracts={contracts}
-                receipts={isFinanceAdmin ? pendingQueue.receipts : []}
+                receipts={pendingQueue.receipts}
                 isFinanceAdmin={isFinanceAdmin}
                 initialContractId={initialContractId}
               />
