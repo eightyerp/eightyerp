@@ -8,6 +8,7 @@ import {
 
 export const EXPENSE_LEDGER_PAGE_SIZE = 50;
 export const EXPENSE_ACTION_QUEUE_LIMIT = 150;
+export const EXPENSE_EVIDENCE_QUEUE_LIMIT = 100;
 
 export type ExpenseLedgerDateField =
   | "expense_date"
@@ -113,7 +114,7 @@ export async function listExpenseLedgerPage(input: {
   };
 }
 
-export type ExpenseActionQueueResult = {
+export type ExpenseWorkQueueResult = {
   requests: ExpenseRequestRecord[];
   total: number;
   truncated: boolean;
@@ -123,7 +124,7 @@ export type ExpenseActionQueueResult = {
  * 승인대기/지급대기는 조회기간과 별개인 업무함이다.
  * 기간을 바꿔도 오래된 미처리 건이 숨지 않도록 status로 직접 조회한다.
  */
-export async function listExpenseActionQueue(): Promise<ExpenseActionQueueResult> {
+export async function listExpenseActionQueue(): Promise<ExpenseWorkQueueResult> {
   const { supabase } = await getCurrentCompanyAccess();
   const { data, error, count } = await supabase
     .from("expense_requests")
@@ -138,5 +139,49 @@ export async function listExpenseActionQueue(): Promise<ExpenseActionQueueResult
     requests: (data ?? []) as unknown as ExpenseRequestRecord[],
     total,
     truncated: total > EXPENSE_ACTION_QUEUE_LIMIT,
+  };
+}
+
+/**
+ * 증빙 미첨부 업무함. PostgREST embedded relation `is.null`을 이용한 left anti-join으로
+ * 최근 전체 지출을 먼저 다운로드하지 않고, 문서가 없는 건만 서버에서 직접 조회한다.
+ */
+export async function listExpenseMissingEvidenceQueue(): Promise<ExpenseWorkQueueResult> {
+  const { supabase } = await getCurrentCompanyAccess();
+  const { data, error, count } = await supabase
+    .from("expense_requests")
+    .select(EXPENSE_REQUEST_SELECT, { count: "exact" })
+    .in("status", ["pending", "approved", "paid"])
+    .is("expense_documents", null)
+    .order("created_at", { ascending: false })
+    .range(0, EXPENSE_EVIDENCE_QUEUE_LIMIT - 1);
+
+  if (error) throw new Error(error.message);
+  const total = count ?? 0;
+  return {
+    requests: (data ?? []) as unknown as ExpenseRequestRecord[],
+    total,
+    truncated: total > EXPENSE_EVIDENCE_QUEUE_LIMIT,
+  };
+}
+
+/** 세무증빙 미확인만 서버에서 직접 조회해 관리자 페이지의 500-row 선로딩을 제거한다. */
+export async function listExpenseTaxEvidenceQueue(): Promise<ExpenseWorkQueueResult> {
+  const { supabase } = await getCurrentCompanyAccess();
+  const { data, error, count } = await supabase
+    .from("expense_requests")
+    .select(EXPENSE_REQUEST_SELECT, { count: "exact" })
+    .eq("tax_evidence_type", "unverified")
+    .in("status", ["pending", "approved", "paid"])
+    .neq("category", "labor")
+    .order("created_at", { ascending: false })
+    .range(0, EXPENSE_EVIDENCE_QUEUE_LIMIT - 1);
+
+  if (error) throw new Error(error.message);
+  const total = count ?? 0;
+  return {
+    requests: (data ?? []) as unknown as ExpenseRequestRecord[],
+    total,
+    truncated: total > EXPENSE_EVIDENCE_QUEUE_LIMIT,
   };
 }
