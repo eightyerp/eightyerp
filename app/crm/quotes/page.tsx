@@ -22,9 +22,8 @@ type Props = {
 };
 
 export default async function CrmQuotesPage({ searchParams }: Props) {
-  const params = await searchParams;
+  const [params, access] = await Promise.all([searchParams, getScheduleAccess()]);
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
-  const access = await getScheduleAccess();
   const scopedEmployees = await listEmployeesInScope(access);
   const filters: QuoteListFilters = {
     q: params.q?.trim() || undefined,
@@ -40,7 +39,7 @@ export default async function CrmQuotesPage({ searchParams }: Props) {
           <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">견적</h1>
           <p className="mt-1 text-sm text-slate-500">금액과 진행상태를 빠르게 확인합니다.</p>
         </div>
-        <Link href="/quotes/new" className="shrink-0 rounded-xl bg-navy-900 px-3 py-2 text-xs font-bold text-white">
+        <Link prefetch={false} href="/quotes/new" className="shrink-0 rounded-xl bg-navy-900 px-3 py-2 text-xs font-bold text-white">
           견적 작성
         </Link>
       </section>
@@ -62,7 +61,12 @@ export default async function CrmQuotesPage({ searchParams }: Props) {
 
       <section className="space-y-3">
         {result.quotes.map((quote) => (
-          <Link key={quote.id} href={`/crm/quotes/${quote.id}`} className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <Link
+            prefetch={false}
+            key={quote.id}
+            href={`/crm/quotes/${quote.id}`}
+            className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">

@@ -39,6 +39,9 @@ const customerCard = read("components/crm/CrmCustomerCard.tsx");
 check(customerCard, "prefetch={false}", "customer cards do not prefetch many dynamic customer routes");
 const todayWorkList = read("components/crm/CrmTodayWorkList.tsx");
 check(todayWorkList, "prefetch={false}", "today-work cards do not prefetch dynamic customer/schedule routes");
+const quotesPage = read("app/crm/quotes/page.tsx");
+check(quotesPage, "Promise.all([searchParams, getScheduleAccess()])", "CRM quotes starts params and access work together");
+check(quotesPage, "prefetch={false}", "CRM quote cards do not prefetch many dynamic quote routes");
 const loading = read("app/crm/loading.tsx");
 check(loading, "animate-pulse", "CRM navigation gives immediate loading feedback");
 
