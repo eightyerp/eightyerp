@@ -48,6 +48,7 @@ export default function CrmTodayWorkList({ items }: { items: TodayWorkItem[] }) 
         const time = formatTime(item.startAt ?? item.dueAt);
         return (
           <Link
+            prefetch={false}
             key={item.id}
             href={itemHref(item)}
             className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition active:scale-[0.99]"

@@ -35,6 +35,13 @@ check(schedulesPage, "getCrmMobileHomeBundle", "CRM schedule screen uses bounded
 check(schedulesPage, 'focus === "next_action"', "next-action focus has a dedicated lightweight path");
 checkNot(schedulesPage, "getTodayWorkBundle", "CRM schedule screen avoids heavy ERP today-work bundle");
 
+const customerCard = read("components/crm/CrmCustomerCard.tsx");
+check(customerCard, "prefetch={false}", "customer cards do not prefetch many dynamic customer routes");
+const todayWorkList = read("components/crm/CrmTodayWorkList.tsx");
+check(todayWorkList, "prefetch={false}", "today-work cards do not prefetch dynamic customer/schedule routes");
+const loading = read("app/crm/loading.tsx");
+check(loading, "animate-pulse", "CRM navigation gives immediate loading feedback");
+
 const homeQuery = read("lib/crm/crm-mobile-home.ts");
 check(homeQuery, 'limit(100)', "CRM home schedule/customer query has bounded result sets");
 check(homeQuery, 'limit(50)', "CRM home contact/quote query has small bounded result sets");
