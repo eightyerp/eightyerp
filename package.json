@@ -16,7 +16,8 @@
     "test:employee-security-behavior": "node scripts/test-employee-security-behavior.mjs",
     "test:interior-quote-excel": "npx --yes tsx scripts/test-interior-quote-excel.ts",
     "test:quote-excel-engine": "npx --yes tsx scripts/test-quote-excel-engine.ts",
-    "test:window-workflow-readiness": "node scripts/test-window-workflow-readiness.mjs"
+    "test:window-workflow-readiness": "node scripts/test-window-workflow-readiness.mjs",
+    "test:date-range": "npx --yes tsx scripts/test-date-range.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
