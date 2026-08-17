@@ -25,8 +25,15 @@ const homePage = read("app/crm/page.tsx");
 check(homePage, "getCrmMobileHomeBundle", "CRM home uses dedicated lightweight bundle");
 check(homePage, "listCrmMobileCustomers", "CRM home new-customer count uses lightweight customer query");
 check(homePage, "employeeId: employeeId ?? undefined", "CRM home keeps explicit assignee scope for admin users");
+check(homePage, "Suspense", "CRM home streams slower work data behind fast shell");
+check(homePage, "const bundlePromise =", "CRM home starts bundle work without blocking shell rendering");
 checkNot(homePage, "getTodayWorkBundle", "CRM home does not reload full ERP today-work bundle");
 checkNot(homePage, "getCustomers({", "CRM home avoids heavy shared customer list query");
+
+const schedulesPage = read("app/crm/schedules/page.tsx");
+check(schedulesPage, "getCrmMobileHomeBundle", "CRM schedule screen uses bounded CRM bundle");
+check(schedulesPage, 'focus === "next_action"', "next-action focus has a dedicated lightweight path");
+checkNot(schedulesPage, "getTodayWorkBundle", "CRM schedule screen avoids heavy ERP today-work bundle");
 
 const homeQuery = read("lib/crm/crm-mobile-home.ts");
 check(homeQuery, 'limit(100)', "CRM home schedule/customer query has bounded result sets");
@@ -47,4 +54,4 @@ check(nextAction, 'select("customer_id")', "next-action schedule check fetches o
 check(nextAction, 'in("status", [...OPEN_SCHEDULE_STATUSES])', "next-action query loads only open schedules");
 checkNot(nextAction, '.limit(500)', "next-action query no longer loads 500 mixed schedules");
 
-console.log("PASS: EIGHTY CRM home performance guard complete");
+console.log("PASS: EIGHTY CRM Core performance guard complete");

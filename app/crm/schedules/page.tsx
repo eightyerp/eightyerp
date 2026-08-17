@@ -1,8 +1,8 @@
 import Link from "next/link";
 import CrmTodayWorkList from "@/components/crm/CrmTodayWorkList";
 import { getCurrentUserAccess } from "@/lib/crm/access";
+import { getCrmMobileHomeBundle } from "@/lib/crm/crm-mobile-home";
 import { listCrmCustomersWithoutNextAction } from "@/lib/crm/next-action";
-import { getTodayWorkBundle } from "@/lib/crm/today-work";
 import {
   filterTodayItems,
   type TodayFocus,
@@ -28,15 +28,20 @@ type Props = {
 };
 
 export default async function CrmSchedulesPage({ searchParams }: Props) {
-  const { focus: focusRaw } = await searchParams;
-  const focus = parseFocus(focusRaw);
-  const access = await getCurrentUserAccess();
+  const [params, access] = await Promise.all([searchParams, getCurrentUserAccess()]);
+  const focus = parseFocus(params.focus);
   const employeeId = access.profile?.employee_id ?? null;
-  const bundle = await getTodayWorkBundle({ employeeId });
+
+  // `다음 행동 없음`은 별도 경량 조회만 실행한다.
+  // 다른 일정 탭도 ERP 전체 TodayWork가 아니라 CRM 전용 bounded bundle을 사용한다.
   const items =
     focus === "next_action"
       ? await listCrmCustomersWithoutNextAction({ employeeId, limit: 100 })
-      : filterTodayItems(bundle.items, focus, false);
+      : filterTodayItems(
+          (await getCrmMobileHomeBundle({ employeeId })).items,
+          focus,
+          false,
+        );
 
   return (
     <div className="space-y-4">
