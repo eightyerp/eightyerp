@@ -29,6 +29,9 @@ jobs:
       - name: Window workflow lifecycle guard
         run: node scripts/test-window-workflow-lifecycle.mjs
 
+      - name: Window Check operational storage guard
+        run: node scripts/test-window-check-operational-storage.mjs
+
       - name: Lint
         run: npm run lint
 
