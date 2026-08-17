@@ -119,7 +119,8 @@ export default function DateRangeFilter({
                 }
               }}
               placeholder="260801~260817"
-              inputMode="numeric"
+              autoComplete="off"
+              spellCheck={false}
               className={inputClass}
             />
             <button
