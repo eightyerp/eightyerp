@@ -4,10 +4,14 @@ import { getCurrentUserAccess } from "@/lib/crm/access";
 import { getEmployees, getLeadSources } from "@/lib/crm/customers";
 
 export default async function CrmNewCustomerPage() {
-  const access = await getCurrentUserAccess();
+  // 유입경로는 인증 확인과 동시에 시작하고, 직원목록은 관리자에게만 필요하다.
+  const accessPromise = getCurrentUserAccess();
+  const leadSourcesPromise = getLeadSources();
+  const access = await accessPromise;
+  const employeesPromise = access.isAdmin ? getEmployees() : Promise.resolve([]);
   const [employees, leadSources] = await Promise.all([
-    getEmployees(),
-    getLeadSources(),
+    employeesPromise,
+    leadSourcesPromise,
   ]);
 
   return (
