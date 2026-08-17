@@ -30,6 +30,13 @@ check(homePage, "const bundlePromise =", "CRM home starts bundle work without bl
 checkNot(homePage, "getTodayWorkBundle", "CRM home does not reload full ERP today-work bundle");
 checkNot(homePage, "getCustomers({", "CRM home avoids heavy shared customer list query");
 
+const shell = read("components/crm/CrmShell.tsx");
+check(shell, "router.prefetch(item.href)", "primary CRM navigation routes are warmed");
+check(shell, "window.setTimeout(() =>", "menu warming waits until current screen settles");
+check(shell, "onPointerDown={() => router.prefetch(item.href)}", "tap intent warms the selected menu immediately");
+check(shell, "onNavigate={() => setPendingHref(item.href)}", "bottom navigation gives immediate selected feedback");
+check(shell, "prefetch={false}", "secondary header actions do not add background route load");
+
 const schedulesPage = read("app/crm/schedules/page.tsx");
 check(schedulesPage, "getCrmMobileHomeBundle", "CRM schedule screen uses bounded CRM bundle");
 check(schedulesPage, 'focus === "next_action"', "next-action focus has a dedicated lightweight path");
