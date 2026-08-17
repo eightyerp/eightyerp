@@ -1,0 +1,27 @@
+{
+  "id": "/crm",
+  "name": "EIGHTY CRM",
+  "short_name": "에잇티CRM",
+  "description": "에잇티 직원용 고객·상담·일정·견적 CRM",
+  "start_url": "/crm",
+  "scope": "/crm",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#071426",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/pwa/eighty-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa/eighty-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

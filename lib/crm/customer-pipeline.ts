@@ -10,6 +10,7 @@ import type {
 } from "@/types/database";
 
 const PIPELINE_PAGE_SIZE = 500;
+const MOBILE_PIPELINE_ROW_LIMIT = 50;
 
 export type CustomerPipelineItem = Pick<
   Customer,
@@ -114,7 +115,14 @@ export function groupCustomerPipeline(
   return grouped;
 }
 
-export async function listCustomerPipeline(): Promise<{
+export type CustomerPipelineFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export async function listCustomerPipeline(
+  filters: CustomerPipelineFilters = {},
+): Promise<{
   customers: CustomerPipelineItem[];
   scopeLabel: string;
 }> {
@@ -147,6 +155,12 @@ export async function listCustomerPipeline(): Promise<{
     if (!access.canViewAllCompanyCustomers) {
       query = query.eq("assigned_employee_id", employeeId);
     }
+    if (filters.dateFrom) {
+      query = query.gte("created_at", `${filters.dateFrom}T00:00:00+09:00`);
+    }
+    if (filters.dateTo) {
+      query = query.lte("created_at", `${filters.dateTo}T23:59:59.999+09:00`);
+    }
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -167,4 +181,111 @@ export async function listCustomerPipeline(): Promise<{
   }
 
   return { customers, scopeLabel: access.scopeLabel };
+}
+
+export type MobileCustomerPipelineView = {
+  rows: CustomerPipelineItem[];
+  counts: Record<CustomerPipelineStageKey, number>;
+  scopeLabel: string;
+};
+
+/**
+ * 모바일 CRM 전용 파이프라인.
+ * 전체 고객을 내려받지 않고 단계별 count + 현재 단계 카드만 조회한다.
+ */
+export async function getMobileCustomerPipelineView(input: {
+  stageKey: CustomerPipelineStageKey;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<MobileCustomerPipelineView> {
+  const access = await requireCustomerAccess();
+  const employeeId = access.employeeId;
+  const emptyCounts: Record<CustomerPipelineStageKey, number> = {
+    new: 0,
+    consulting: 0,
+    quoting: 0,
+    negotiating: 0,
+    delivery: 0,
+    closed: 0,
+  };
+
+  if (!access.canViewAllCompanyCustomers && !employeeId) {
+    return { rows: [], counts: emptyCounts, scopeLabel: access.scopeLabel };
+  }
+
+  const supabase = await createClient();
+
+  async function countStage(
+    stage: (typeof CUSTOMER_PIPELINE_STAGES)[number],
+  ): Promise<[CustomerPipelineStageKey, number]> {
+    let query = supabase
+      .from("customers")
+      .select("id", { count: "exact", head: true })
+      .is("deleted_at", null)
+      .in("status", [...stage.statuses]);
+
+    if (!access.canViewAllCompanyCustomers) {
+      query = query.eq("assigned_employee_id", employeeId);
+    }
+    if (input.dateFrom) {
+      query = query.gte("created_at", `${input.dateFrom}T00:00:00+09:00`);
+    }
+    if (input.dateTo) {
+      query = query.lte("created_at", `${input.dateTo}T23:59:59.999+09:00`);
+    }
+
+    const { error, count } = await query;
+    if (error) throw new Error(error.message);
+    return [stage.key, count ?? 0];
+  }
+
+  const activeStage =
+    CUSTOMER_PIPELINE_STAGES.find((stage) => stage.key === input.stageKey) ??
+    CUSTOMER_PIPELINE_STAGES[0];
+
+  let rowsQuery = supabase
+    .from("customers")
+    .select(
+      `
+      id, name, phone, address, consultation_type, status,
+      assigned_employee_id, next_contact_at, created_at, updated_at,
+      employees ( id, name, title ),
+      lead_sources ( id, name )
+    `,
+    )
+    .is("deleted_at", null)
+    .in("status", [...activeStage.statuses])
+    .order("updated_at", { ascending: false })
+    .order("id", { ascending: true })
+    .limit(MOBILE_PIPELINE_ROW_LIMIT);
+
+  if (!access.canViewAllCompanyCustomers) {
+    rowsQuery = rowsQuery.eq("assigned_employee_id", employeeId);
+  }
+  if (input.dateFrom) {
+    rowsQuery = rowsQuery.gte("created_at", `${input.dateFrom}T00:00:00+09:00`);
+  }
+  if (input.dateTo) {
+    rowsQuery = rowsQuery.lte("created_at", `${input.dateTo}T23:59:59.999+09:00`);
+  }
+
+  const [countEntries, rowsResult] = await Promise.all([
+    Promise.all(CUSTOMER_PIPELINE_STAGES.map((stage) => countStage(stage))),
+    rowsQuery,
+  ]);
+
+  if (rowsResult.error) throw new Error(rowsResult.error.message);
+
+  const counts = { ...emptyCounts };
+  for (const [key, count] of countEntries) counts[key] = count;
+
+  const rows = ((rowsResult.data ?? []) as unknown as Omit<
+    CustomerPipelineItem,
+    "contact_bucket"
+  >[]).map((customer) => ({
+    ...customer,
+    contact_bucket: getContactBucket(customer.next_contact_at),
+  }));
+
+  return { rows, counts, scopeLabel: access.scopeLabel };
 }
