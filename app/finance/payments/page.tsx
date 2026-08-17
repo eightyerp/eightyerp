@@ -16,7 +16,10 @@ import {
   EXPENSE_LEDGER_DATE_FIELDS,
   listExpenseActionQueue,
   listExpenseLedgerPage,
+  listExpenseMissingEvidenceQueue,
+  listExpenseTaxEvidenceQueue,
   normalizeExpenseLedgerDateField,
+  type ExpenseWorkQueueResult,
 } from "@/lib/crm/expense-ledger";
 import type { ExpenseRequestRecord } from "@/lib/crm/expense-shared";
 import {
@@ -36,6 +39,10 @@ type ExpensePaymentsPageProps = {
     page?: string;
   }>;
 };
+
+function emptyQueue(): ExpenseWorkQueueResult {
+  return { requests: [], total: 0, truncated: false };
+}
 
 function mergeExpenseRequests(
   primary: ExpenseRequestRecord[],
@@ -73,12 +80,10 @@ export default async function ExpensePaymentsPage({
     page,
     totalPages: 1,
   } as Awaited<ReturnType<typeof listExpenseLedgerPage>>;
-  let actionQueue = {
-    requests: [],
-    total: 0,
-    truncated: false,
-  } as Awaited<ReturnType<typeof listExpenseActionQueue>>;
-  let supportRequests: ExpenseRequestRecord[] = [];
+  let actionQueue = emptyQueue();
+  let missingEvidenceQueue = emptyQueue();
+  let taxEvidenceQueue = emptyQueue();
+  let staffRecentRequests: ExpenseRequestRecord[] = [];
   let adjustmentEmployees = [] as Awaited<
     ReturnType<typeof listExpenseAdjustmentEmployees>
   >;
@@ -90,7 +95,9 @@ export default async function ExpensePaymentsPage({
       vendorResult,
       ledgerResult,
       actionResult,
-      supportResult,
+      missingEvidenceResult,
+      taxEvidenceResult,
+      staffRecentResult,
       employeeResult,
       adjustmentResult,
     ] = await Promise.allSettled([
@@ -103,7 +110,15 @@ export default async function ExpensePaymentsPage({
         page,
       }),
       listExpenseActionQueue(),
-      listExpenseRequests(access.isFinanceAdmin ? 500 : 100),
+      access.isFinanceAdmin
+        ? listExpenseMissingEvidenceQueue()
+        : Promise.resolve(emptyQueue()),
+      access.isFinanceAdmin
+        ? listExpenseTaxEvidenceQueue()
+        : Promise.resolve(emptyQueue()),
+      access.isFinanceAdmin
+        ? Promise.resolve([] as ExpenseRequestRecord[])
+        : listExpenseRequests(100),
       access.isFinanceAdmin
         ? listExpenseAdjustmentEmployees()
         : Promise.resolve([]),
@@ -131,11 +146,25 @@ export default async function ExpensePaymentsPage({
         "지출 원장은 조회되지만 승인·지급 업무함을 불러오지 못했습니다.";
     }
 
-    if (supportResult.status === "fulfilled") supportRequests = supportResult.value;
-    else {
+    if (missingEvidenceResult.status === "fulfilled") {
+      missingEvidenceQueue = missingEvidenceResult.value;
+    } else if (access.isFinanceAdmin) {
       supportWarning =
-        supportWarning ||
-        "일부 최근 지출·증빙 상태를 불러오지 못했습니다.";
+        supportWarning || "증빙 미첨부 업무함을 불러오지 못했습니다.";
+    }
+
+    if (taxEvidenceResult.status === "fulfilled") {
+      taxEvidenceQueue = taxEvidenceResult.value;
+    } else if (access.isFinanceAdmin) {
+      supportWarning =
+        supportWarning || "세무증빙 미확인 업무함을 불러오지 못했습니다.";
+    }
+
+    if (staffRecentResult.status === "fulfilled") {
+      staffRecentRequests = staffRecentResult.value;
+    } else if (!access.isFinanceAdmin) {
+      supportWarning =
+        supportWarning || "내 최근 지출 상태를 불러오지 못했습니다.";
     }
 
     if (employeeResult.status === "fulfilled") {
@@ -154,7 +183,7 @@ export default async function ExpensePaymentsPage({
 
   const workflowRequests = mergeExpenseRequests(
     actionQueue.requests,
-    supportRequests,
+    missingEvidenceQueue.requests,
   );
   const dateFieldLabel =
     EXPENSE_LEDGER_DATE_FIELDS.find((item) => item.value === dateField)?.label ??
@@ -196,6 +225,18 @@ export default async function ExpensePaymentsPage({
           </div>
         ) : null}
 
+        {missingEvidenceQueue.truncated ? (
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-900">
+            증빙 미첨부 총 {missingEvidenceQueue.total.toLocaleString("ko-KR")}건 중 최근 {missingEvidenceQueue.requests.length.toLocaleString("ko-KR")}건을 표시합니다.
+          </div>
+        ) : null}
+
+        {taxEvidenceQueue.truncated ? (
+          <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-900">
+            세무증빙 미확인 총 {taxEvidenceQueue.total.toLocaleString("ko-KR")}건 중 최근 {taxEvidenceQueue.requests.length.toLocaleString("ko-KR")}건을 표시합니다.
+          </div>
+        ) : null}
+
         {loadError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
             {loadError}
@@ -214,7 +255,7 @@ export default async function ExpensePaymentsPage({
 
             {!access.isFinanceAdmin ? (
               <StaffExpenseMyStatus
-                requests={supportRequests}
+                requests={staffRecentRequests}
                 employeeId={access.currentEmployeeId}
               />
             ) : null}
@@ -258,11 +299,13 @@ export default async function ExpensePaymentsPage({
             />
 
             {access.isFinanceAdmin ? (
-              <MissingExpenseEvidencePanel requests={supportRequests} />
+              <MissingExpenseEvidencePanel
+                requests={missingEvidenceQueue.requests}
+              />
             ) : null}
 
             {access.isFinanceAdmin ? (
-              <ExpenseTaxEvidencePanel requests={supportRequests} />
+              <ExpenseTaxEvidencePanel requests={taxEvidenceQueue.requests} />
             ) : null}
           </>
         )}
