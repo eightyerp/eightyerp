@@ -45,6 +45,23 @@ check(quotesPage, "prefetch={false}", "CRM quote cards do not prefetch many dyna
 const loading = read("app/crm/loading.tsx");
 check(loading, "animate-pulse", "CRM navigation gives immediate loading feedback");
 
+const detailPage = read("app/crm/customers/[id]/page.tsx");
+check(detailPage, "getCrmCustomerDetail", "CRM customer detail uses lightweight customer header query");
+check(detailPage, "listCrmCustomerUpcomingSchedules", "CRM customer detail only loads bounded upcoming schedules");
+check(detailPage, "listCrmCustomerRecentConsults", "CRM customer detail only loads bounded recent consultations");
+check(detailPage, "Suspense", "CRM customer detail streams secondary panels after fast actions");
+check(detailPage, "const contractPromise =", "CRM finance summary starts in parallel without blocking first actions");
+checkNot(detailPage, "getCustomerById", "CRM customer detail avoids heavy ERP customer detail query");
+checkNot(detailPage, "listCustomerSchedules", "CRM customer detail avoids 800-row shared schedule query");
+checkNot(detailPage, "getCustomerConsultLogs", "CRM customer detail avoids unbounded consultation query");
+
+const detailQuery = read("lib/crm/crm-customer-detail.ts");
+check(detailQuery, 'select("id, schedule_type, title, start_at, status")', "customer detail schedule query selects only visible columns");
+check(detailQuery, 'in("status", [...OPEN_SCHEDULE_STATUSES])', "customer detail schedule query only reads open schedules");
+check(detailQuery, ".limit(safeLimit)", "customer detail secondary queries are bounded");
+check(detailQuery, 'select("id, consult_type, consult_content, next_contact_date, created_at")', "customer detail consult query selects only visible columns");
+checkNot(detailQuery, 'select("*")', "customer detail lightweight queries never select all columns");
+
 const homeQuery = read("lib/crm/crm-mobile-home.ts");
 check(homeQuery, 'limit(100)', "CRM home schedule/customer query has bounded result sets");
 check(homeQuery, 'limit(50)', "CRM home contact/quote query has small bounded result sets");
