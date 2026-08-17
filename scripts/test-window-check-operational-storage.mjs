@@ -24,6 +24,7 @@ requireText('and b.public = false', 'Bucket assertions must enforce private stor
 requireText("payload_json::text not ilike '%content://%'", 'Server snapshot must reject content:// URIs.');
 requireText("payload_json::text not ilike '%file://%'", 'Server snapshot must reject file:// URIs.');
 requireText("raise exception 'Window Check helper unexpectedly exposed in public schema'", 'Migration must assert that Window Check helpers are not public RPCs.');
+requireText("has_schema_privilege('anon', 'erp_private', 'USAGE')", 'Migration must assert anon cannot use erp_private.');
 
 forbid(/create\s+or\s+replace\s+function\s+public\.(?:can_access_window_inspection|can_write_window_inspection|validate_window_inspection_child_company|validate_window_inspection_report_snapshot|window_storage_path_uuid)/i,
   'Window Check helper functions must not be created in public.');
