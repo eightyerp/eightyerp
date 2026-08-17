@@ -1,4 +1,4 @@
-import { buildKstDateTimeBounds } from "@/lib/date-range";
+import { buildKstDateTimeBounds, getKstToday, shiftDate } from "@/lib/date-range";
 import { requireCustomerAccess } from "@/lib/crm/customer-access";
 import { getContactBucket } from "@/lib/crm/contact";
 import { CUSTOMER_PAGE_SIZE } from "@/lib/crm/constants";
@@ -17,23 +17,12 @@ import type {
 
 const STALE_CHECKLIST_DAYS = 7;
 
-function localDateString(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function addDays(base: Date, days: number): Date {
-  const next = new Date(base);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function endOfWeekDate(base: Date): Date {
-  const day = base.getDay();
-  const offset = day === 0 ? 0 : 7 - day;
-  return addDays(base, offset);
+function endOfWeekDate(today: string): string {
+  const [year, month, day] = today.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  const weekday = utc.getUTCDay();
+  const offset = weekday === 0 ? 0 : 7 - weekday;
+  return shiftDate(today, offset);
 }
 
 function enrichCustomer(customer: CustomerWithRelations): CustomerWithRelations {
@@ -142,9 +131,9 @@ export async function getCustomersWithDateRange(
   if (bounds.toExclusiveUtc) query = query.lt("created_at", bounds.toExclusiveUtc);
 
   if (filters.contact) {
-    const today = localDateString();
-    const soonEnd = localDateString(addDays(new Date(), 3));
-    const weekEnd = localDateString(endOfWeekDate(new Date()));
+    const today = getKstToday();
+    const soonEnd = shiftDate(today, 3);
+    const weekEnd = endOfWeekDate(today);
     if (filters.contact === "today") query = query.eq("next_contact_at", today);
     else if (filters.contact === "overdue") query = query.lt("next_contact_at", today);
     else if (filters.contact === "soon") {
