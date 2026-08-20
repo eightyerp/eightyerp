@@ -2,8 +2,9 @@
 -- 20260818030000_window_check_operational_storage_v1.sql.
 --
 -- This is NOT a production migration and must never be applied to ERP.
--- It deliberately models only the tables/functions/policy that the Window Check
--- migration depends on, while auth/storage objects are supplied by local Supabase.
+-- It deliberately models only the tables/functions/policies that the Window Check
+-- migration and authenticated mobile lifecycle depend on, while auth/storage objects
+-- are supplied by local Supabase.
 
 create extension if not exists pgcrypto;
 
@@ -210,4 +211,67 @@ on public.window_inspections
 for select to authenticated
 using (company_id = (select public.current_company_id()));
 
+-- Mirror the already-deployed 20260816012630 parent policies so the isolated
+-- #87 test exercises the same scaffold/finalize contract as the Android client.
+create policy window_inspections_company_insert
+on public.window_inspections for insert to authenticated
+with check (
+  company_id = (select public.current_company_id())
+  and performed_by_user_id = (select auth.uid())
+  and exists (
+    select 1 from public.profiles p
+    join public.company_memberships m on m.user_id = p.id
+      and m.company_id = window_inspections.company_id
+      and m.employee_id = window_inspections.performed_by_employee_id
+    where p.id = (select auth.uid())
+      and p.employee_id = window_inspections.performed_by_employee_id
+      and p.is_active = true
+      and p.is_approved = true
+      and p.approval_status = 'approved'
+      and m.status = 'active'
+  )
+  and exists (
+    select 1 from public.customers c
+    join public.projects pr on pr.customer_id = c.id
+    where c.id = window_inspections.customer_id and pr.id = window_inspections.project_id
+      and c.company_id = window_inspections.company_id and pr.company_id = window_inspections.company_id
+      and c.deleted_at is null and pr.deleted_at is null
+  )
+);
+
+create policy window_inspections_company_update
+on public.window_inspections for update to authenticated
+using (
+  company_id = (select public.current_company_id())
+  and performed_by_user_id = (select auth.uid())
+)
+with check (
+  company_id = (select public.current_company_id())
+  and performed_by_user_id = (select auth.uid())
+  and exists (
+    select 1 from public.profiles p
+    join public.company_memberships m on m.user_id = p.id
+      and m.company_id = window_inspections.company_id
+      and m.employee_id = window_inspections.performed_by_employee_id
+    where p.id = (select auth.uid())
+      and p.employee_id = window_inspections.performed_by_employee_id
+      and p.is_active = true
+      and p.is_approved = true
+      and p.approval_status = 'approved'
+      and m.status = 'active'
+  )
+  and exists (
+    select 1 from public.customers c
+    join public.projects pr on pr.customer_id = c.id
+    where c.id = window_inspections.customer_id and pr.id = window_inspections.project_id
+      and c.company_id = window_inspections.company_id and pr.company_id = window_inspections.company_id
+      and c.deleted_at is null and pr.deleted_at is null
+  )
+);
+
+-- The real ERP already grants these reads through its wider schema grants. The
+-- minimal fixture needs them explicitly so RLS policy subqueries execute as the
+-- authenticated actor rather than failing for a fixture-only privilege reason.
+grant select on public.companies, public.employees, public.profiles,
+  public.company_memberships, public.customers, public.projects to authenticated;
 grant select, insert, update on public.window_inspections to authenticated;
