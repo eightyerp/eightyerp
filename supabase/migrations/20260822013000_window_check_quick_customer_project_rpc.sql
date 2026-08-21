@@ -6,8 +6,9 @@
 --   - Create/reuse the ERP CRM customer master and a pre-contract `준비` project.
 --   - Keep ERP/CRM as the only customer/project source of truth.
 --   - Never expose another employee's duplicate customer details.
+--   - Surface newly created Window Check customer/site events in CRM activity.
 --   - Preserve actor/source traceability in ERP audit_logs without making audit
---     logging a failure dependency for the primary registration workflow.
+--     or timeline logging a failure dependency for the primary workflow.
 --
 -- Safety
 --   - No existing row UPDATE/DELETE/backfill.
@@ -180,6 +181,28 @@ begin
       v_project_created := true;
     end if;
 
+    if v_project_created then
+      begin
+        insert into public.customer_activities (
+          company_id,
+          customer_id,
+          activity_type,
+          content,
+          employee_id,
+          created_by
+        ) values (
+          v_company_id,
+          v_customer.id,
+          '메모',
+          'Window Check 앱에서 점검 현장을 생성했습니다.',
+          v_employee_id,
+          auth.uid()
+        );
+      exception when others then
+        null;
+      end;
+    end if;
+
     begin
       insert into public.audit_logs (
         company_id,
@@ -295,6 +318,28 @@ begin
   returning * into v_project;
 
   begin
+    insert into public.customer_activities (
+      company_id,
+      customer_id,
+      activity_type,
+      content,
+      employee_id,
+      created_by
+    ) values (
+      v_company_id,
+      v_customer.id,
+      '메모',
+      'Window Check 앱에서 고객과 점검 현장을 등록했습니다.',
+      v_employee_id,
+      auth.uid()
+    );
+  exception when others then
+    -- Customer registration remains authoritative if optional CRM timeline
+    -- logging is temporarily unavailable.
+    null;
+  end;
+
+  begin
     insert into public.audit_logs (
       company_id,
       entity_type,
@@ -363,7 +408,7 @@ grant execute on function public.create_window_check_customer_project(text, text
 to authenticated;
 
 comment on function public.create_window_check_customer_project(text, text, text, text) is
-  'Window Check authenticated quick registration. Atomically creates/reuses CRM customer + pre-contract project; duplicate details are access-scoped and actor/source audit is non-blocking.';
+  'Window Check authenticated quick registration. Atomically creates/reuses CRM customer + pre-contract project; duplicate details are access-scoped; new Window Check events are visible in CRM activity and audit trails are non-blocking.';
 
 notify pgrst, 'reload schema';
 
