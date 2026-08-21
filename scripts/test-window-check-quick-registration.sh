@@ -30,18 +30,22 @@ SQL
 
 # New registration and a same-employee retry happen in one transaction so the
 # second call must reuse exactly the customer/project created by the first call.
-# Audit rows are asserted in the same transaction before rollback.
+# Store results in a temp table and inspect audit rows in a later SQL statement;
+# this mirrors real post-RPC visibility more accurately than a single CTE.
 created_and_reused="$(query_as "$INSPECTOR_USER" "
-with first_call as materialized (
-  select public.create_window_check_customer_project(
+create temporary table quick_results(seq integer primary key, result jsonb) on commit drop;
+insert into quick_results values (
+  1,
+  public.create_window_check_customer_project(
     'Quick Customer', '010-1111-2222', '서울 테스트아파트 101동 1001호', null
-  ) as result
-),
-second_call as materialized (
-  select public.create_window_check_customer_project(
+  )
+);
+insert into quick_results values (
+  2,
+  public.create_window_check_customer_project(
     'Quick Customer Retry', '01011112222', '변경 시도 주소', null
-  ) as result
-)
+  )
+);
 select concat_ws('|',
   first_call.result->>'status',
   second_call.result->>'status',
@@ -63,10 +67,16 @@ select concat_ws('|',
       and a.actor_id = '$INSPECTOR_USER'
       and a.action = 'window_check_customer_project_reuse')
 )
-from first_call cross join second_call;
+from quick_results first_call
+cross join quick_results second_call
+where first_call.seq = 1 and second_call.seq = 2;
 ")"
 expected_created="created|reused|true|true|$INSPECTOR_EMPLOYEE|준비|서울 테스트아파트 101동 1001호|1|1|1"
-test "$created_and_reused" = "$expected_created"
+if [ "$created_and_reused" != "$expected_created" ]; then
+  echo "actual create/reuse: $created_and_reused" >&2
+  echo "expected create/reuse: $expected_created" >&2
+  exit 1
+fi
 echo 'quick registration create + idempotent reuse + audit: PASS'
 
 # Seed a customer owned by a different employee. The quick RPC must detect the
@@ -90,11 +100,11 @@ insert into public.customers (
 SQL
 
 blocked="$(query_as "$INSPECTOR_USER" "
-with call as materialized (
-  select public.create_window_check_customer_project(
-    'Attempted Duplicate', '01033334444', 'Attempted Address', null
-  ) as result
-)
+create temporary table blocked_result(result jsonb) on commit drop;
+insert into blocked_result
+select public.create_window_check_customer_project(
+  'Attempted Duplicate', '01033334444', 'Attempted Address', null
+);
 select concat_ws('|',
   result->>'status',
   (result->'customer' = 'null'::jsonb)::text,
@@ -117,18 +127,23 @@ select concat_ws('|',
     where a.company_id = '$COMPANY_ID'
       and a.actor_id = '$INSPECTOR_USER'
       and a.action = 'window_check_duplicate_blocked')::text
-) from call;
+) from blocked_result;
 ")"
-test "$blocked" = 'duplicate_blocked|true|true|true|true|true|1|true'
+expected_blocked='duplicate_blocked|true|true|true|true|true|1|true'
+if [ "$blocked" != "$expected_blocked" ]; then
+  echo "actual duplicate block: $blocked" >&2
+  echo "expected duplicate block: $expected_blocked" >&2
+  exit 1
+fi
 echo 'cross-assignee duplicate masking + non-PII audit: PASS'
 
 # The owning employee can reuse the same customer and receive/create a project.
 owner_reuse="$(query_as "$OTHER_USER" "
-with call as materialized (
-  select public.create_window_check_customer_project(
-    'Ignored Rename', '01033334444', 'Hidden Address', null
-  ) as result
-)
+create temporary table owner_result(result jsonb) on commit drop;
+insert into owner_result
+select public.create_window_check_customer_project(
+  'Ignored Rename', '01033334444', 'Hidden Address', null
+);
 select concat_ws('|',
   result->>'status',
   result->'customer'->>'assigned_employee_id',
@@ -139,9 +154,14 @@ select concat_ws('|',
       and a.actor_id = '$OTHER_USER'
       and a.action = 'window_check_project_create'
       and a.payload->>'customer_id' = '50000000-0000-4000-8000-000000000099')
-) from call;
+) from owner_result;
 ")"
-test "$owner_reuse" = "reused|$OTHER_EMPLOYEE|준비|true|1"
+expected_owner="reused|$OTHER_EMPLOYEE|준비|true|1"
+if [ "$owner_reuse" != "$expected_owner" ]; then
+  echo "actual owner reuse: $owner_reuse" >&2
+  echo "expected owner reuse: $expected_owner" >&2
+  exit 1
+fi
 echo 'own-assignee duplicate reuse + project create + audit: PASS'
 
 echo 'Window Check quick customer registration behavior: PASS'
