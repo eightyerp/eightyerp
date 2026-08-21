@@ -30,6 +30,7 @@ SQL
 
 # New registration and a same-employee retry happen in one transaction so the
 # second call must reuse exactly the customer/project created by the first call.
+# Audit rows are asserted in the same transaction before rollback.
 created_and_reused="$(query_as "$INSPECTOR_USER" "
 with first_call as materialized (
   select public.create_window_check_customer_project(
@@ -48,13 +49,25 @@ select concat_ws('|',
   (first_call.result->'project'->>'id' = second_call.result->'project'->>'id')::text,
   first_call.result->'customer'->>'assigned_employee_id',
   first_call.result->'project'->>'status',
-  first_call.result->'project'->>'address'
+  first_call.result->'project'->>'address',
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_customer_create'),
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_project_create'),
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_customer_project_reuse')
 )
 from first_call cross join second_call;
 ")"
-expected_created="created|reused|true|true|$INSPECTOR_EMPLOYEE|준비|서울 테스트아파트 101동 1001호"
+expected_created="created|reused|true|true|$INSPECTOR_EMPLOYEE|준비|서울 테스트아파트 101동 1001호|1|1|1"
 test "$created_and_reused" = "$expected_created"
-echo 'quick registration create + idempotent reuse: PASS'
+echo 'quick registration create + idempotent reuse + audit: PASS'
 
 # Seed a customer owned by a different employee. The quick RPC must detect the
 # company-wide phone duplicate while returning no customer/project payload.
@@ -77,7 +90,7 @@ insert into public.customers (
 SQL
 
 blocked="$(query_as "$INSPECTOR_USER" "
-with call as (
+with call as materialized (
   select public.create_window_check_customer_project(
     'Attempted Duplicate', '01033334444', 'Attempted Address', null
   ) as result
@@ -88,15 +101,30 @@ select concat_ws('|',
   (result->'project' = 'null'::jsonb)::text,
   (result::text !~ 'Hidden Other Customer')::text,
   (result::text !~ 'Hidden Address')::text,
-  (result::text !~ '50000000-0000-4000-8000-000000000099')::text
+  (result::text !~ '50000000-0000-4000-8000-000000000099')::text,
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_duplicate_blocked'
+      and a.entity_id is null),
+  (select bool_and(
+      coalesce(a.payload->>'source', '') = 'window_check'
+      and coalesce(a.payload->>'reason', '') = 'phone_duplicate_outside_scope'
+      and a.payload::text !~ 'Hidden Other Customer'
+      and a.payload::text !~ 'Hidden Address'
+    )
+    from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_duplicate_blocked')::text
 ) from call;
 ")"
-test "$blocked" = 'duplicate_blocked|true|true|true|true|true'
-echo 'cross-assignee duplicate masking: PASS'
+test "$blocked" = 'duplicate_blocked|true|true|true|true|true|1|true'
+echo 'cross-assignee duplicate masking + non-PII audit: PASS'
 
 # The owning employee can reuse the same customer and receive/create a project.
 owner_reuse="$(query_as "$OTHER_USER" "
-with call as (
+with call as materialized (
   select public.create_window_check_customer_project(
     'Ignored Rename', '01033334444', 'Hidden Address', null
   ) as result
@@ -105,10 +133,15 @@ select concat_ws('|',
   result->>'status',
   result->'customer'->>'assigned_employee_id',
   result->'project'->>'status',
-  (result->'customer'->>'id' = '50000000-0000-4000-8000-000000000099')::text
+  (result->'customer'->>'id' = '50000000-0000-4000-8000-000000000099')::text,
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$OTHER_USER'
+      and a.action = 'window_check_project_create'
+      and a.payload->>'customer_id' = '50000000-0000-4000-8000-000000000099')
 ) from call;
 ")"
-test "$owner_reuse" = "reused|$OTHER_EMPLOYEE|준비|true"
-echo 'own-assignee duplicate reuse + project create: PASS'
+test "$owner_reuse" = "reused|$OTHER_EMPLOYEE|준비|true|1"
+echo 'own-assignee duplicate reuse + project create + audit: PASS'
 
 echo 'Window Check quick customer registration behavior: PASS'
