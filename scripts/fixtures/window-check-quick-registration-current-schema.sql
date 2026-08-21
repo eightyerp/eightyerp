@@ -1,7 +1,7 @@
 -- CI-only augmentation for 20260822013000_window_check_quick_customer_project_rpc.sql.
 -- This is NOT a production migration. The base operational fixture already
 -- creates company/auth/customer/project identities; this adds the current CRM
--- columns used by the quick-registration RPC.
+-- columns and audit surface used by the quick-registration RPC.
 
 do $$ begin
   create type public.consultation_type as enum ('창호', '인테리어', '욕실', '기타');
@@ -36,7 +36,21 @@ alter table public.projects
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
 
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id),
+  entity_type text not null,
+  entity_id uuid,
+  action text not null,
+  actor_id uuid references auth.users(id),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists fixture_audit_logs_company_created_idx
+  on public.audit_logs(company_id, created_at desc);
+
 create unique index if not exists fixture_customers_phone_unique
   on public.customers(phone);
 
-grant select, insert on public.customers, public.projects to authenticated;
+grant select, insert on public.customers, public.projects, public.audit_logs to authenticated;
