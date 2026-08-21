@@ -88,6 +88,13 @@ jobs:
           cat /tmp/eighty-erp-full-migrations/20260822013000_window_check_quick_customer_project_rpc.sql |
             docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
 
+      - name: Execute company-scoped customer phone migration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat /tmp/eighty-erp-full-migrations/20260822014500_customer_company_phone_uniqueness.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
       - name: Verify resulting schema and policies
         run: |
           DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
@@ -150,11 +157,28 @@ jobs:
               'public.create_window_check_customer_project(text,text,text,text)',
               'EXECUTE'
             );
+
+          select count(*) = 0
+          from pg_constraint constraint_row
+          join pg_class table_row on table_row.oid = constraint_row.conrelid
+          join pg_namespace namespace_row on namespace_row.oid = table_row.relnamespace
+          where namespace_row.nspname = 'public'
+            and table_row.relname = 'customers'
+            and constraint_row.conname = 'customers_phone_unique';
+
+          select count(*) = 1
+          from pg_index index_row
+          join pg_class index_class on index_class.oid = index_row.indexrelid
+          join pg_namespace namespace_row on namespace_row.oid = index_class.relnamespace
+          where namespace_row.nspname = 'public'
+            and index_class.relname = 'customers_company_phone_digits_active_unique'
+            and index_row.indisunique
+            and index_row.indisvalid;
           SQL
           cat /tmp/window-check-schema-verification.sql |
             docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -At |
             tee /tmp/window-check-schema-verification.txt
-          test "$(grep -c '^t$' /tmp/window-check-schema-verification.txt)" -eq 6
+          test "$(grep -c '^t$' /tmp/window-check-schema-verification.txt)" -eq 8
 
       - name: Seed deidentified RLS actors
         run: |
@@ -174,6 +198,12 @@ jobs:
           DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
           test -n "$DB_CONTAINER"
           bash scripts/test-window-check-quick-registration.sh "$DB_CONTAINER"
+
+      - name: Verify multi-company customer phone uniqueness
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-customer-company-phone-uniqueness.sh "$DB_CONTAINER"
 
       - name: Lint local database functions
         run: supabase db lint --local --level error --fail-on error
