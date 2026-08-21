@@ -10,16 +10,21 @@ test -n "$DB_CONTAINER"
 test -n "$MIGRATION_FILE"
 test -f "$MIGRATION_FILE"
 
-readonly COMPANY_A='20000000-0000-4000-8000-000000000001'
+readonly PREFLIGHT_COMPANY='20000000-0000-4000-8000-000000000098'
 
-# The legacy exact-phone constraint allows these two differently formatted rows,
-# but the new company-scoped normalized policy must detect them as one phone.
+# This test intentionally runs before the normal RLS actor seed. Create its own
+# isolated company so it does not depend on later workflow ordering.
 docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atq <<SQL
+insert into public.companies (id, name, status)
+values ('$PREFLIGHT_COMPANY', 'Phone Migration Preflight Company', 'active');
+
+-- The legacy exact-phone constraint allows these two differently formatted rows,
+-- but the new company-scoped normalized policy must detect them as one phone.
 insert into public.customers (
   company_id, name, phone, consultation_type, status, interest_items, source_channel
 ) values
-  ('$COMPANY_A', 'Preflight A', '010-5555-6666', '창호', '신규', array['창호']::text[], 'fixture_phone_preflight'),
-  ('$COMPANY_A', 'Preflight B', '01055556666', '창호', '신규', array['창호']::text[], 'fixture_phone_preflight');
+  ('$PREFLIGHT_COMPANY', 'Preflight A', '010-5555-6666', '창호', '신규', array['창호']::text[], 'fixture_phone_preflight'),
+  ('$PREFLIGHT_COMPANY', 'Preflight B', '01055556666', '창호', '신규', array['창호']::text[], 'fixture_phone_preflight');
 SQL
 
 set +e
@@ -58,8 +63,11 @@ SQL
 test "$post_failure_state" = '1|0'
 echo 'phone migration duplicate preflight rollback: PASS'
 
-# Remove only CI preflight rows, then the real migration can run normally.
+# Remove only CI preflight rows/company, then the real migration can run normally.
 docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atq <<SQL
 delete from public.customers
 where source_channel = 'fixture_phone_preflight';
+
+delete from public.companies
+where id = '$PREFLIGHT_COMPANY';
 SQL
