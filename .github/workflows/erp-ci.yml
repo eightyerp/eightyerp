@@ -88,6 +88,14 @@ jobs:
           cat /tmp/eighty-erp-full-migrations/20260822013000_window_check_quick_customer_project_rpc.sql |
             docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
 
+      - name: Verify phone migration duplicate preflight is fail-closed
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-customer-company-phone-migration-preflight.sh \
+            "$DB_CONTAINER" \
+            /tmp/eighty-erp-full-migrations/20260822014500_customer_company_phone_uniqueness.sql
+
       - name: Execute company-scoped customer phone migration
         run: |
           DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
