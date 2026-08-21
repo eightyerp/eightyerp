@@ -1,7 +1,8 @@
--- CI-only augmentation for 20260822013000_window_check_quick_customer_project_rpc.sql.
+-- CI-only augmentation for Window Check customer/project quick registration.
 -- This is NOT a production migration. The base operational fixture already
 -- creates company/auth/customer/project identities; this adds the current CRM
--- columns, activity timeline, and audit surface used by the quick-registration RPC.
+-- columns, activity timeline, audit surface, and the legacy pre-company global
+-- phone constraint that the multi-company phone migration must replace.
 
 do $$ begin
   create type public.consultation_type as enum ('창호', '인테리어', '욕실', '기타');
@@ -66,7 +67,22 @@ create table if not exists public.audit_logs (
 create index if not exists fixture_audit_logs_company_created_idx
   on public.audit_logs(company_id, created_at desc);
 
-create unique index if not exists fixture_customers_phone_unique
-  on public.customers(phone);
+-- Reproduce the original CRM rule so isolated CI proves the new migration
+-- replaces a true constraint-backed global unique index, not merely a fixture.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint constraint_row
+    join pg_class table_row on table_row.oid = constraint_row.conrelid
+    join pg_namespace namespace_row on namespace_row.oid = table_row.relnamespace
+    where namespace_row.nspname = 'public'
+      and table_row.relname = 'customers'
+      and constraint_row.conname = 'customers_phone_unique'
+  ) then
+    alter table public.customers
+      add constraint customers_phone_unique unique(phone);
+  end if;
+end $$;
 
 grant select, insert on public.customers, public.projects, public.customer_activities, public.audit_logs to authenticated;
