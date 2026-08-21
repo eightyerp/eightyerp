@@ -30,8 +30,8 @@ SQL
 
 # New registration and a same-employee retry happen in one transaction so the
 # second call must reuse exactly the customer/project created by the first call.
-# Store results in a temp table and inspect audit rows in a later SQL statement;
-# this mirrors real post-RPC visibility more accurately than a single CTE.
+# Store results in a temp table and inspect activity/audit rows in later SQL
+# statements; this mirrors real post-RPC visibility.
 created_and_reused="$(query_as "$INSPECTOR_USER" "
 create temporary table quick_results(seq integer primary key, result jsonb) on commit drop;
 insert into quick_results values (
@@ -54,6 +54,13 @@ select concat_ws('|',
   first_call.result->'customer'->>'assigned_employee_id',
   first_call.result->'project'->>'status',
   first_call.result->'project'->>'address',
+  (select count(*) from public.customer_activities a
+    where a.company_id = '$COMPANY_ID'
+      and a.customer_id = (first_call.result->'customer'->>'id')::uuid
+      and a.employee_id = '$INSPECTOR_EMPLOYEE'
+      and a.created_by = '$INSPECTOR_USER'
+      and a.activity_type = '메모'
+      and a.content = 'Window Check 앱에서 고객과 점검 현장을 등록했습니다.'),
   (select count(*) from public.audit_logs a
     where a.company_id = '$COMPANY_ID'
       and a.actor_id = '$INSPECTOR_USER'
@@ -71,13 +78,13 @@ from quick_results first_call
 cross join quick_results second_call
 where first_call.seq = 1 and second_call.seq = 2;
 ")"
-expected_created="created|reused|true|true|$INSPECTOR_EMPLOYEE|준비|서울 테스트아파트 101동 1001호|1|1|1"
+expected_created="created|reused|true|true|$INSPECTOR_EMPLOYEE|준비|서울 테스트아파트 101동 1001호|1|1|1|1"
 if [ "$created_and_reused" != "$expected_created" ]; then
   echo "actual create/reuse: $created_and_reused" >&2
   echo "expected create/reuse: $expected_created" >&2
   exit 1
 fi
-echo 'quick registration create + idempotent reuse + audit: PASS'
+echo 'quick registration create + idempotent reuse + CRM activity + audit: PASS'
 
 # Seed a customer owned by a different employee. The quick RPC must detect the
 # company-wide phone duplicate while returning no customer/project payload.
@@ -149,6 +156,13 @@ select concat_ws('|',
   result->'customer'->>'assigned_employee_id',
   result->'project'->>'status',
   (result->'customer'->>'id' = '50000000-0000-4000-8000-000000000099')::text,
+  (select count(*) from public.customer_activities a
+    where a.company_id = '$COMPANY_ID'
+      and a.customer_id = '50000000-0000-4000-8000-000000000099'
+      and a.employee_id = '$OTHER_EMPLOYEE'
+      and a.created_by = '$OTHER_USER'
+      and a.activity_type = '메모'
+      and a.content = 'Window Check 앱에서 점검 현장을 생성했습니다.'),
   (select count(*) from public.audit_logs a
     where a.company_id = '$COMPANY_ID'
       and a.actor_id = '$OTHER_USER'
@@ -156,12 +170,12 @@ select concat_ws('|',
       and a.payload->>'customer_id' = '50000000-0000-4000-8000-000000000099')
 ) from owner_result;
 ")"
-expected_owner="reused|$OTHER_EMPLOYEE|준비|true|1"
+expected_owner="reused|$OTHER_EMPLOYEE|준비|true|1|1"
 if [ "$owner_reuse" != "$expected_owner" ]; then
   echo "actual owner reuse: $owner_reuse" >&2
   echo "expected owner reuse: $expected_owner" >&2
   exit 1
 fi
-echo 'own-assignee duplicate reuse + project create + audit: PASS'
+echo 'own-assignee duplicate reuse + project create + CRM activity + audit: PASS'
 
 echo 'Window Check quick customer registration behavior: PASS'
