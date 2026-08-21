@@ -6,6 +6,8 @@
 --   - Create/reuse the ERP CRM customer master and a pre-contract `준비` project.
 --   - Keep ERP/CRM as the only customer/project source of truth.
 --   - Never expose another employee's duplicate customer details.
+--   - Preserve actor/source traceability in ERP audit_logs without making audit
+--     logging a failure dependency for the primary registration workflow.
 --
 -- Safety
 --   - No existing row UPDATE/DELETE/backfill.
@@ -41,6 +43,7 @@ declare
   v_customer public.customers%rowtype;
   v_project public.projects%rowtype;
   v_can_access_duplicate boolean := false;
+  v_project_created boolean := false;
 begin
   if auth.uid() is null then
     raise exception using errcode = '42501', message = '로그인이 필요합니다.';
@@ -106,6 +109,29 @@ begin
       or v_customer.assigned_employee_id = v_employee_id;
 
     if not v_can_access_duplicate then
+      begin
+        insert into public.audit_logs (
+          company_id,
+          entity_type,
+          entity_id,
+          action,
+          actor_id,
+          payload
+        ) values (
+          v_company_id,
+          'customer',
+          null,
+          'window_check_duplicate_blocked',
+          auth.uid(),
+          jsonb_build_object(
+            'source', 'window_check',
+            'reason', 'phone_duplicate_outside_scope'
+          )
+        );
+      exception when others then
+        null;
+      end;
+
       return jsonb_build_object(
         'status', 'duplicate_blocked',
         'message', '같은 연락처의 고객이 이미 등록되어 있습니다. 담당자 또는 관리자에게 확인해 주세요.',
@@ -151,7 +177,37 @@ begin
         auth.uid()
       )
       returning * into v_project;
+      v_project_created := true;
     end if;
+
+    begin
+      insert into public.audit_logs (
+        company_id,
+        entity_type,
+        entity_id,
+        action,
+        actor_id,
+        payload
+      ) values (
+        v_company_id,
+        'project',
+        v_project.id,
+        case
+          when v_project_created then 'window_check_project_create'
+          else 'window_check_customer_project_reuse'
+        end,
+        auth.uid(),
+        jsonb_build_object(
+          'source', 'window_check',
+          'customer_id', v_customer.id,
+          'project_created', v_project_created
+        )
+      );
+    exception when others then
+      -- Match the web ERP writeAuditLog behavior: audit logging is important for
+      -- traceability but must not invite duplicate customer/project creation.
+      null;
+    end;
 
     return jsonb_build_object(
       'status', 'reused',
@@ -238,6 +294,45 @@ begin
   )
   returning * into v_project;
 
+  begin
+    insert into public.audit_logs (
+      company_id,
+      entity_type,
+      entity_id,
+      action,
+      actor_id,
+      payload
+    ) values
+      (
+        v_company_id,
+        'customer',
+        v_customer.id,
+        'window_check_customer_create',
+        auth.uid(),
+        jsonb_build_object(
+          'source', 'window_check',
+          'project_id', v_project.id,
+          'assigned_employee_id', v_employee_id
+        )
+      ),
+      (
+        v_company_id,
+        'project',
+        v_project.id,
+        'window_check_project_create',
+        auth.uid(),
+        jsonb_build_object(
+          'source', 'window_check',
+          'customer_id', v_customer.id,
+          'lifecycle', 'pre_contract'
+        )
+      );
+  exception when others then
+    -- Primary registration remains authoritative even if the optional audit
+    -- subsystem is temporarily unavailable.
+    null;
+  end;
+
   return jsonb_build_object(
     'status', 'created',
     'message', '고객과 점검 현장을 ERP에 등록했습니다.',
@@ -268,7 +363,7 @@ grant execute on function public.create_window_check_customer_project(text, text
 to authenticated;
 
 comment on function public.create_window_check_customer_project(text, text, text, text) is
-  'Window Check authenticated quick registration. Atomically creates/reuses CRM customer + pre-contract project; duplicate details are access-scoped.';
+  'Window Check authenticated quick registration. Atomically creates/reuses CRM customer + pre-contract project; duplicate details are access-scoped and actor/source audit is non-blocking.';
 
 notify pgrst, 'reload schema';
 
