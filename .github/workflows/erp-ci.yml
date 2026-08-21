@@ -74,6 +74,20 @@ jobs:
           cat /tmp/eighty-erp-full-migrations/20260818030000_window_check_operational_storage_v1.sql |
             docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
 
+      - name: Apply quick registration CRM fixture
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat scripts/fixtures/window-check-quick-registration-current-schema.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Execute Window Check quick registration migration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat /tmp/eighty-erp-full-migrations/20260822013000_window_check_quick_customer_project_rpc.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
       - name: Verify resulting schema and policies
         run: |
           DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
@@ -116,11 +130,31 @@ jobs:
               'validate_window_inspection_report_snapshot',
               'window_storage_path_uuid'
             );
+
+          select count(*) = 1
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+            and p.proname = 'create_window_check_customer_project'
+            and p.prosecdef = true
+            and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=%';
+
+          select
+            has_function_privilege(
+              'authenticated',
+              'public.create_window_check_customer_project(text,text,text,text)',
+              'EXECUTE'
+            )
+            and not has_function_privilege(
+              'anon',
+              'public.create_window_check_customer_project(text,text,text,text)',
+              'EXECUTE'
+            );
           SQL
           cat /tmp/window-check-schema-verification.sql |
             docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -At |
             tee /tmp/window-check-schema-verification.txt
-          test "$(grep -c '^t$' /tmp/window-check-schema-verification.txt)" -eq 4
+          test "$(grep -c '^t$' /tmp/window-check-schema-verification.txt)" -eq 6
 
       - name: Seed deidentified RLS actors
         run: |
@@ -134,6 +168,12 @@ jobs:
           DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
           test -n "$DB_CONTAINER"
           bash scripts/test-window-check-operational-rls.sh "$DB_CONTAINER"
+
+      - name: Verify Window Check quick customer registration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-window-check-quick-registration.sh "$DB_CONTAINER"
 
       - name: Lint local database functions
         run: supabase db lint --local --level error --fail-on error
