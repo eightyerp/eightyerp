@@ -29,8 +29,193 @@ jobs:
       - name: Window workflow lifecycle guard
         run: node scripts/test-window-workflow-lifecycle.mjs
 
+      - name: Window Check operational storage guard
+        run: node scripts/test-window-check-operational-storage.mjs
+
       - name: Lint
         run: npm run lint
 
       - name: Production build
         run: npm run build
+
+  window-check-local-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Preserve historical migrations outside local replay
+        run: |
+          mv supabase/migrations /tmp/eighty-erp-full-migrations
+          mkdir -p supabase/migrations
+
+      - name: Initialize clean local Supabase
+        run: |
+          supabase init --force
+          supabase db start
+
+      - name: Apply current ERP dependency fixture
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat scripts/fixtures/window-check-operational-current-schema.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Execute Window Check operational migration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat /tmp/eighty-erp-full-migrations/20260818030000_window_check_operational_storage_v1.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Apply quick registration CRM fixture
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat scripts/fixtures/window-check-quick-registration-current-schema.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Execute Window Check quick registration migration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat /tmp/eighty-erp-full-migrations/20260822013000_window_check_quick_customer_project_rpc.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Verify phone migration duplicate preflight is fail-closed
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-customer-company-phone-migration-preflight.sh \
+            "$DB_CONTAINER" \
+            /tmp/eighty-erp-full-migrations/20260822014500_customer_company_phone_uniqueness.sql
+
+      - name: Execute company-scoped customer phone migration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat /tmp/eighty-erp-full-migrations/20260822014500_customer_company_phone_uniqueness.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Verify resulting schema and policies
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat > /tmp/window-check-schema-verification.sql <<'SQL'
+          select count(*) = 3
+          from information_schema.tables
+          where table_schema = 'public'
+            and table_name in (
+              'window_inspection_snapshots',
+              'window_inspection_photos',
+              'window_inspection_reports'
+            );
+
+          select count(*) = 5
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'erp_private'
+            and p.proname in (
+              'can_access_window_inspection',
+              'can_write_window_inspection',
+              'validate_window_inspection_child_company',
+              'validate_window_inspection_report_snapshot',
+              'window_storage_path_uuid'
+            );
+
+          select count(*) = 2
+          from storage.buckets
+          where id in ('window-inspection-private', 'window-report-private')
+            and public = false;
+
+          select count(*) = 0
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+            and p.proname in (
+              'can_access_window_inspection',
+              'can_write_window_inspection',
+              'validate_window_inspection_child_company',
+              'validate_window_inspection_report_snapshot',
+              'window_storage_path_uuid'
+            );
+
+          select count(*) = 1
+          from pg_proc p
+          join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public'
+            and p.proname = 'create_window_check_customer_project'
+            and p.prosecdef = true
+            and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=%';
+
+          select
+            has_function_privilege(
+              'authenticated',
+              'public.create_window_check_customer_project(text,text,text,text)',
+              'EXECUTE'
+            )
+            and not has_function_privilege(
+              'anon',
+              'public.create_window_check_customer_project(text,text,text,text)',
+              'EXECUTE'
+            );
+
+          select count(*) = 0
+          from pg_constraint constraint_row
+          join pg_class table_row on table_row.oid = constraint_row.conrelid
+          join pg_namespace namespace_row on namespace_row.oid = table_row.relnamespace
+          where namespace_row.nspname = 'public'
+            and table_row.relname = 'customers'
+            and constraint_row.conname = 'customers_phone_unique';
+
+          select count(*) = 1
+          from pg_index index_row
+          join pg_class index_class on index_class.oid = index_row.indexrelid
+          join pg_namespace namespace_row on namespace_row.oid = index_class.relnamespace
+          where namespace_row.nspname = 'public'
+            and index_class.relname = 'customers_company_phone_digits_active_unique'
+            and index_row.indisunique
+            and index_row.indisvalid;
+          SQL
+          cat /tmp/window-check-schema-verification.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -At |
+            tee /tmp/window-check-schema-verification.txt
+          test "$(grep -c '^t$' /tmp/window-check-schema-verification.txt)" -eq 8
+
+      - name: Seed deidentified RLS actors
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          cat scripts/fixtures/window-check-operational-rls-seed.sql |
+            docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
+      - name: Verify Window Check read and insert RLS
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-window-check-operational-rls.sh "$DB_CONTAINER"
+
+      - name: Verify Window Check quick customer registration
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-window-check-quick-registration.sh "$DB_CONTAINER"
+
+      - name: Verify multi-company customer phone uniqueness
+        run: |
+          DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+          test -n "$DB_CONTAINER"
+          bash scripts/test-customer-company-phone-uniqueness.sh "$DB_CONTAINER"
+
+      - name: Lint local database functions
+        run: supabase db lint --local --level error --fail-on error
+
+      - name: Stop local Supabase database
+        if: always()
+        run: supabase stop --no-backup || true

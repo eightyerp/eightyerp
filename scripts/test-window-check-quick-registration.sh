@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DB_CONTAINER="${1:-}"
+if [ -z "$DB_CONTAINER" ]; then
+  DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
+fi
+test -n "$DB_CONTAINER"
+
+readonly INSPECTOR_USER='10000000-0000-4000-8000-000000000001'
+readonly OTHER_USER='10000000-0000-4000-8000-000000000002'
+readonly COMPANY_ID='20000000-0000-4000-8000-000000000001'
+readonly INSPECTOR_EMPLOYEE='30000000-0000-4000-8000-000000000001'
+readonly OTHER_EMPLOYEE='30000000-0000-4000-8000-000000000002'
+
+query_as() {
+  local user_id="$1"
+  local sql="$2"
+  local claims
+  claims="{\"sub\":\"$user_id\",\"role\":\"authenticated\"}"
+  docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atq <<SQL
+begin;
+set local "request.jwt.claim.sub" = '$user_id';
+set local "request.jwt.claims" = '$claims';
+set local role authenticated;
+$sql
+rollback;
+SQL
+}
+
+# New registration and a same-employee retry happen in one transaction so the
+# second call must reuse exactly the customer/project created by the first call.
+# Store results in a temp table and inspect activity/audit rows in later SQL
+# statements; this mirrors real post-RPC visibility.
+created_and_reused="$(query_as "$INSPECTOR_USER" "
+create temporary table quick_results(seq integer primary key, result jsonb) on commit drop;
+insert into quick_results values (
+  1,
+  public.create_window_check_customer_project(
+    'Quick Customer', '010-1111-2222', '서울 테스트아파트 101동 1001호', null
+  )
+);
+insert into quick_results values (
+  2,
+  public.create_window_check_customer_project(
+    'Quick Customer Retry', '01011112222', '변경 시도 주소', null
+  )
+);
+select concat_ws('|',
+  first_call.result->>'status',
+  second_call.result->>'status',
+  (first_call.result->'customer'->>'id' = second_call.result->'customer'->>'id')::text,
+  (first_call.result->'project'->>'id' = second_call.result->'project'->>'id')::text,
+  first_call.result->'customer'->>'assigned_employee_id',
+  first_call.result->'project'->>'status',
+  first_call.result->'project'->>'address',
+  (select count(*) from public.customer_activities a
+    where a.company_id = '$COMPANY_ID'
+      and a.customer_id = (first_call.result->'customer'->>'id')::uuid
+      and a.employee_id = '$INSPECTOR_EMPLOYEE'
+      and a.created_by = '$INSPECTOR_USER'
+      and a.activity_type = '메모'
+      and a.content = 'Window Check 앱에서 고객과 점검 현장을 등록했습니다.'),
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_customer_create'),
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_project_create'),
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_customer_project_reuse')
+)
+from quick_results first_call
+cross join quick_results second_call
+where first_call.seq = 1 and second_call.seq = 2;
+")"
+expected_created="created|reused|true|true|$INSPECTOR_EMPLOYEE|준비|서울 테스트아파트 101동 1001호|1|1|1|1"
+if [ "$created_and_reused" != "$expected_created" ]; then
+  echo "actual create/reuse: $created_and_reused" >&2
+  echo "expected create/reuse: $expected_created" >&2
+  exit 1
+fi
+echo 'quick registration create + idempotent reuse + CRM activity + audit: PASS'
+
+# Seed a customer owned by a different employee. The quick RPC must detect the
+# company-wide phone duplicate while returning no customer/project payload.
+docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atq <<SQL
+insert into public.customers (
+  id, company_id, assigned_employee_id, name, phone, address,
+  consultation_type, status, interest_items, source_channel
+) values (
+  '50000000-0000-4000-8000-000000000099',
+  '$COMPANY_ID',
+  '$OTHER_EMPLOYEE',
+  'Hidden Other Customer',
+  '010-3333-4444',
+  'Hidden Address',
+  '창호',
+  '신규',
+  array['창호']::text[],
+  'fixture'
+);
+SQL
+
+blocked="$(query_as "$INSPECTOR_USER" "
+create temporary table blocked_result(result jsonb) on commit drop;
+insert into blocked_result
+select public.create_window_check_customer_project(
+  'Attempted Duplicate', '01033334444', 'Attempted Address', null
+);
+select concat_ws('|',
+  result->>'status',
+  (result->'customer' = 'null'::jsonb)::text,
+  (result->'project' = 'null'::jsonb)::text,
+  (result::text !~ 'Hidden Other Customer')::text,
+  (result::text !~ 'Hidden Address')::text,
+  (result::text !~ '50000000-0000-4000-8000-000000000099')::text,
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_duplicate_blocked'
+      and a.entity_id is null),
+  (select bool_and(
+      coalesce(a.payload->>'source', '') = 'window_check'
+      and coalesce(a.payload->>'reason', '') = 'phone_duplicate_outside_scope'
+      and a.payload::text !~ 'Hidden Other Customer'
+      and a.payload::text !~ 'Hidden Address'
+    )
+    from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$INSPECTOR_USER'
+      and a.action = 'window_check_duplicate_blocked')::text
+) from blocked_result;
+")"
+expected_blocked='duplicate_blocked|true|true|true|true|true|1|true'
+if [ "$blocked" != "$expected_blocked" ]; then
+  echo "actual duplicate block: $blocked" >&2
+  echo "expected duplicate block: $expected_blocked" >&2
+  exit 1
+fi
+echo 'cross-assignee duplicate masking + non-PII audit: PASS'
+
+# The owning employee can reuse the same customer and receive/create a project.
+owner_reuse="$(query_as "$OTHER_USER" "
+create temporary table owner_result(result jsonb) on commit drop;
+insert into owner_result
+select public.create_window_check_customer_project(
+  'Ignored Rename', '01033334444', 'Hidden Address', null
+);
+select concat_ws('|',
+  result->>'status',
+  result->'customer'->>'assigned_employee_id',
+  result->'project'->>'status',
+  (result->'customer'->>'id' = '50000000-0000-4000-8000-000000000099')::text,
+  (select count(*) from public.customer_activities a
+    where a.company_id = '$COMPANY_ID'
+      and a.customer_id = '50000000-0000-4000-8000-000000000099'
+      and a.employee_id = '$OTHER_EMPLOYEE'
+      and a.created_by = '$OTHER_USER'
+      and a.activity_type = '메모'
+      and a.content = 'Window Check 앱에서 점검 현장을 생성했습니다.'),
+  (select count(*) from public.audit_logs a
+    where a.company_id = '$COMPANY_ID'
+      and a.actor_id = '$OTHER_USER'
+      and a.action = 'window_check_project_create'
+      and a.payload->>'customer_id' = '50000000-0000-4000-8000-000000000099')
+) from owner_result;
+")"
+expected_owner="reused|$OTHER_EMPLOYEE|준비|true|1|1"
+if [ "$owner_reuse" != "$expected_owner" ]; then
+  echo "actual owner reuse: $owner_reuse" >&2
+  echo "expected owner reuse: $expected_owner" >&2
+  exit 1
+fi
+echo 'own-assignee duplicate reuse + project create + CRM activity + audit: PASS'
+
+echo 'Window Check quick customer registration behavior: PASS'
